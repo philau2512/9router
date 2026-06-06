@@ -3,13 +3,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const saveRequestDetailMock = vi.fn(() => Promise.resolve());
 const saveUsageStatsMock = vi.fn();
 const ttftMock = vi.fn();
+const appendRequestLogMock = vi.fn(() => Promise.resolve());
+const trackPendingRequestMock = vi.fn(() => Promise.resolve());
 
 vi.mock("@/lib/usageDb.js", () => ({
   saveRequestDetail: (...args) => saveRequestDetailMock(...args),
+  trackPendingRequest: (...args) => trackPendingRequestMock(...args),
+  appendRequestLog: (...args) => appendRequestLogMock(...args),
 }));
 
 vi.mock("../../src/sse/utils/logger.js", () => ({
   ttft: (...args) => ttftMock(...args),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
 }));
 
 vi.mock("../../open-sse/handlers/chatCore/requestDetail.js", async () => {
@@ -37,7 +45,6 @@ function createProviderResponse(chunks = ["data: hello\n\n"]) {
 
 describe("streamingHandler TTFT path", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
     vi.clearAllMocks();
   });
 
@@ -85,7 +92,16 @@ describe("streamingHandler TTFT path", () => {
     expect(result.response).toBeInstanceOf(Response);
     expect(saveRequestDetailMock).not.toHaveBeenCalled();
 
-    await vi.runAllTimersAsync();
+    // Consume the response stream so stall timers are cleared
+    const reader = result.response.body.getReader();
+    while (true) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
+
+    // Use runAllImmediatesAsync to trigger the setImmediate in streamingHandler
+    // without advancing timers (which would trigger stall/semantic-stall timers)
+    await vi.runAllImmediatesAsync?.() ?? await new Promise(r => setTimeout(r, 0));
     expect(saveRequestDetailMock).toHaveBeenCalledTimes(1);
   });
 

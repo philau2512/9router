@@ -138,6 +138,13 @@ export function handleStreamingResponse({
     ? buildAbortedResponsesTerminalBytes
     : null;
 
+  // Track accumulated content for semantic stall detection and mid-stream resume
+  const streamStateTracker = {
+    accumulatedContent: "",
+    accumulatedThinking: "",
+    totalContentLength: 0,
+  };
+
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   const wrappedOnStreamComplete = (contentObj, usage, ttftAt) =>
     onStreamComplete?.(contentObj, usage, ttftAt, streamDetailId);
@@ -162,6 +169,8 @@ export function handleStreamingResponse({
     transformStream,
     streamController,
     onAbortTerminal,
+    streamStateTracker,
+    timing,
   );
 
   setImmediate(() => {
