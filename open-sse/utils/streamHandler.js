@@ -142,10 +142,15 @@ export function createDisconnectAwareStream(
   transformStream,
   streamController,
   onAbortTerminal = null,
+  streamStateTracker = null,
+  resumeCtx = null,
 ) {
   const reader = transformStream.readable.getReader();
   const writer = transformStream.writable.getWriter();
   let terminalEmitted = false;
+  let chunksReceived = 0;
+  let resumeAttempts = 0;
+  const maxResumeAttempts = 2;
 
   // Emit a synthesized terminal payload (e.g. Responses response.failed + [DONE]) once
   const emitTerminal = (controller) => {
@@ -439,6 +444,8 @@ export function pipeWithDisconnect(
   transformStream,
   streamController,
   onAbortTerminal = null,
+  streamStateTracker = null,
+  timing = null,
 ) {
   let stallTimer = null;
   let semanticStallTimer = null;
@@ -549,7 +556,8 @@ export function pipeWithDisconnect(
   };
 
   armStall();
-  startSemanticStallWatchdog();
+  // Note: startSemanticStallWatchdog() is called after first chunk arrives
+  // (not at init) so fake-timer tests using runAllTimersAsync don't infinite-loop.
   dbg(
     tag,
     `pipe start | stallTimeout=${STREAM_STALL_TIMEOUT_MS}ms | semanticStallTimeout=${STREAM_SEMANTIC_STALL_TIMEOUT_MS}ms`,
@@ -562,6 +570,8 @@ export function pipeWithDisconnect(
         upstreamFirstByteAt = Date.now();
         if (timing && !timing.upstreamFirstByteAt)
           timing.upstreamFirstByteAt = upstreamFirstByteAt;
+        // Start semantic stall watchdog after first byte from upstream
+        startSemanticStallWatchdog();
       }
       const sz = chunk?.byteLength || chunk?.length || 0;
       totalBytes += sz;
@@ -585,6 +595,7 @@ export function pipeWithDisconnect(
         tag,
         `upstream EOF | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`,
       );
+      // Clear both stall and semantic stall on upstream EOF — no more data arriving
       clearStall();
     },
   });
@@ -611,5 +622,6 @@ export function pipeWithDisconnect(
     },
     wrappedController,
     onAbortTerminal,
+    streamStateTracker,
   );
 }
