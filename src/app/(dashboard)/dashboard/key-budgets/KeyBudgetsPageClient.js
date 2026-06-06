@@ -21,7 +21,10 @@ import { useKeyBudgets } from "./hooks/useKeyBudgets";
 function getProgressPercent(key) {
   const state = key.limitState;
   if (!state?.enabled || !state.limitValue) return 0;
-  return Math.min(100, Math.max(0, (state.currentValue / state.limitValue) * 100));
+  return Math.min(
+    100,
+    Math.max(0, (state.currentValue / state.limitValue) * 100),
+  );
 }
 
 function maskKey(value) {
@@ -90,17 +93,23 @@ function UsageDetails({ details, loading, keyItem }) {
   }
 
   if (!details) {
-    return <p className="text-sm text-text-muted">Usage details are not loaded.</p>;
+    return (
+      <p className="text-sm text-text-muted">Usage details are not loaded.</p>
+    );
   }
 
   const history = details.history || [];
-  const summaryItems = buildUsageSummaryItems(details.limitState || keyItem.limitState);
+  const summaryItems = buildUsageSummaryItems(
+    details.limitState || keyItem.limitState,
+  );
 
   return (
     <div className="mt-4 rounded-lg border border-border-subtle bg-surface-2/40 p-4">
       <div className="mb-3 flex flex-col gap-1">
         <p className="text-sm font-medium text-text-main">Recent usage</p>
-        <p className="text-xs text-text-muted">{buildUsageDetailMessage(keyItem)}</p>
+        <p className="text-xs text-text-muted">
+          {buildUsageDetailMessage(keyItem)}
+        </p>
       </div>
 
       {summaryItems.length > 0 && (
@@ -108,14 +117,18 @@ function UsageDetails({ details, loading, keyItem }) {
           {summaryItems.map((item) => (
             <div key={item.label} className="rounded-lg bg-surface p-3">
               <p className="text-xs text-text-muted">{item.label}</p>
-              <p className="text-sm font-semibold text-text-main">{item.value}</p>
+              <p className="text-sm font-semibold text-text-main">
+                {item.value}
+              </p>
             </div>
           ))}
         </div>
       )}
 
       {history.length === 0 ? (
-        <p className="text-sm text-text-muted">No recent usage recorded for this key.</p>
+        <p className="text-sm text-text-muted">
+          No recent usage recorded for this key.
+        </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -130,14 +143,25 @@ function UsageDetails({ details, loading, keyItem }) {
             </thead>
             <tbody>
               {history.map((entry, index) => (
-                <tr key={`${entry.timestamp}-${index}`} className="border-b border-border-subtle/60 last:border-0">
-                  <td className="py-2 text-text-muted">{new Date(entry.timestamp).toLocaleString()}</td>
+                <tr
+                  key={`${entry.timestamp}-${index}`}
+                  className="border-b border-border-subtle/60 last:border-0"
+                >
+                  <td className="py-2 text-text-muted">
+                    {new Date(entry.timestamp).toLocaleString()}
+                  </td>
                   <td className="py-2 text-text-main">{entry.model || "-"}</td>
-                  <td className="py-2 text-text-muted">{entry.endpoint || "-"}</td>
-                  <td className={`py-2 ${getUsageHistoryStatusClass(Number(entry.status) || 200)}`}>
+                  <td className="py-2 text-text-muted">
+                    {entry.endpoint || "-"}
+                  </td>
+                  <td
+                    className={`py-2 ${getUsageHistoryStatusClass(Number(entry.status) || 200)}`}
+                  >
                     {entry.status || "200"}
                   </td>
-                  <td className="py-2 text-right text-text-main">{formatUsageHistoryValue(entry)}</td>
+                  <td className="py-2 text-right text-text-main">
+                    {formatUsageHistoryValue(entry)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -161,17 +185,25 @@ function KeyBudgetCard({
   onCopy,
 }) {
   const state = keyItem.limitState;
-  const metric = state?.enabled ? getUsageMetricLabel(state.metricType) : "No metric";
-  const period = state?.enabled ? getUsagePeriodLabel(state.periodType) : "No period";
+  const metric = state?.enabled
+    ? getUsageMetricLabel(state.metricType)
+    : "No metric";
+  const period = state?.enabled
+    ? getUsagePeriodLabel(state.periodType)
+    : "No period";
 
   return (
     <div className="rounded-[14px] border border-border-subtle bg-surface p-5 shadow-[var(--shadow-soft)]">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1 space-y-3">
           <div className="flex flex-wrap items-center gap-3">
-            <h3 className="text-lg font-semibold text-text-main">{keyItem.name || "Unnamed key"}</h3>
+            <h3 className="text-lg font-semibold text-text-main">
+              {keyItem.name || "Unnamed key"}
+            </h3>
             <BudgetStatus keyItem={keyItem} />
-            <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${keyItem.isActive ? "bg-green-500/10 text-green-600 dark:text-green-400" : "bg-surface-2 text-text-muted"}`}>
+            <span
+              className={`rounded-full px-2.5 py-1 text-xs font-medium ${keyItem.isActive ? "bg-green-500/10 text-green-600 dark:text-green-400" : "bg-surface-2 text-text-muted"}`}
+            >
               {keyItem.isActive ? "Active" : "Paused"}
             </span>
           </div>
@@ -212,17 +244,27 @@ function KeyBudgetCard({
             <div>
               <p className="text-xs text-text-muted">Current</p>
               <p className="text-sm font-medium text-text-main">
-                {state?.enabled ? formatUsageMetricValue(state.currentValue) : "Unlimited"}
+                {state?.enabled
+                  ? formatUsageMetricValue(state.currentValue)
+                  : "Unlimited"}
               </p>
             </div>
           </div>
           <BudgetProgress keyItem={keyItem} />
         </div>
         <div className="flex flex-wrap gap-2 lg:justify-end">
-          <Button variant="secondary" icon="edit" onClick={() => onEdit(keyItem)}>
+          <Button
+            variant="secondary"
+            icon="edit"
+            onClick={() => onEdit(keyItem)}
+          >
             Edit Budget
           </Button>
-          <Button variant="ghost" icon={expanded ? "expand_less" : "receipt_long"} onClick={() => onToggleUsage(keyItem)}>
+          <Button
+            variant="ghost"
+            icon={expanded ? "expand_less" : "receipt_long"}
+            onClick={() => onToggleUsage(keyItem)}
+          >
             {expanded ? "Hide Usage" : "Recent Usage"}
           </Button>
         </div>
@@ -271,7 +313,9 @@ export default function KeyBudgetsPageClient() {
           Refresh
         </Button>
         <Link href="/dashboard/usage">
-          <Button variant="ghost" icon="bar_chart">Full Usage Analytics</Button>
+          <Button variant="ghost" icon="bar_chart">
+            Full Usage Analytics
+          </Button>
         </Link>
       </div>
 
@@ -279,13 +323,25 @@ export default function KeyBudgetsPageClient() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard icon="vpn_key" label="Total keys" value={summary.total} />
-        <SummaryCard icon="price_check" label="Budgeted" value={summary.budgeted} />
-        <SummaryCard icon="all_inclusive" label="Unlimited" value={summary.unlimited} />
+        <SummaryCard
+          icon="price_check"
+          label="Budgeted"
+          value={summary.budgeted}
+        />
+        <SummaryCard
+          icon="all_inclusive"
+          label="Unlimited"
+          value={summary.unlimited}
+        />
         <SummaryCard
           icon="warning"
           label="Needs attention"
           value={summary.attention}
-          tone={summary.attention > 0 ? "text-yellow-600 dark:text-yellow-400" : "text-text-main"}
+          tone={
+            summary.attention > 0
+              ? "text-yellow-600 dark:text-yellow-400"
+              : "text-text-main"
+          }
         />
       </div>
 
@@ -296,8 +352,12 @@ export default function KeyBudgetsPageClient() {
         </div>
       ) : keys.length === 0 ? (
         <div className="rounded-[14px] border border-border-subtle bg-surface p-8 text-center shadow-[var(--shadow-soft)]">
-          <span className="material-symbols-outlined text-[36px] text-text-muted">vpn_key_off</span>
-          <h2 className="mt-3 text-lg font-semibold text-text-main">No API keys yet</h2>
+          <span className="material-symbols-outlined text-[36px] text-text-muted">
+            vpn_key_off
+          </span>
+          <h2 className="mt-3 text-lg font-semibold text-text-main">
+            No API keys yet
+          </h2>
           <p className="mt-1 text-sm text-text-muted">
             Create API keys on the Endpoint page, then manage budgets here.
           </p>
@@ -332,7 +392,9 @@ export default function KeyBudgetsPageClient() {
       >
         <div className="flex flex-col gap-4">
           <div>
-            <p className="text-sm font-medium text-text-main">{editingKey?.name}</p>
+            <p className="text-sm font-medium text-text-main">
+              {editingKey?.name}
+            </p>
             <div className="mt-1 flex items-center gap-2">
               <code className="font-mono text-xs text-text-muted break-all">
                 {visibleKeys.has(editingKey?.id)
@@ -342,11 +404,19 @@ export default function KeyBudgetsPageClient() {
               <button
                 onClick={() => toggleKeyVisibility(editingKey?.id)}
                 className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all"
-                title={visibleKeys.has(editingKey?.id) ? "Hide key" : "Show key"}
-                aria-label={visibleKeys.has(editingKey?.id) ? "Hide API key" : "Show API key"}
+                title={
+                  visibleKeys.has(editingKey?.id) ? "Hide key" : "Show key"
+                }
+                aria-label={
+                  visibleKeys.has(editingKey?.id)
+                    ? "Hide API key"
+                    : "Show API key"
+                }
               >
                 <span className="material-symbols-outlined text-[14px]">
-                  {visibleKeys.has(editingKey?.id) ? "visibility_off" : "visibility"}
+                  {visibleKeys.has(editingKey?.id)
+                    ? "visibility_off"
+                    : "visibility"}
                 </span>
               </button>
               <button
@@ -366,7 +436,9 @@ export default function KeyBudgetsPageClient() {
             onChange={setEditKeyLimit}
             description="Limit state is based on recorded usage. Use Usage for deeper analytics."
           />
-          {formError && <StatusAlert status={{ type: "error", message: formError }} />}
+          {formError && (
+            <StatusAlert status={{ type: "error", message: formError }} />
+          )}
           <div className="flex gap-2">
             <Button
               onClick={saveBudget}

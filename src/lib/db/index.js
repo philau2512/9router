@@ -193,14 +193,19 @@ export async function exportDb({ includeUsageAnalytics = false } = {}) {
     out.usageAnalytics = {
       usageHistory: db.all(`SELECT * FROM usageHistory ORDER BY id ASC`),
       usageDaily: db.all(`SELECT * FROM usageDaily ORDER BY dateKey ASC`),
-      requestDetails: db.all(`SELECT * FROM requestDetails ORDER BY timestamp ASC`),
+      requestDetails: db.all(
+        `SELECT * FROM requestDetails ORDER BY timestamp ASC`,
+      ),
     };
   }
 
   return out;
 }
 
-export async function importDb(payload, { restoreUsageAnalytics = false } = {}) {
+export async function importDb(
+  payload,
+  { restoreUsageAnalytics = false } = {},
+) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("Invalid database payload");
   }
@@ -361,10 +366,10 @@ export async function importDb(payload, { restoreUsageAnalytics = false } = {}) 
         );
       }
       for (const row of payload.usageAnalytics.usageDaily || []) {
-        db.run(`INSERT OR REPLACE INTO usageDaily(dateKey, data) VALUES(?, ?)`, [
-          row.dateKey,
-          row.data,
-        ]);
+        db.run(
+          `INSERT OR REPLACE INTO usageDaily(dateKey, data) VALUES(?, ?)`,
+          [row.dateKey, row.data],
+        );
       }
       for (const row of payload.usageAnalytics.requestDetails || []) {
         db.run(

@@ -170,7 +170,11 @@ const FINISH_REASON_MAP = {
  *   data: {"candidates":[{"content":{"role":"model","parts":[{"text":""}]},"finishReason":"STOP","index":0}],"usageMetadata":{...}}
  *   (stream closes — no [DONE])
  */
-export function transformOpenAISSEToGeminiSSE(upstreamResponse, model, request) {
+export function transformOpenAISSEToGeminiSSE(
+  upstreamResponse,
+  model,
+  request,
+) {
   if (!upstreamResponse.ok || !upstreamResponse.body) {
     return withCors(upstreamResponse, request);
   }

@@ -215,7 +215,9 @@ export default function ProviderConnectionsToolbar({
                   clearManualRefreshResults();
                   clearWarmupResults?.();
                 }}
-                disabled={!hasSelection && !manualRefreshSummary && !warmupSummary}
+                disabled={
+                  !hasSelection && !manualRefreshSummary && !warmupSummary
+                }
               >
                 Clear
               </Button>

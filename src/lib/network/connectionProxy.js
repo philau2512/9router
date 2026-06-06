@@ -40,7 +40,8 @@ function normalizeLegacyProxy(providerSpecificData = {}) {
 export async function resolveConnectionProxyConfig(providerSpecificData = {}) {
   try {
     const settings = await getSettings();
-    const proxyHeadersTimeout = Number(settings?.connectionProxyHeadersTimeoutMs) || undefined;
+    const proxyHeadersTimeout =
+      Number(settings?.connectionProxyHeadersTimeoutMs) || undefined;
     const proxyPoolIdRaw = normalizeString(providerSpecificData?.proxyPoolId);
 
     // "__none__" means explicitly disabled

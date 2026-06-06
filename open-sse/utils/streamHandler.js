@@ -141,20 +141,28 @@ export function createStreamController({
 export function createDisconnectAwareStream(
   transformStream,
   streamController,
-  streamStateTracker = null,
-  resumeCtx = null,
+  onAbortTerminal = null,
 ) {
-  let reader = transformStream.readable.getReader();
-  let writer = transformStream.writable
-    ? transformStream.writable.getWriter()
-    : { abort: () => Promise.resolve() };
-  let resumeAttempts = 0;
-  const maxResumeAttempts = 2;
-  let chunksReceived = 0;
+  const reader = transformStream.readable.getReader();
+  const writer = transformStream.writable.getWriter();
+  let terminalEmitted = false;
+
+  // Emit a synthesized terminal payload (e.g. Responses response.failed + [DONE]) once
+  const emitTerminal = (controller) => {
+    if (terminalEmitted || !onAbortTerminal) return;
+    terminalEmitted = true;
+    try {
+      const bytes = onAbortTerminal();
+      if (bytes) controller.enqueue(bytes);
+    } catch {
+      /* best-effort terminal */
+    }
+  };
 
   return new ReadableStream({
     async pull(controller) {
       if (!streamController.isConnected()) {
+        emitTerminal(controller);
         controller.close();
         return;
       }
@@ -383,18 +391,17 @@ export function createDisconnectAwareStream(
           code === "EPIPE" ||
           code === "UND_ERR_SOCKET";
 
-        if (!wasConnected || isNetworkClose) {
-          try {
+        // Graceful close on network/abort, or when a structured terminal is available
+        // (Responses passthrough prefers response.failed + [DONE] over a raw transport error)
+        try {
+          if (!wasConnected || isNetworkClose || onAbortTerminal) {
+            emitTerminal(controller);
             controller.close();
-          } catch (e) {
-            // Stream might already be closed or cancelled
-          }
-        } else {
-          try {
+          } else {
             controller.error(error);
-          } catch (e) {
-            /* already closed */
           }
+        } catch (e) {
+          /* already closed or cancelled */
         }
       }
     },
@@ -431,9 +438,7 @@ export function pipeWithDisconnect(
   providerResponse,
   transformStream,
   streamController,
-  streamStateTracker = null,
-  resumeCtx = null,
-  timing = null,
+  onAbortTerminal = null,
 ) {
   let stallTimer = null;
   let semanticStallTimer = null;
@@ -601,11 +606,10 @@ export function pipeWithDisconnect(
 
   return createDisconnectAwareStream(
     {
-      readable: transformedBody.pipeThrough(clientTap),
+      readable: transformedBody,
       writable: { getWriter: () => ({ abort: () => Promise.resolve() }) },
     },
     wrappedController,
-    streamStateTracker,
-    resumeCtx,
+    onAbortTerminal,
   );
 }

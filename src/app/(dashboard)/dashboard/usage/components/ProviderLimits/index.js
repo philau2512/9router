@@ -1037,11 +1037,15 @@ export default function ProviderLimits() {
                           <h3 className="text-sm font-semibold text-text-primary capitalize truncate">
                             {conn.provider}
                           </h3>
-                          {conn.priority !== undefined && conn.priority !== null && (
-                            <span className="shrink-0 rounded bg-black/5 px-1.5 py-0.5 text-[10px] font-medium text-text-muted dark:bg-white/5" title={`Priority: ${conn.priority}`}>
-                              #{conn.priority}
-                            </span>
-                          )}
+                          {conn.priority !== undefined &&
+                            conn.priority !== null && (
+                              <span
+                                className="shrink-0 rounded bg-black/5 px-1.5 py-0.5 text-[10px] font-medium text-text-muted dark:bg-white/5"
+                                title={`Priority: ${conn.priority}`}
+                              >
+                                #{conn.priority}
+                              </span>
+                            )}
                         </div>
                         {getConnectionLabel(conn) ? (
                           <p className="text-xs text-text-muted truncate">

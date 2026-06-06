@@ -1,6 +1,9 @@
 import { DEFAULT_OIDC_FORM } from "./profileConstants";
 
-export function getOidcFormFromSettings(data = {}, fallback = DEFAULT_OIDC_FORM) {
+export function getOidcFormFromSettings(
+  data = {},
+  fallback = DEFAULT_OIDC_FORM,
+) {
   return {
     authMode: data?.authMode || fallback.authMode,
     oidcIssuerUrl: data?.oidcIssuerUrl || fallback.oidcIssuerUrl,

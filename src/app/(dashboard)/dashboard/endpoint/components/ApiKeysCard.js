@@ -3,13 +3,18 @@
 import Link from "next/link";
 import PropTypes from "prop-types";
 import { Button, Card, Toggle } from "@/shared/components";
-import { formatLimitState, getLimitBadgeClass } from "../utils/endpointLimitHelpers";
+import {
+  formatLimitState,
+  getLimitBadgeClass,
+} from "../utils/endpointLimitHelpers";
+import { SecurityWarning } from "./SecurityWarning";
 import { StatusAlert } from "./StatusAlert";
 
 export function ApiKeysCard({
   keys,
   copied,
   requireApiKey,
+  isRemoteHost,
   keyActionStatus,
   visibleKeys,
   savingKeyId,
@@ -49,6 +54,13 @@ export function ApiKeysCard({
           onChange={() => onRequireApiKeyChange(!requireApiKey)}
         />
       </div>
+
+      {/* Security warning when endpoint exposed without API key on remote host */}
+      {isRemoteHost && !requireApiKey && (
+        <div className="mb-4 -mt-2">
+          <SecurityWarning message="Endpoint is exposed without an API key." />
+        </div>
+      )}
 
       {keyActionStatus && (
         <StatusAlert status={keyActionStatus} className="mb-4" />
@@ -103,11 +115,19 @@ export function ApiKeysCard({
                       <button
                         onClick={() => onToggleVisibility(key.id)}
                         className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
-                        title={visibleKeys.has(key.id) ? "Hide key" : "Show key"}
-                        aria-label={visibleKeys.has(key.id) ? "Hide API key" : "Show API key"}
+                        title={
+                          visibleKeys.has(key.id) ? "Hide key" : "Show key"
+                        }
+                        aria-label={
+                          visibleKeys.has(key.id)
+                            ? "Hide API key"
+                            : "Show API key"
+                        }
                       >
                         <span className="material-symbols-outlined text-[14px]">
-                          {visibleKeys.has(key.id) ? "visibility_off" : "visibility"}
+                          {visibleKeys.has(key.id)
+                            ? "visibility_off"
+                            : "visibility"}
                         </span>
                       </button>
                       <button
@@ -139,7 +159,11 @@ export function ApiKeysCard({
                           )}
                         </div>
                         <Link href="/dashboard/key-budgets">
-                          <Button size="sm" variant="ghost" icon="account_balance_wallet">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon="account_balance_wallet"
+                          >
                             Manage Budget
                           </Button>
                         </Link>
@@ -190,6 +214,7 @@ ApiKeysCard.propTypes = {
   keys: PropTypes.arrayOf(PropTypes.object).isRequired,
   copied: PropTypes.string,
   requireApiKey: PropTypes.bool.isRequired,
+  isRemoteHost: PropTypes.bool,
   keyActionStatus: PropTypes.object,
   visibleKeys: PropTypes.instanceOf(Set).isRequired,
   savingKeyId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),

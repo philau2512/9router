@@ -268,9 +268,11 @@ export async function handleForcedSSEToJson({
           content: textContent || (hasToolCalls ? null : ""),
         };
         if (hasToolCalls) message.tool_calls = toolCalls;
+        const responseDone =
+          jsonResponse.status === "completed" || jsonResponse.status === "done";
         const finishReason = hasToolCalls
           ? "tool_calls"
-          : jsonResponse.status === "completed"
+          : responseDone
             ? "stop"
             : jsonResponse.status || "stop";
         finalResp = {

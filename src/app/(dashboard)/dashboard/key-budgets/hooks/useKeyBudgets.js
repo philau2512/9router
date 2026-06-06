@@ -36,7 +36,10 @@ export function useKeyBudgets() {
       if (ok) {
         setKeys(data.keys || []);
       } else {
-        setStatus({ type: "error", message: data.error || "Failed to load API keys" });
+        setStatus({
+          type: "error",
+          message: data.error || "Failed to load API keys",
+        });
       }
     } catch {
       setStatus({ type: "error", message: "Failed to load API keys" });
@@ -154,13 +157,20 @@ export function useKeyBudgets() {
             setKeys((prev) =>
               prev.map((item) =>
                 item.id === key.id
-                  ? buildUpdatedKey(item, { limitState: data.limitState }, data.key)
+                  ? buildUpdatedKey(
+                      item,
+                      { limitState: data.limitState },
+                      data.key,
+                    )
                   : item,
               ),
             );
           }
         } else {
-          setStatus({ type: "error", message: data.error || "Failed to load usage details" });
+          setStatus({
+            type: "error",
+            message: data.error || "Failed to load usage details",
+          });
         }
       } catch {
         setStatus({ type: "error", message: "Failed to load usage details" });

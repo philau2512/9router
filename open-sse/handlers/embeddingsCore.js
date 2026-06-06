@@ -89,12 +89,16 @@ export async function handleEmbeddingsCore({
       providerResponse.status === HTTP_STATUS.FORBIDDEN)
   ) {
     const proxyOptions = {
-      enabled: credentials?.providerSpecificData?.connectionProxyEnabled || false,
+      enabled:
+        credentials?.providerSpecificData?.connectionProxyEnabled || false,
       url: credentials?.providerSpecificData?.connectionProxyUrl || null,
       noProxy: credentials?.providerSpecificData?.connectionNoProxy || null,
-      proxyPoolId: credentials?.providerSpecificData?.connectionProxyPoolId || null,
+      proxyPoolId:
+        credentials?.providerSpecificData?.connectionProxyPoolId || null,
       vercelRelayUrl: credentials?.providerSpecificData?.vercelRelayUrl || "",
-      connectionProxyHeadersTimeoutMs: credentials?.providerSpecificData?.connectionProxyHeadersTimeoutMs || null,
+      connectionProxyHeadersTimeoutMs:
+        credentials?.providerSpecificData?.connectionProxyHeadersTimeoutMs ||
+        null,
     };
 
     const newCredentials = await refreshWithRetry(

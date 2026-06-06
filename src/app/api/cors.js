@@ -1,6 +1,10 @@
-import { detectFormatByEndpoint, FORMATS } from "open-sse/translator/formats.js";
+import {
+  detectFormatByEndpoint,
+  FORMATS,
+} from "open-sse/translator/formats.js";
 
-const LOOPBACK_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i;
+const LOOPBACK_ORIGIN_RE =
+  /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i;
 
 function parseAllowedOrigins() {
   return (process.env.CORS_ALLOWED_ORIGINS || process.env.ALLOWED_ORIGINS || "")
@@ -54,11 +58,15 @@ export async function withCors(response, request, extraHeaders = {}) {
       const bodyText = await response.clone().text();
       const json = JSON.parse(bodyText);
       if (json && (json.error || json.message)) {
-        const message = json.error?.message || json.message || "An error occurred";
+        const message =
+          json.error?.message || json.message || "An error occurred";
         let anthropicErrorType = "invalid_request_error";
-        if (response.status === 401) anthropicErrorType = "authentication_error";
-        else if (response.status === 403) anthropicErrorType = "permission_error";
-        else if (response.status === 429) anthropicErrorType = "rate_limit_error";
+        if (response.status === 401)
+          anthropicErrorType = "authentication_error";
+        else if (response.status === 403)
+          anthropicErrorType = "permission_error";
+        else if (response.status === 429)
+          anthropicErrorType = "rate_limit_error";
         else if (response.status >= 500) anthropicErrorType = "api_error";
 
         const formattedBody = JSON.stringify({

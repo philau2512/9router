@@ -5,6 +5,7 @@ import {
   createPassthroughStreamWithLogger,
 } from "../../utils/stream.js";
 import { pipeWithDisconnect } from "../../utils/streamHandler.js";
+import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamHelpers.js";
 import {
   buildRequestDetail,
   extractRequestConfig,
@@ -129,11 +130,14 @@ export function handleStreamingResponse({
 }) {
   if (onRequestSuccess) onRequestSuccess();
 
-  const streamStateTracker = {
-    accumulatedContent: "",
-    accumulatedThinking: "",
-    totalContentLength: 0,
-  };
+  // Responses passthrough: synthesize response.failed + [DONE] if the stream aborts/stalls before a terminal event
+  const isResponsesPassthrough =
+    sourceFormat === FORMATS.OPENAI_RESPONSES &&
+    targetFormat === FORMATS.OPENAI_RESPONSES;
+  const onAbortTerminal = isResponsesPassthrough
+    ? buildAbortedResponsesTerminalBytes
+    : null;
+
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   const wrappedOnStreamComplete = (contentObj, usage, ttftAt) =>
     onStreamComplete?.(contentObj, usage, ttftAt, streamDetailId);
@@ -157,24 +161,7 @@ export function handleStreamingResponse({
     providerResponse,
     transformStream,
     streamController,
-    streamStateTracker,
-    midStreamResumeEnabled
-      ? {
-          body,
-          provider,
-          model,
-          credentials,
-          sourceFormat,
-          targetFormat,
-          userAgent,
-          apiKey,
-          connectionId,
-          toolNameMap,
-          reqLogger,
-          clientRawRequest,
-        }
-      : null,
-    timing,
+    onAbortTerminal,
   );
 
   setImmediate(() => {

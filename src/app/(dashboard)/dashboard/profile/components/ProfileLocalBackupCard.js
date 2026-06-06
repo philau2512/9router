@@ -20,7 +20,9 @@ export function ProfileLocalBackupCard({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
         <div className="flex items-center gap-3 sm:gap-4">
           <div className="size-10 sm:size-12 rounded-lg bg-green-500/10 text-green-500 flex items-center justify-center shrink-0">
-            <span className="material-symbols-outlined text-xl sm:text-2xl">computer</span>
+            <span className="material-symbols-outlined text-xl sm:text-2xl">
+              computer
+            </span>
           </div>
           <div>
             <h2 className="text-lg sm:text-xl font-semibold">Local Mode</h2>
@@ -38,16 +40,23 @@ export function ProfileLocalBackupCard({
       <div className="flex flex-col gap-3 pt-4 border-t border-border">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg bg-bg border border-border gap-2">
           <div>
-            <p className="font-medium text-sm sm:text-base">Database Location</p>
-            <p className="text-xs sm:text-sm text-text-muted font-mono break-all">~/.9router/db/data.sqlite</p>
+            <p className="font-medium text-sm sm:text-base">
+              Database Location
+            </p>
+            <p className="text-xs sm:text-sm text-text-muted font-mono break-all">
+              ~/.9router/db/data.sqlite
+            </p>
           </div>
         </div>
         <div className="flex flex-col gap-3">
           <div className="flex items-start sm:items-center justify-between gap-4 rounded-lg border border-border bg-bg p-3">
             <div className="min-w-0 flex-1">
-              <p className="font-medium text-sm sm:text-base">Include Usage & Analytics</p>
+              <p className="font-medium text-sm sm:text-base">
+                Include Usage & Analytics
+              </p>
               <p className="text-xs sm:text-sm text-text-muted">
-                Add token, cost, request history, and request details to the downloaded backup.
+                Add token, cost, request history, and request details to the
+                downloaded backup.
               </p>
             </div>
             <Toggle
@@ -58,9 +67,12 @@ export function ProfileLocalBackupCard({
           </div>
           <div className="flex items-start sm:items-center justify-between gap-4 rounded-lg border border-border bg-bg p-3">
             <div className="min-w-0 flex-1">
-              <p className="font-medium text-sm sm:text-base">Restore Usage & Analytics</p>
+              <p className="font-medium text-sm sm:text-base">
+                Restore Usage & Analytics
+              </p>
               <p className="text-xs sm:text-sm text-text-muted">
-                When importing a backup that contains analytics, replace the current usage history with the backup data.
+                When importing a backup that contains analytics, replace the
+                current usage history with the backup data.
               </p>
             </div>
             <Toggle

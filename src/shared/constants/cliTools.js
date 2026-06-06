@@ -79,6 +79,7 @@ export const MITM_TOOLS = {
     defaultModels: [
       { id: "gpt-4o", name: "GPT-4o", alias: "gpt-4o" },
       { id: "gpt-4.1", name: "GPT-4.1", alias: "gpt-4.1" },
+      { id: "gpt-5-mini", name: "GPT-5 Mini", alias: "gpt-5-mini" },
       {
         id: "claude-haiku-4.5",
         name: "Claude Haiku 4.5",
@@ -95,6 +96,11 @@ export const MITM_TOOLS = {
     configType: "mitm",
     mitmDomain: "q.us-east-1.amazonaws.com",
     defaultModels: [
+      // Kiro's agent/"vibe" mode sends modelId "auto" for the main turn and "simple-task"
+      // for background sub-tasks (verified via MITM request dump of generateAssistantResponse).
+      // Both need a mappable slot — otherwise getMappedModel returns null and the chat call
+      // is passed through to AWS instead of being routed to the chosen provider.
+      { id: "auto", name: "Auto (Kiro Agent)", alias: "auto" },
       {
         id: "claude-sonnet-4.5",
         name: "Claude Sonnet 4.5",
@@ -111,7 +117,9 @@ export const MITM_TOOLS = {
         alias: "claude-haiku-4.5",
       },
       { id: "deepseek-3.2", name: "DeepSeek 3.2", alias: "deepseek-3.2" },
+      { id: "minimax-m2.5", name: "MiniMax M2.5", alias: "minimax-m2.5" },
       { id: "minimax-m2.1", name: "MiniMax M2.1", alias: "minimax-m2.1" },
+      { id: "glm-5", name: "GLM 5", alias: "glm-5" },
       { id: "simple-task", name: "Qwen3 Coder Next", alias: "simple-task" },
     ],
   },

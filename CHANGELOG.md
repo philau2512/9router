@@ -1,3 +1,55 @@
+# v0.4.71 (2026-06-06)
+
+## Features
+- Caveman: add wenyan classical Chinese levels and sync upstream prompts; locale-based visibility on endpoint page
+- i18n: endpoint exposure notice across multiple languages + Russian README
+- Antigravity: add gemini-3.5-flash-extra-low (Low) model
+- xiaomi-tokenplan: add Claude-native MiMo V2.5 Pro alias via dedicated executor
+- Qoder: fetch latest model + dashboard import-model button (#1642)
+- MiniMax: add MiniMax-M3 + update Quota Tracker coding/CN (#1631)
+
+## Fixes
+- Codex: harden streaming timeouts (stall/connect raised to 60s, configurable per-provider), accept `response.done` event, and always emit a terminal `response.failed` + `[DONE]` for Responses passthrough when a stream closes, stalls, or aborts before a terminal event — prevents codex clients from hanging (#1648, #1680, #1688, #1618)
+- Codex: durable OAuth refresh lifecycle (#1664)
+- Tunnel: skip virtual interfaces to prevent false netchange watchdog
+- Claude: fix forced tool_choice 400 on cc/ OAuth route (#1592)
+- Proxy: raise Next client body limit to 128MB via `NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE` (#1529, #1572)
+- MiniMax: echo `reasoning_content` on follow-up turns to avoid 400 (#1543)
+- Kiro: handle 400 on tool-bearing history without client tools; add mappable "auto" model slot; fix binary EventStream crash + add models & TTS tool filtering
+- Antigravity: passthrough tab-autocomplete + mark default agent slot mandatory
+- Qoder: allow `qmodel_latest` model key (#1638)
+- Providers: restore one-connection guard for compatible/embedding nodes
+- Model-test: route image/STT probes to their real endpoints, harden STT ping; add opencode-go + xiaomi-tokenplan to connection test (#1576, #1628)
+
+## Improvements
+- Dashboard: reorganize menu actions across sidebar/header/profile
+- Translator: add data-driven coverage, bug-exposing cases, and real provider smoke tests
+
+# v0.4.66 (2026-05-29)
+
+## Features
+- Add Qoder provider: device-flow OAuth, COSY signing, WAF-bypass body encoding, live model catalog, dashboard quota tracker, 11 models (#1372)
+- Add new models: Claude Opus 4.8 (Claude Code), GPT 5.4 Mini (Codex)
+
+## Fixes
+- DeepSeek thinking mode: echo `reasoning_content` back on follow-up/tool-call turns so OpenCode-free and custom providers no longer 400 with "reasoning_content must be passed back" (#1543)
+- Reasoning injector: match deepseek/kimi model ids case-insensitively (covers custom providers using capitalized model names)
+- OpenCode suggested-models: include free models without the `-free` suffix, e.g. `big-pickle` (#1535)
+
+## Improvements
+- Codex: trim sunset models, keep gpt-5.5 / gpt-5.4 / gpt-5.3-codex family, add gpt-5.4-mini
+- volcengine-ark: refresh model list (add DeepSeek-V4-Flash/Pro, drop EOL entries)
+- Lower stream stall timeout 35s → 30s for faster hang detection
+
+# v0.4.63 (2026-05-26)
+
+## Fixes
+- GitHub Copilot: never route Gemini/Claude models to the `/responses` endpoint; prevents misleading "does not support Responses API" 400s (#1062)
+- proxyFetch: restore missing `Readable` import causing runtime `ReferenceError` in DNS-bypass fetch path
+
+## Improvements
+- Lower stream stall timeout from 60s → 35s for faster hang detection
+
 # v0.4.62 (2026-05-26)
 
 ## Fixes

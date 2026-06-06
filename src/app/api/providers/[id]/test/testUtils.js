@@ -12,9 +12,12 @@ import { PROVIDER_ENDPOINTS } from "@/shared/constants/config";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import {
+  refreshProviderCredentials,
+  shouldRefreshCredentials,
+} from "open-sse/services/oauthCredentialManager.js";
+import {
   GEMINI_CONFIG,
   ANTIGRAVITY_CONFIG,
-  CODEX_CONFIG,
   KIRO_CONFIG,
   QWEN_CONFIG,
   CLAUDE_CONFIG,
@@ -31,14 +34,22 @@ function getFriendlyErrorMessage(err) {
 
   let msg = base;
   if (causeMessage && causeMessage !== base) {
-    msg = causeCode ? `${base}: ${causeMessage} (${causeCode})` : `${base}: ${causeMessage}`;
+    msg = causeCode
+      ? `${base}: ${causeMessage} (${causeCode})`
+      : `${base}: ${causeMessage}`;
   } else if (causeCode && !base.includes(causeCode)) {
     msg = `${base} (${causeCode})`;
   }
 
-  if (msg.includes("Request was cancelled") || msg.includes("request was cancelled")) {
+  if (
+    msg.includes("Request was cancelled") ||
+    msg.includes("request was cancelled")
+  ) {
     msg += " (Proxy is likely offline or unreachable)";
-  } else if (msg.includes("Connect Timeout") || msg.includes("UND_ERR_CONNECT_TIMEOUT")) {
+  } else if (
+    msg.includes("Connect Timeout") ||
+    msg.includes("UND_ERR_CONNECT_TIMEOUT")
+  ) {
     msg += " (Proxy connection timed out)";
   }
 
@@ -55,8 +66,8 @@ const OAUTH_TEST_CONFIG = {
     authPrefix: "Bearer ",
     extraHeaders: {
       "Content-Type": "application/json",
-      originator: "codex-cli",
-      "User-Agent": "codex-cli/1.0.18 (macOS; arm64)",
+      originator: "codex_cli_rs",
+      "User-Agent": "codex_cli_rs/0.136.0",
     },
     // Minimal invalid body — triggers fast 400 without consuming quota
     body: JSON.stringify({
@@ -161,22 +172,7 @@ async function refreshOAuthToken(connection) {
     }
 
     if (provider === "codex") {
-      const response = await fetch(CODEX_CONFIG.tokenUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          grant_type: "refresh_token",
-          client_id: CODEX_CONFIG.clientId,
-          refresh_token: refreshToken,
-        }),
-      });
-      if (!response.ok) return null;
-      const data = await response.json();
-      return {
-        accessToken: data.access_token,
-        expiresIn: data.expires_in,
-        refreshToken: data.refresh_token || refreshToken,
-      };
+      return await refreshProviderCredentials(provider, connection, console);
     }
 
     if (provider === "claude") {
@@ -304,10 +300,7 @@ async function refreshOAuthToken(connection) {
 }
 
 function isTokenExpired(connection) {
-  if (!connection.expiresAt) return false;
-  const expiresAt = new Date(connection.expiresAt).getTime();
-  const buffer = 5 * 60 * 1000;
-  return expiresAt <= Date.now() + buffer;
+  return shouldRefreshCredentials(connection.provider, connection);
 }
 
 async function testOAuthConnection(connection, effectiveProxy = null) {
@@ -472,7 +465,8 @@ async function fetchWithConnectionProxy(
     const { proxyAwareFetch } = await import("open-sse/utils/proxyFetch.js");
     return proxyAwareFetch(url, options, {
       vercelRelayUrl: effectiveProxy.vercelRelayUrl,
-      connectionProxyHeadersTimeoutMs: effectiveProxy.connectionProxyHeadersTimeoutMs,
+      connectionProxyHeadersTimeoutMs:
+        effectiveProxy.connectionProxyHeadersTimeoutMs,
     });
   }
 
@@ -489,7 +483,8 @@ async function fetchWithConnectionProxy(
     connectionProxyUrl: effectiveProxy.connectionProxyUrl,
     connectionNoProxy: effectiveProxy.connectionNoProxy || "",
     strictProxy: true,
-    connectionProxyHeadersTimeoutMs: effectiveProxy.connectionProxyHeadersTimeoutMs,
+    connectionProxyHeadersTimeoutMs:
+      effectiveProxy.connectionProxyHeadersTimeoutMs,
   });
 }
 
@@ -1085,13 +1080,27 @@ export async function testSingleConnection(id) {
   };
 
   if (result.refreshed && result.newTokens) {
-    updateData.accessToken = result.newTokens.accessToken;
+    if (result.newTokens.accessToken)
+      updateData.accessToken = result.newTokens.accessToken;
     if (result.newTokens.refreshToken)
       updateData.refreshToken = result.newTokens.refreshToken;
+    if (result.newTokens.idToken) updateData.idToken = result.newTokens.idToken;
+    if (result.newTokens.lastRefreshAt)
+      updateData.lastRefreshAt = result.newTokens.lastRefreshAt;
+    if (result.newTokens.expiresIn)
+      updateData.expiresIn = result.newTokens.expiresIn;
     if (result.newTokens.expiresIn) {
       updateData.expiresAt = new Date(
         Date.now() + result.newTokens.expiresIn * 1000,
       ).toISOString();
+    } else if (result.newTokens.expiresAt) {
+      updateData.expiresAt = result.newTokens.expiresAt;
+    }
+    if (result.newTokens.providerSpecificData) {
+      updateData.providerSpecificData = {
+        ...(connection.providerSpecificData || {}),
+        ...result.newTokens.providerSpecificData,
+      };
     }
   }
 
@@ -1100,6 +1109,7 @@ export async function testSingleConnection(id) {
   return {
     valid: result.valid,
     error: result.error,
+    refreshed: !!result.refreshed,
     latencyMs,
     testedAt: new Date().toISOString(),
   };
@@ -1169,10 +1179,12 @@ async function executeWarmup(connection, effectiveProxy = null, options = {}) {
       let maxTokens = 1;
 
       if (intensity === "medium") {
-        prompt = "Write a detailed 300-word story about space exploration. Be creative and include descriptions of stars and planets.";
+        prompt =
+          "Write a detailed 300-word story about space exploration. Be creative and include descriptions of stars and planets.";
         maxTokens = 500;
       } else if (intensity === "heavy") {
-        prompt = "Write a comprehensive 1500-word essay about the history and future of artificial intelligence in software engineering, discussing benefits and ethical implications.";
+        prompt =
+          "Write a comprehensive 1500-word essay about the history and future of artificial intelligence in software engineering, discussing benefits and ethical implications.";
         maxTokens = 2000;
       }
 
@@ -1220,10 +1232,12 @@ async function executeWarmup(connection, effectiveProxy = null, options = {}) {
       let maxTokens = 1;
 
       if (intensity === "medium") {
-        prompt = "Write a detailed 300-word story about space exploration. Be creative and include descriptions of stars and planets.";
+        prompt =
+          "Write a detailed 300-word story about space exploration. Be creative and include descriptions of stars and planets.";
         maxTokens = 500;
       } else if (intensity === "heavy") {
-        prompt = "Write a comprehensive 1500-word essay about the history and future of artificial intelligence in software engineering, discussing benefits and ethical implications.";
+        prompt =
+          "Write a comprehensive 1500-word essay about the history and future of artificial intelligence in software engineering, discussing benefits and ethical implications.";
         maxTokens = 2000;
       }
 
@@ -1262,10 +1276,12 @@ async function executeWarmup(connection, effectiveProxy = null, options = {}) {
       let maxTokens = 1;
 
       if (intensity === "medium") {
-        prompt = "Write a detailed 300-word story about space exploration. Be creative and include descriptions of stars and planets.";
+        prompt =
+          "Write a detailed 300-word story about space exploration. Be creative and include descriptions of stars and planets.";
         maxTokens = 500;
       } else if (intensity === "heavy") {
-        prompt = "Write a comprehensive 1500-word essay about the history and future of artificial intelligence in software engineering, discussing benefits and ethical implications.";
+        prompt =
+          "Write a comprehensive 1500-word essay about the history and future of artificial intelligence in software engineering, discussing benefits and ethical implications.";
         maxTokens = 2000;
       }
 
@@ -1328,10 +1344,12 @@ async function executeWarmup(connection, effectiveProxy = null, options = {}) {
     let maxTokens = 1;
 
     if (intensity === "medium") {
-      prompt = "Write a detailed 300-word story about space exploration. Be creative and include descriptions of stars and planets.";
+      prompt =
+        "Write a detailed 300-word story about space exploration. Be creative and include descriptions of stars and planets.";
       maxTokens = 500;
     } else if (intensity === "heavy") {
-      prompt = "Write a comprehensive 1500-word essay about the history and future of artificial intelligence in software engineering, discussing benefits and ethical implications.";
+      prompt =
+        "Write a comprehensive 1500-word essay about the history and future of artificial intelligence in software engineering, discussing benefits and ethical implications.";
       maxTokens = 2000;
     }
 
@@ -1375,10 +1393,12 @@ async function executeWarmup(connection, effectiveProxy = null, options = {}) {
     let maxTokens = 1;
 
     if (intensity === "medium") {
-      prompt = "Write a detailed 300-word story about space exploration. Be creative and include descriptions of stars and planets.";
+      prompt =
+        "Write a detailed 300-word story about space exploration. Be creative and include descriptions of stars and planets.";
       maxTokens = 500;
     } else if (intensity === "heavy") {
-      prompt = "Write a comprehensive 1500-word essay about the history and future of artificial intelligence in software engineering, discussing benefits and ethical implications.";
+      prompt =
+        "Write a comprehensive 1500-word essay about the history and future of artificial intelligence in software engineering, discussing benefits and ethical implications.";
       maxTokens = 2000;
     }
 
@@ -1420,10 +1440,12 @@ async function executeWarmup(connection, effectiveProxy = null, options = {}) {
     let storeValue = false;
 
     if (intensity === "medium") {
-      prompt = "Write a detailed 300-word story about space exploration. Be creative and include descriptions of stars and planets.";
+      prompt =
+        "Write a detailed 300-word story about space exploration. Be creative and include descriptions of stars and planets.";
       storeValue = true;
     } else if (intensity === "heavy") {
-      prompt = "Write a comprehensive 1500-word essay about the history and future of artificial intelligence in software engineering, discussing benefits and ethical implications.";
+      prompt =
+        "Write a comprehensive 1500-word essay about the history and future of artificial intelligence in software engineering, discussing benefits and ethical implications.";
       storeValue = true;
     }
 
@@ -1551,4 +1573,3 @@ export async function warmupSingleConnection(id, options = {}) {
     testedAt: new Date().toISOString(),
   };
 }
-

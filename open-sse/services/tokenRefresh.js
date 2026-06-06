@@ -14,6 +14,7 @@ export {
   TOKEN_EXPIRY_BUFFER_MS,
   isUnrecoverableRefreshError,
   getRefreshLeadMs,
+  classifyOAuthRefreshError,
 } from "./refresh-dedup.js";
 
 // ── Provider-specific refresh functions ─────────────────────────────
@@ -31,10 +32,7 @@ export {
 } from "./refresh-providers.js";
 
 // ── Vertex AI ───────────────────────────────────────────────────────
-export {
-  parseVertexSaJson,
-  refreshVertexToken,
-} from "./refresh-vertex.js";
+export { parseVertexSaJson, refreshVertexToken } from "./refresh-vertex.js";
 
 // ── Orchestration, formatting, retry ────────────────────────────────
 export {

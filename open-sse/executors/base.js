@@ -5,6 +5,7 @@ import {
   resolveRetryEntry,
   FETCH_CONNECT_TIMEOUT_MS,
 } from "../config/runtimeConfig.js";
+import { shouldRefreshCredentials } from "../services/oauthCredentialManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { dbg } from "../utils/debugLog.js";
 
@@ -125,9 +126,7 @@ export class BaseExecutor {
   }
 
   needsRefresh(credentials) {
-    if (!credentials.expiresAt) return false;
-    const expiresAtMs = new Date(credentials.expiresAt).getTime();
-    return expiresAtMs - Date.now() < 5 * 60 * 1000;
+    return shouldRefreshCredentials(this.provider, credentials);
   }
 
   parseError(response, bodyText) {
@@ -187,46 +186,23 @@ export class BaseExecutor {
 
       if (!retryAttemptsByUrl[urlIndex]) retryAttemptsByUrl[urlIndex] = 0;
 
-      // Abort if upstream doesn't return response headers within FETCH_CONNECT_TIMEOUT_MS,
-      // while still preserving the branch-specific per-provider connection timeout.
-      const fetchController = new AbortController();
+      // Abort if upstream doesn't return response headers within connection timeout
       const connectCtrl = new AbortController();
+      const timeoutMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
       const connectTimer = setTimeout(
         () => connectCtrl.abort(new Error("fetch connect timeout")),
-        FETCH_CONNECT_TIMEOUT_MS,
+        timeoutMs,
       );
-      const mergedSignal = AbortSignal.any([
-        fetchController.signal,
-        connectCtrl.signal,
-      ]);
-
-      // Forward client abort to fetch signal
-      let clientSignalListener = null;
-      if (signal) {
-        if (signal.aborted) {
-          fetchController.abort(signal.reason);
-        } else {
-          clientSignalListener = () => {
-            fetchController.abort(signal.reason);
-          };
-          signal.addEventListener("abort", clientSignalListener);
-        }
-      }
-
-      // Start branch-specific connection timeout timer.
-      let timedOut = false;
-      const timeoutTimer = setTimeout(() => {
-        timedOut = true;
-        const err = new DOMException("Connection timed out", "TimeoutError");
-        fetchController.abort(err);
-      }, timeoutMs);
+      const mergedSignal = signal
+        ? AbortSignal.any([signal, connectCtrl.signal])
+        : connectCtrl.signal;
 
       try {
         const bodyStr = JSON.stringify(transformedBody);
         const fetchT0 = Date.now();
         dbg(
           "FETCH",
-          `${this.provider.toUpperCase()} → ${url} | body=${bodyStr.length}B | connectTimeout=${FETCH_CONNECT_TIMEOUT_MS}ms | providerTimeout=${timeoutMs}ms`,
+          `${this.provider.toUpperCase()} → ${url} | body=${bodyStr.length}B | connectTimeout=${timeoutMs}ms`,
         );
         const response = await proxyAwareFetch(
           url,
@@ -238,7 +214,6 @@ export class BaseExecutor {
           },
           proxyOptions,
         );
-
         clearTimeout(connectTimer);
         clearTimeout(timeoutTimer);
 
