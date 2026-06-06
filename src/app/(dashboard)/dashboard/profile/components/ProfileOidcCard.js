@@ -28,10 +28,14 @@ export function ProfileOidcCard({
         className="w-full flex items-center gap-3 text-left"
       >
         <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500 shrink-0">
-          <span className="material-symbols-outlined text-[20px]">lock_open</span>
+          <span className="material-symbols-outlined text-[20px]">
+            lock_open
+          </span>
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="text-base sm:text-lg font-semibold">OIDC Dashboard Login</h3>
+          <h3 className="text-base sm:text-lg font-semibold">
+            OIDC Dashboard Login
+          </h3>
           <p className="text-xs text-text-muted">
             {settings.authMode === "oidc"
               ? "OIDC active"
@@ -47,12 +51,15 @@ export function ProfileOidcCard({
       {oidcExpanded && (
         <div className="flex flex-col gap-4 mt-4">
           <p className="text-xs sm:text-sm text-text-muted">
-            Use Authentik or any OIDC provider to sign in to the dashboard. You can enable password-only,
-            OIDC-only, or both for the dashboard; model API access still uses API keys.
+            Use Authentik or any OIDC provider to sign in to the dashboard. You
+            can enable password-only, OIDC-only, or both for the dashboard;
+            model API access still uses API keys.
           </p>
 
           <div className="flex flex-col gap-2">
-            <label className="font-medium text-sm sm:text-base">Auth Mode</label>
+            <label className="font-medium text-sm sm:text-base">
+              Auth Mode
+            </label>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {OIDC_AUTH_MODE_OPTIONS.map((option) => {
                 const active = oidcForm.authMode === option.value;
@@ -63,12 +70,18 @@ export function ProfileOidcCard({
                     onClick={() => updateOidcForm("authMode", option.value)}
                     className={cn(
                       "text-left rounded-lg border p-3 transition-colors",
-                      active ? "border-primary bg-primary/5" : "border-border bg-bg hover:bg-black/5 dark:hover:bg-white/5",
+                      active
+                        ? "border-primary bg-primary/5"
+                        : "border-border bg-bg hover:bg-black/5 dark:hover:bg-white/5",
                     )}
                     disabled={loading || oidcLoading}
                   >
-                    <p className="font-medium text-sm sm:text-base">{option.title}</p>
-                    <p className="text-xs sm:text-sm text-text-muted mt-1">{option.desc}</p>
+                    <p className="font-medium text-sm sm:text-base">
+                      {option.title}
+                    </p>
+                    <p className="text-xs sm:text-sm text-text-muted mt-1">
+                      {option.desc}
+                    </p>
                   </button>
                 );
               })}
@@ -77,17 +90,23 @@ export function ProfileOidcCard({
 
           <div className="grid grid-cols-1 gap-4">
             <div className="flex flex-col gap-2">
-              <label className="font-medium text-sm sm:text-base">Issuer URL</label>
+              <label className="font-medium text-sm sm:text-base">
+                Issuer URL
+              </label>
               <Input
                 placeholder="https://auth.example.com/application/o/9router/"
                 value={oidcForm.oidcIssuerUrl}
-                onChange={(e) => updateOidcForm("oidcIssuerUrl", e.target.value)}
+                onChange={(e) =>
+                  updateOidcForm("oidcIssuerUrl", e.target.value)
+                }
                 disabled={loading || oidcLoading}
               />
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="font-medium text-sm sm:text-base">Client ID</label>
+              <label className="font-medium text-sm sm:text-base">
+                Client ID
+              </label>
               <Input
                 placeholder="9router-dashboard"
                 value={oidcForm.oidcClientId}
@@ -97,7 +116,9 @@ export function ProfileOidcCard({
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="font-medium text-sm sm:text-base">Client Secret</label>
+              <label className="font-medium text-sm sm:text-base">
+                Client Secret
+              </label>
               <Input
                 type="password"
                 placeholder="Leave blank to keep existing secret"
@@ -105,7 +126,9 @@ export function ProfileOidcCard({
                 onChange={(e) => setOidcClientSecret(e.target.value)}
                 disabled={loading || oidcLoading}
               />
-              <p className="text-xs sm:text-sm text-text-muted">This value is write-only after saving.</p>
+              <p className="text-xs sm:text-sm text-text-muted">
+                This value is write-only after saving.
+              </p>
             </div>
 
             <div className="flex flex-col gap-2">
@@ -119,11 +142,15 @@ export function ProfileOidcCard({
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="font-medium text-sm sm:text-base">Login Button Label</label>
+              <label className="font-medium text-sm sm:text-base">
+                Login Button Label
+              </label>
               <Input
                 placeholder="Sign in with OIDC"
                 value={oidcForm.oidcLoginLabel}
-                onChange={(e) => updateOidcForm("oidcLoginLabel", e.target.value)}
+                onChange={(e) =>
+                  updateOidcForm("oidcLoginLabel", e.target.value)
+                }
                 disabled={loading || oidcLoading}
               />
             </div>
@@ -160,7 +187,8 @@ export function ProfileOidcCard({
 
           {settings.authMode === "oidc" && (
             <p className="text-xs sm:text-sm text-amber-600 dark:text-amber-400">
-              OIDC login is currently active. Password login is disabled until you switch back.
+              OIDC login is currently active. Password login is disabled until
+              you switch back.
             </p>
           )}
 

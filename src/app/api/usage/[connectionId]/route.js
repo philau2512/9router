@@ -101,7 +101,9 @@ async function refreshAndUpdateCredentials(
 
   // Update token expiry
   if (refreshResult.expiresIn) {
-    updateData.expiresAt = new Date(Date.now() + refreshResult.expiresIn * 1000).toISOString();
+    updateData.expiresAt = new Date(
+      Date.now() + refreshResult.expiresIn * 1000,
+    ).toISOString();
     updateData.expiresIn = refreshResult.expiresIn;
   } else if (refreshResult.expiresAt) {
     updateData.expiresAt = refreshResult.expiresAt;
@@ -110,8 +112,12 @@ async function refreshAndUpdateCredentials(
   // Handle provider-specific data (copilotToken for GitHub, etc.)
   const providerSpecificUpdates = {
     ...(refreshResult.providerSpecificData || {}),
-    ...(refreshResult.copilotToken ? { copilotToken: refreshResult.copilotToken } : {}),
-    ...(refreshResult.copilotTokenExpiresAt ? { copilotTokenExpiresAt: refreshResult.copilotTokenExpiresAt } : {}),
+    ...(refreshResult.copilotToken
+      ? { copilotToken: refreshResult.copilotToken }
+      : {}),
+    ...(refreshResult.copilotTokenExpiresAt
+      ? { copilotTokenExpiresAt: refreshResult.copilotTokenExpiresAt }
+      : {}),
   };
   if (Object.keys(providerSpecificUpdates).length > 0) {
     updateData.providerSpecificData = {
@@ -127,7 +133,8 @@ async function refreshAndUpdateCredentials(
   const updatedConnection = {
     ...connection,
     ...updateData,
-    providerSpecificData: updateData.providerSpecificData || connection.providerSpecificData,
+    providerSpecificData:
+      updateData.providerSpecificData || connection.providerSpecificData,
   };
 
   return {

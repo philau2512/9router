@@ -454,7 +454,8 @@ export default function BasicChatPageClient() {
       .map((group) => ({
         ...group,
         models: group.models.filter((model) => {
-          const text = `${model.name} ${model.requestModel} ${group.providerName}`.toLowerCase();
+          const text =
+            `${model.name} ${model.requestModel} ${group.providerName}`.toLowerCase();
           return text.includes(normalizedModelSearch);
         }),
       }))
@@ -492,7 +493,8 @@ export default function BasicChatPageClient() {
         [...(session.messages || [])]
           .reverse()
           .find((message) => message.role === "user") || session.messages?.[0];
-      const text = `${session.title} ${textValue(latestMessage?.content)} ${session.modelName || ""}`.toLowerCase();
+      const text =
+        `${session.title} ${textValue(latestMessage?.content)} ${session.modelName || ""}`.toLowerCase();
       return text.includes(normalizedHistorySearch);
     });
   }, [sessionItems, normalizedHistorySearch]);
@@ -1029,9 +1031,15 @@ export default function BasicChatPageClient() {
                 type="button"
                 onClick={() => toggleFavoriteModel(activeModel.id)}
                 className="absolute -right-3 -top-3 flex size-8 items-center justify-center rounded-full border border-white/10 bg-[#2f2f2f] text-white/70 transition hover:text-amber-200"
-                aria-label={favoriteModels.includes(activeModel.id) ? "Remove model from favorites" : "Add model to favorites"}
+                aria-label={
+                  favoriteModels.includes(activeModel.id)
+                    ? "Remove model from favorites"
+                    : "Add model to favorites"
+                }
               >
-                <span className={`material-symbols-outlined text-[18px] ${favoriteModels.includes(activeModel.id) ? "text-amber-300" : ""}`}>
+                <span
+                  className={`material-symbols-outlined text-[18px] ${favoriteModels.includes(activeModel.id) ? "text-amber-300" : ""}`}
+                >
                   star
                 </span>
               </button>
@@ -1221,7 +1229,9 @@ export default function BasicChatPageClient() {
             <div className="max-h-[48vh] space-y-2 overflow-y-auto p-1 custom-scrollbar">
               {filteredSessionItems.length === 0 ? (
                 <div className="rounded-[16px] border border-dashed border-white/10 bg-white/5 p-4 text-sm text-white/55">
-                  {normalizedHistorySearch ? "No chats match your search." : "No conversations yet."}
+                  {normalizedHistorySearch
+                    ? "No chats match your search."
+                    : "No conversations yet."}
                 </div>
               ) : (
                 filteredSessionItems.map((session) => {

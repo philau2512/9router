@@ -1,9 +1,26 @@
 import { translateResponse, initState } from "../translator/index.js";
 import { FORMATS } from "../translator/formats.js";
 import { trackPendingRequest, appendRequestLog } from "@/lib/usageDb.js";
-import { extractUsage, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, COLORS } from "./usageTracking.js";
-import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE } from "./streamHelpers.js";
-import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
+import {
+  extractUsage,
+  hasValidUsage,
+  estimateUsage,
+  logUsage,
+  addBufferToUsage,
+  filterUsageForFormat,
+  COLORS,
+} from "./usageTracking.js";
+import {
+  parseSSELine,
+  hasValuableContent,
+  fixInvalidId,
+  formatSSE,
+} from "./streamHelpers.js";
+import {
+  getOpenAIResponsesEventName,
+  isOpenAIResponsesTerminalEvent,
+  formatIncompleteOpenAIResponsesStreamFailure,
+} from "./responsesStreamHelpers.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 import * as log from "../../src/sse/utils/logger.js";
 
@@ -125,7 +142,11 @@ export function createSSEStream(options = {}) {
         }
 
         // Capture Responses API event name to preserve framing in same-format passthrough
-        if (mode === STREAM_MODE.TRANSLATE && targetFormat === FORMATS.OPENAI_RESPONSES && trimmed.startsWith("event:")) {
+        if (
+          mode === STREAM_MODE.TRANSLATE &&
+          targetFormat === FORMATS.OPENAI_RESPONSES &&
+          trimmed.startsWith("event:")
+        ) {
           currentOpenAIResponsesEvent = trimmed.slice(6).trim();
         }
 
@@ -241,13 +262,18 @@ export function createSSEStream(options = {}) {
         }
 
         // Responses API same-format passthrough: preserve event framing + track terminal state
-        const isOpenAIResponsesStream = targetFormat === FORMATS.OPENAI_RESPONSES;
-        const keepsOpenAIResponsesFormat = isOpenAIResponsesStream && sourceFormat === FORMATS.OPENAI_RESPONSES;
+        const isOpenAIResponsesStream =
+          targetFormat === FORMATS.OPENAI_RESPONSES;
+        const keepsOpenAIResponsesFormat =
+          isOpenAIResponsesStream && sourceFormat === FORMATS.OPENAI_RESPONSES;
         const openAIResponsesEventName = isOpenAIResponsesStream
           ? getOpenAIResponsesEventName(currentOpenAIResponsesEvent, parsed)
           : null;
 
-        if (isOpenAIResponsesStream && isOpenAIResponsesTerminalEvent(openAIResponsesEventName, parsed)) {
+        if (
+          isOpenAIResponsesStream &&
+          isOpenAIResponsesTerminalEvent(openAIResponsesEventName, parsed)
+        ) {
           openAIResponsesTerminalSeen = true;
         }
 
@@ -314,7 +340,10 @@ export function createSSEStream(options = {}) {
 
         // Responses same-format passthrough: re-emit with original event framing
         if (keepsOpenAIResponsesFormat && openAIResponsesEventName) {
-          const output = formatSSE({ event: openAIResponsesEventName, data: parsed }, sourceFormat);
+          const output = formatSSE(
+            { event: openAIResponsesEventName, data: parsed },
+            sourceFormat,
+          );
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
           currentOpenAIResponsesEvent = null;
@@ -509,7 +538,9 @@ export function createSSEStream(options = {}) {
         }
 
         // Synthesize response.failed if a Responses passthrough stream never reached a terminal event
-        const keepsOpenAIResponsesFormat = targetFormat === FORMATS.OPENAI_RESPONSES && sourceFormat === FORMATS.OPENAI_RESPONSES;
+        const keepsOpenAIResponsesFormat =
+          targetFormat === FORMATS.OPENAI_RESPONSES &&
+          sourceFormat === FORMATS.OPENAI_RESPONSES;
         if (keepsOpenAIResponsesFormat && !openAIResponsesTerminalSeen) {
           const failedOutput = formatIncompleteOpenAIResponsesStreamFailure();
           reqLogger?.appendConvertedChunk?.(failedOutput);

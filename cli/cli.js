@@ -141,7 +141,9 @@ function checkDoctorItem(label, check, hint) {
       console.log(`❌ ${label}${hint ? ` — ${hint}` : ""}`);
       return false;
     }
-    console.log(`✅ ${label}${typeof result === "string" ? ` — ${result}` : ""}`);
+    console.log(
+      `✅ ${label}${typeof result === "string" ? ` — ${result}` : ""}`,
+    );
     return true;
   } catch (error) {
     console.log(`❌ ${label} — ${error.message}${hint ? ` (${hint})` : ""}`);
@@ -151,11 +153,16 @@ function checkDoctorItem(label, check, hint) {
 
 function commandExists(command) {
   try {
-    execSync(process.platform === "win32" ? `where ${command}` : `command -v ${command}`, {
-      stdio: "ignore",
-      windowsHide: true,
-      timeout: 3000,
-    });
+    execSync(
+      process.platform === "win32"
+        ? `where ${command}`
+        : `command -v ${command}`,
+      {
+        stdio: "ignore",
+        windowsHide: true,
+        timeout: 3000,
+      },
+    );
     return true;
   } catch {
     return false;
@@ -181,7 +188,11 @@ function runDoctor() {
   const doctorServerPath = path.join(__dirname, "app", "server.js");
   const checks = [
     checkDoctorItem("Node.js runtime", () => process.version),
-    checkDoctorItem("Standalone server bundle", () => fs.existsSync(doctorServerPath), "run npm run build from the cli package"),
+    checkDoctorItem(
+      "Standalone server bundle",
+      () => fs.existsSync(doctorServerPath),
+      "run npm run build from the cli package",
+    ),
     checkDoctorItem("Data directory", () => {
       if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
       return dataDir;
@@ -194,7 +205,11 @@ function runDoctor() {
       ensureTrayRuntime({ silent: true });
       return process.platform === "win32" ? "skipped on Windows" : true;
     }),
-    checkDoctorItem("Docker CLI", () => commandExists("docker"), "optional; needed only for Docker smoke tests"),
+    checkDoctorItem(
+      "Docker CLI",
+      () => commandExists("docker"),
+      "optional; needed only for Docker smoke tests",
+    ),
     checkDoctorItem("Docker daemon", () => {
       if (!commandExists("docker")) return "skipped; Docker CLI not installed";
       return dockerDaemonAvailable()
@@ -204,7 +219,11 @@ function runDoctor() {
   ];
 
   const failed = checks.filter((ok) => !ok).length;
-  console.log(failed ? `\n${failed} check(s) need attention.\n` : "\nAll required checks passed.\n");
+  console.log(
+    failed
+      ? `\n${failed} check(s) need attention.\n`
+      : "\nAll required checks passed.\n",
+  );
   process.exitCode = failed > 0 ? 1 : 0;
 }
 

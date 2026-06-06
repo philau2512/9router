@@ -8,13 +8,16 @@ export const FILTERS = {
         (m) =>
           m.pricing?.prompt === "0" &&
           m.pricing?.completion === "0" &&
-          m.context_length >= 200000
+          m.context_length >= 200000,
       )
       .map((m) => ({ id: m.id, name: m.name, contextLength: m.context_length }))
       .sort((a, b) => b.contextLength - a.contextLength),
 
   "opencode-free": (models) =>
     models
-      .filter((m) => m.id?.endsWith("-free") || KNOWN_FREE_OPENCODE_MODELS.includes(m.id))
+      .filter(
+        (m) =>
+          m.id?.endsWith("-free") || KNOWN_FREE_OPENCODE_MODELS.includes(m.id),
+      )
       .map((m) => ({ id: m.id, name: m.id })),
 };

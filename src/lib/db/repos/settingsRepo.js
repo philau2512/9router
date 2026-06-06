@@ -36,7 +36,8 @@ const DEFAULT_SETTINGS = {
   outboundProxyEnabled: false,
   outboundProxyUrl: "",
   outboundNoProxy: "",
-  connectionProxyHeadersTimeoutMs: parseInt(process.env.CONNECTION_PROXY_HEADERS_TIMEOUT_MS) || 30000,
+  connectionProxyHeadersTimeoutMs:
+    parseInt(process.env.CONNECTION_PROXY_HEADERS_TIMEOUT_MS) || 30000,
   mitmRouterBaseUrl: DEFAULT_MITM_ROUTER_BASE,
   dnsToolEnabled: {},
   rtkEnabled: true,

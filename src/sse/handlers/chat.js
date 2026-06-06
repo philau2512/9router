@@ -17,7 +17,10 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { handleComboChat } from "open-sse/services/combo.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
-import { detectFormatByEndpoint, FORMATS } from "open-sse/translator/formats.js";
+import {
+  detectFormatByEndpoint,
+  FORMATS,
+} from "open-sse/translator/formats.js";
 import * as log from "../utils/logger.js";
 import {
   updateProviderCredentials,
@@ -53,7 +56,7 @@ function getCustomErrorResponse(request, statusCode, message, body = null) {
           "Content-Type": "application/json",
           "Access-Control-Allow-Origin": "*",
         },
-      }
+      },
     );
   }
   return errorResponse(statusCode, message);
@@ -70,7 +73,11 @@ export async function handleChat(request, clientRawRequest = null) {
     body = await request.json();
   } catch {
     log.warn("CHAT", "Invalid JSON body");
-    return getCustomErrorResponse(request, HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
+    return getCustomErrorResponse(
+      request,
+      HTTP_STATUS.BAD_REQUEST,
+      "Invalid JSON body",
+    );
   }
 
   // Build clientRawRequest for logging (if not provided)
@@ -120,7 +127,12 @@ export async function handleChat(request, clientRawRequest = null) {
 
   if (!modelStr) {
     log.warn("CHAT", "Missing model");
-    return getCustomErrorResponse(request, HTTP_STATUS.BAD_REQUEST, "Missing model", body);
+    return getCustomErrorResponse(
+      request,
+      HTTP_STATUS.BAD_REQUEST,
+      "Missing model",
+      body,
+    );
   }
 
   // Bypass naming/warmup requests before combo rotation to avoid wasting rotation slots
@@ -221,7 +233,12 @@ async function handleSingleModelChat(
       });
     }
     log.warn("CHAT", "Invalid model format", { model: modelStr });
-    return getCustomErrorResponse(request, HTTP_STATUS.BAD_REQUEST, "Invalid model format", body);
+    return getCustomErrorResponse(
+      request,
+      HTTP_STATUS.BAD_REQUEST,
+      "Invalid model format",
+      body,
+    );
   }
 
   const { provider, model } = modelInfo;
@@ -278,7 +295,7 @@ async function handleSingleModelChat(
           request,
           HTTP_STATUS.NOT_FOUND,
           `No active credentials for provider: ${provider}`,
-          body
+          body,
         );
       }
       log.warn("CHAT", "No more accounts available", { provider });
@@ -286,7 +303,7 @@ async function handleSingleModelChat(
         request,
         lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE,
         lastError || "All accounts unavailable",
-        body
+        body,
       );
     }
 
@@ -348,7 +365,7 @@ async function handleSingleModelChat(
         await updateProviderCredentials(credentials.connectionId, {
           ...newCreds,
           existingProviderSpecificData: credentials.providerSpecificData,
-          testStatus: "active"
+          testStatus: "active",
         });
       },
       onRequestSuccess: async () => {

@@ -73,7 +73,8 @@ export function classifyOAuthRefreshError(errorText = "", status = 0) {
   }
 
   const code = parsed?.error?.code || parsed?.error || parsed?.error_code || "";
-  const description = parsed?.error_description || parsed?.message || errorText || "";
+  const description =
+    parsed?.error_description || parsed?.message || errorText || "";
   const combined = `${code} ${description}`.toLowerCase();
   const permanent = [
     "refresh_token_expired",

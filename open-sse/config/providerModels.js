@@ -1410,7 +1410,7 @@ export function getModelTargetFormat(aliasOrId, modelId) {
 export function getModelType(aliasOrId, modelId) {
   const models = PROVIDER_MODELS[aliasOrId];
   if (!models) return null;
-  const found = models.find(m => m.id === modelId);
+  const found = models.find((m) => m.id === modelId);
   return found?.type || null;
 }
 

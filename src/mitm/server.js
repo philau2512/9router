@@ -112,10 +112,10 @@ function collectBodyRaw(req) {
 function extractModel(url, body) {
   const urlMatch = url.match(/\/models\/([^/:]+)/);
   if (urlMatch) return urlMatch[1];
-  
+
   // Skip parsing if body is binary (AWS EventStream, Protocol Buffers, etc.)
   if (isBinaryData(body)) return null;
-  
+
   try {
     const parsed = JSON.parse(body.toString());
     if (parsed.conversationState) {
@@ -140,13 +140,13 @@ function isBinaryData(buffer) {
   for (let i = 0; i < sample.length; i++) {
     const byte = sample[i];
     // Count non-ASCII printable chars (excluding whitespace)
-    if (byte < 0x20 && byte !== 0x09 && byte !== 0x0A && byte !== 0x0D) {
+    if (byte < 0x20 && byte !== 0x09 && byte !== 0x0a && byte !== 0x0d) {
       nonPrintable++;
     }
-    if (byte > 0x7E) nonPrintable++;
+    if (byte > 0x7e) nonPrintable++;
   }
   // If >30% non-printable, treat as binary
-  return (nonPrintable / sample.length) > 0.3;
+  return nonPrintable / sample.length > 0.3;
 }
 
 function getMappedModel(tool, model) {

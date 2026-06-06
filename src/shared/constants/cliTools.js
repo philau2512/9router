@@ -80,7 +80,11 @@ export const MITM_TOOLS = {
       { id: "gpt-4o", name: "GPT-4o", alias: "gpt-4o" },
       { id: "gpt-4.1", name: "GPT-4.1", alias: "gpt-4.1" },
       { id: "gpt-5-mini", name: "GPT-5 Mini", alias: "gpt-5-mini" },
-      { id: "claude-haiku-4.5", name: "Claude Haiku 4.5", alias: "claude-haiku-4.5" },
+      {
+        id: "claude-haiku-4.5",
+        name: "Claude Haiku 4.5",
+        alias: "claude-haiku-4.5",
+      },
     ],
   },
   kiro: {
@@ -97,9 +101,21 @@ export const MITM_TOOLS = {
       // Both need a mappable slot — otherwise getMappedModel returns null and the chat call
       // is passed through to AWS instead of being routed to the chosen provider.
       { id: "auto", name: "Auto (Kiro Agent)", alias: "auto" },
-      { id: "claude-sonnet-4.5", name: "Claude Sonnet 4.5", alias: "claude-sonnet-4.5" },
-      { id: "claude-sonnet-4", name: "Claude Sonnet 4", alias: "claude-sonnet-4" },
-      { id: "claude-haiku-4.5", name: "Claude Haiku 4.5", alias: "claude-haiku-4.5" },
+      {
+        id: "claude-sonnet-4.5",
+        name: "Claude Sonnet 4.5",
+        alias: "claude-sonnet-4.5",
+      },
+      {
+        id: "claude-sonnet-4",
+        name: "Claude Sonnet 4",
+        alias: "claude-sonnet-4",
+      },
+      {
+        id: "claude-haiku-4.5",
+        name: "Claude Haiku 4.5",
+        alias: "claude-haiku-4.5",
+      },
       { id: "deepseek-3.2", name: "DeepSeek 3.2", alias: "deepseek-3.2" },
       { id: "minimax-m2.5", name: "MiniMax M2.5", alias: "minimax-m2.5" },
       { id: "minimax-m2.1", name: "MiniMax M2.1", alias: "minimax-m2.1" },

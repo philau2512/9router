@@ -1,4 +1,10 @@
-import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
+import {
+  HTTP_STATUS,
+  RETRY_CONFIG,
+  DEFAULT_RETRY_CONFIG,
+  resolveRetryEntry,
+  FETCH_CONNECT_TIMEOUT_MS,
+} from "../config/runtimeConfig.js";
 import { shouldRefreshCredentials } from "../services/oauthCredentialManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { dbg } from "../utils/debugLog.js";
@@ -183,19 +189,31 @@ export class BaseExecutor {
       // Abort if upstream doesn't return response headers within connection timeout
       const connectCtrl = new AbortController();
       const timeoutMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
-      const connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
-      const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
+      const connectTimer = setTimeout(
+        () => connectCtrl.abort(new Error("fetch connect timeout")),
+        timeoutMs,
+      );
+      const mergedSignal = signal
+        ? AbortSignal.any([signal, connectCtrl.signal])
+        : connectCtrl.signal;
 
       try {
         const bodyStr = JSON.stringify(transformedBody);
         const fetchT0 = Date.now();
-        dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | body=${bodyStr.length}B | connectTimeout=${timeoutMs}ms`);
-        const response = await proxyAwareFetch(url, {
-          method: "POST",
-          headers,
-          body: bodyStr,
-          signal: mergedSignal
-        }, proxyOptions);
+        dbg(
+          "FETCH",
+          `${this.provider.toUpperCase()} → ${url} | body=${bodyStr.length}B | connectTimeout=${timeoutMs}ms`,
+        );
+        const response = await proxyAwareFetch(
+          url,
+          {
+            method: "POST",
+            headers,
+            body: bodyStr,
+            signal: mergedSignal,
+          },
+          proxyOptions,
+        );
         clearTimeout(connectTimer);
         clearTimeout(timeoutTimer);
 

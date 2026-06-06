@@ -98,7 +98,11 @@ async function pipeSSE(routerRes, res, dumper) {
  */
 async function pipeTransformedSSE(routerRes, res, transformFn, state) {
   const ct = routerRes.headers.get("content-type") || "application/json";
-  const resHeaders = { "Content-Type": ct, "Cache-Control": "no-cache", "Connection": "keep-alive" };
+  const resHeaders = {
+    "Content-Type": ct,
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  };
   if (ct.includes("text/event-stream")) resHeaders["X-Accel-Buffering"] = "no";
   res.writeHead(200, resHeaders);
 
@@ -138,7 +142,9 @@ async function pipeTransformedSSE(routerRes, res, transformFn, state) {
           for (const output of outputs) {
             if (process.env.DEBUG_MITM) {
               const len = output.length || output.byteLength || 0;
-              log(`[write binary frame] (${len}B) first 20B: ${Array.from(output.slice(0, 20)).join(',')}`);
+              log(
+                `[write binary frame] (${len}B) first 20B: ${Array.from(output.slice(0, 20)).join(",")}`,
+              );
             }
             res.write(Buffer.from(output));
           }
@@ -158,7 +164,9 @@ async function pipeTransformedSSE(routerRes, res, transformFn, state) {
         res.write(output);
       }
     }
-  } catch { /* ignore flush errors */ }
+  } catch {
+    /* ignore flush errors */
+  }
 
   res.end();
 }
@@ -179,7 +187,7 @@ async function pipeTransformedEventStream(routerRes, res, transformFn, state) {
   const resHeaders = {
     "Content-Type": "application/vnd.amazon.eventstream",
     "Cache-Control": "no-cache",
-    "Connection": "keep-alive"
+    Connection: "keep-alive",
   };
   res.writeHead(200, resHeaders);
 
@@ -219,7 +227,9 @@ async function pipeTransformedEventStream(routerRes, res, transformFn, state) {
           for (const output of outputs) {
             if (process.env.DEBUG_MITM) {
               const len = output.length || output.byteLength || 0;
-              log(`[write binary frame] (${len}B) first 20B: ${Array.from(output.slice(0, 20)).join(',')}`);
+              log(
+                `[write binary frame] (${len}B) first 20B: ${Array.from(output.slice(0, 20)).join(",")}`,
+              );
             }
             res.write(Buffer.from(output));
           }
@@ -239,9 +249,16 @@ async function pipeTransformedEventStream(routerRes, res, transformFn, state) {
         res.write(output);
       }
     }
-  } catch { /* ignore flush errors */ }
+  } catch {
+    /* ignore flush errors */
+  }
 
   res.end();
 }
 
-module.exports = { fetchRouter, pipeSSE, pipeTransformedSSE, pipeTransformedEventStream };
+module.exports = {
+  fetchRouter,
+  pipeSSE,
+  pipeTransformedSSE,
+  pipeTransformedEventStream,
+};

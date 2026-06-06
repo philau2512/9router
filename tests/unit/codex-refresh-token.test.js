@@ -34,10 +34,10 @@ describe("Codex Refresh Token", () => {
   describe("refreshCodexToken", () => {
     it("should return new refresh_token when server provides one (token rotation)", async () => {
       const fetchMock = mockFetchWithJson({
-          access_token: "new-access",
-          refresh_token: "rotated-refresh-token",
-          id_token: "new-id-token",
-          expires_in: 3600,
+        access_token: "new-access",
+        refresh_token: "rotated-refresh-token",
+        id_token: "new-id-token",
+        expires_in: 3600,
       });
 
       const { refreshCodexToken } =
@@ -60,18 +60,22 @@ describe("Codex Refresh Token", () => {
             grant_type: "refresh_token",
             refresh_token: "old-refresh-token",
           }),
-        })
+        }),
       );
     });
 
     it("should keep old refresh_token when server does not return new one", async () => {
       mockFetchWithJson({
-          access_token: "new-access",
-          expires_in: 3600,
+        access_token: "new-access",
+        expires_in: 3600,
       });
 
-      const { refreshCodexToken } = await import("../../open-sse/services/tokenRefresh.js");
-      const result = await refreshCodexToken("old-refresh-token-without-rotation", null);
+      const { refreshCodexToken } =
+        await import("../../open-sse/services/tokenRefresh.js");
+      const result = await refreshCodexToken(
+        "old-refresh-token-without-rotation",
+        null,
+      );
 
       expect(result.refreshToken).toBe("old-refresh-token-without-rotation");
     });
@@ -80,18 +84,22 @@ describe("Codex Refresh Token", () => {
   describe("CodexExecutor credential lifecycle", () => {
     it("should refresh Codex credentials and preserve omitted id_token", async () => {
       mockFetchWithJson({
-          access_token: "new-access",
-          refresh_token: "rotated-refresh-token",
-          expires_in: 3600,
+        access_token: "new-access",
+        refresh_token: "rotated-refresh-token",
+        expires_in: 3600,
       });
 
-      const { CodexExecutor } = await import("../../open-sse/executors/codex.js");
+      const { CodexExecutor } =
+        await import("../../open-sse/executors/codex.js");
       const executor = new CodexExecutor();
-      const result = await executor.refreshCredentials({
-        connectionId: "codex-1",
-        refreshToken: "old-refresh-token",
-        idToken: "old-id-token",
-      }, null);
+      const result = await executor.refreshCredentials(
+        {
+          connectionId: "codex-1",
+          refreshToken: "old-refresh-token",
+          idToken: "old-id-token",
+        },
+        null,
+      );
 
       expect(result.accessToken).toBe("new-access");
       expect(result.refreshToken).toBe("rotated-refresh-token");
@@ -101,33 +109,45 @@ describe("Codex Refresh Token", () => {
     });
 
     it("should refresh Codex when lastRefreshAt is older than the upstream stale window", async () => {
-      const { CodexExecutor } = await import("../../open-sse/executors/codex.js");
+      const { CodexExecutor } =
+        await import("../../open-sse/executors/codex.js");
       const executor = new CodexExecutor();
-      const farFuture = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      const staleRefresh = new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString();
-      const recentRefresh = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString();
+      const farFuture = new Date(
+        Date.now() + 30 * 24 * 60 * 60 * 1000,
+      ).toISOString();
+      const staleRefresh = new Date(
+        Date.now() - 9 * 24 * 60 * 60 * 1000,
+      ).toISOString();
+      const recentRefresh = new Date(
+        Date.now() - 1 * 24 * 60 * 60 * 1000,
+      ).toISOString();
 
-      expect(executor.needsRefresh({
-        refreshToken: "refresh-token",
-        expiresAt: farFuture,
-        lastRefreshAt: staleRefresh,
-      })).toBe(true);
+      expect(
+        executor.needsRefresh({
+          refreshToken: "refresh-token",
+          expiresAt: farFuture,
+          lastRefreshAt: staleRefresh,
+        }),
+      ).toBe(true);
 
-      expect(executor.needsRefresh({
-        refreshToken: "refresh-token",
-        expiresAt: farFuture,
-        lastRefreshAt: recentRefresh,
-      })).toBe(false);
+      expect(
+        executor.needsRefresh({
+          refreshToken: "refresh-token",
+          expiresAt: farFuture,
+          lastRefreshAt: recentRefresh,
+        }),
+      ).toBe(false);
     });
 
     it("should de-duplicate concurrent refreshes for the same Codex connection", async () => {
       const fetchMock = mockFetchWithJson({
-          access_token: "new-access",
-          refresh_token: "rotated-refresh-token",
-          expires_in: 3600,
+        access_token: "new-access",
+        refresh_token: "rotated-refresh-token",
+        expires_in: 3600,
       });
 
-      const { refreshProviderCredentials } = await import("../../open-sse/services/oauthCredentialManager.js");
+      const { refreshProviderCredentials } =
+        await import("../../open-sse/services/oauthCredentialManager.js");
       const credentials = {
         connectionId: "codex-single-flight",
         refreshToken: "old-refresh-token",

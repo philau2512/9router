@@ -18,9 +18,15 @@ function getErrorMessage(err) {
     msg = `${base} (${causeCode})`;
   }
 
-  if (msg.includes("Request was cancelled") || msg.includes("request was cancelled")) {
+  if (
+    msg.includes("Request was cancelled") ||
+    msg.includes("request was cancelled")
+  ) {
     msg += " (Proxy is likely offline or unreachable)";
-  } else if (msg.includes("Connect Timeout") || msg.includes("UND_ERR_CONNECT_TIMEOUT")) {
+  } else if (
+    msg.includes("Connect Timeout") ||
+    msg.includes("UND_ERR_CONNECT_TIMEOUT")
+  ) {
     msg += " (Proxy connection timed out)";
   }
 

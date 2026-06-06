@@ -143,7 +143,7 @@ export async function handleEmbeddings(request) {
         await updateProviderCredentials(credentials.connectionId, {
           ...newCreds,
           existingProviderSpecificData: credentials.providerSpecificData,
-          testStatus: "active"
+          testStatus: "active",
         });
       },
       onRequestSuccess: async () => {

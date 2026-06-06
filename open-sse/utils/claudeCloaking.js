@@ -57,13 +57,19 @@ export function cloakClaudeTools(body) {
   // Rename tool_use in message history (all client tools get suffix)
   const renamedMessages = body.messages?.map((msg) => {
     if (!Array.isArray(msg.content)) return msg;
-    const renamedContent = msg.content.map(block =>
-      block.type === "tool_use" ? { ...block, name: suffix(block.name) } : block
+    const renamedContent = msg.content.map((block) =>
+      block.type === "tool_use"
+        ? { ...block, name: suffix(block.name) }
+        : block,
     );
     return { ...msg, content: renamedContent };
   });
 
-  const cloakedBody = { ...body, tools: allTools, messages: renamedMessages || body.messages };
+  const cloakedBody = {
+    ...body,
+    tools: allTools,
+    messages: renamedMessages || body.messages,
+  };
 
   // A forced tool_choice ({ type: "tool", name }) must point at the suffixed
   // tool name, otherwise Claude rejects it: "Tool '<name>' not found in provided tools".
@@ -73,12 +79,15 @@ export function cloakClaudeTools(body) {
     body.tool_choice?.type === "tool" &&
     clientToolNames.has(body.tool_choice.name)
   ) {
-    cloakedBody.tool_choice = { ...body.tool_choice, name: suffix(body.tool_choice.name) };
+    cloakedBody.tool_choice = {
+      ...body.tool_choice,
+      name: suffix(body.tool_choice.name),
+    };
   }
 
   return {
     body: cloakedBody,
-    toolNameMap: toolNameMap.size > 0 ? toolNameMap : null
+    toolNameMap: toolNameMap.size > 0 ? toolNameMap : null,
   };
 }
 

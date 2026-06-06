@@ -83,8 +83,8 @@ export const PROVIDERS = {
     baseUrl: "https://chatgpt.com/backend-api/codex/responses",
     format: "openai-responses",
     headers: {
-      "originator": "codex_cli_rs",
-      "User-Agent": "codex_cli_rs/0.136.0"
+      originator: "codex_cli_rs",
+      "User-Agent": "codex_cli_rs/0.136.0",
     },
     clientId: "app_EMoamEEZ73f0CkXaXp7hrann",
     tokenUrl: "https://auth.openai.com/oauth/token",

@@ -255,7 +255,8 @@ const PROVIDERS = {
         expiresIn: tokens.expires_in,
         lastRefreshAt: new Date().toISOString(),
       };
-      const email = info.email || extractEmailFromAccessToken(tokens.access_token);
+      const email =
+        info.email || extractEmailFromAccessToken(tokens.access_token);
       if (email) mapped.email = email;
       if (info.chatgptAccountId || info.chatgptPlanType) {
         mapped.providerSpecificData = {

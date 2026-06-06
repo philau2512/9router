@@ -179,4 +179,3 @@ export async function warmupSelectedConnections(connectionIds, options = {}) {
   });
   return { res, data: await res.json() };
 }
-

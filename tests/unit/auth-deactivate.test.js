@@ -43,16 +43,19 @@ describe("Kiro Account Deactivation on Suspension", () => {
         403,
         errorText,
         "kiro",
-        "claude-sonnet-4.5"
+        "claude-sonnet-4.5",
       );
 
       // Assert deactivation payload
-      expect(localDb.updateProviderConnection).toHaveBeenCalledWith("conn-kiro-1", expect.objectContaining({
-        isActive: false,
-        testStatus: "unavailable",
-        lastError: expect.stringContaining("Suspended:"),
-        errorCode: 403,
-      }));
+      expect(localDb.updateProviderConnection).toHaveBeenCalledWith(
+        "conn-kiro-1",
+        expect.objectContaining({
+          isActive: false,
+          testStatus: "unavailable",
+          lastError: expect.stringContaining("Suspended:"),
+          errorCode: 403,
+        }),
+      );
 
       // Assert return values
       expect(result.shouldFallback).toBe(true);
@@ -60,4 +63,3 @@ describe("Kiro Account Deactivation on Suspension", () => {
     });
   });
 });
-

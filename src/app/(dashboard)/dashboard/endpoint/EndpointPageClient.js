@@ -92,7 +92,9 @@ export default function APIPageClient({ machineId }) {
   useEffect(() => {
     if (typeof window !== "undefined")
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setIsRemoteHost(!["localhost", "127.0.0.1", "::1"].includes(window.location.hostname));
+      setIsRemoteHost(
+        !["localhost", "127.0.0.1", "::1"].includes(window.location.hostname),
+      );
   }, []);
 
   // Track app UI locale to gate wenyan caveman levels

@@ -6,7 +6,7 @@ import { formatSSE } from "./streamHelpers.js";
 const OPENAI_RESPONSES_TERMINAL_EVENTS = new Set([
   "response.completed",
   "response.failed",
-  "error"
+  "error",
 ]);
 
 export function getOpenAIResponsesEventName(eventName, chunk) {
@@ -26,24 +26,29 @@ const sharedEncoder = new TextEncoder();
 
 // Encoded response.failed + [DONE] payload for aborted/stalled Responses passthrough streams
 export function buildAbortedResponsesTerminalBytes() {
-  return sharedEncoder.encode(`${formatIncompleteOpenAIResponsesStreamFailure()}data: [DONE]\n\n`);
+  return sharedEncoder.encode(
+    `${formatIncompleteOpenAIResponsesStreamFailure()}data: [DONE]\n\n`,
+  );
 }
 
 // Synthesize a response.failed event for streams that close without a terminal event
 export function formatIncompleteOpenAIResponsesStreamFailure() {
-  return formatSSE({
-    event: "response.failed",
-    data: {
-      type: "response.failed",
-      response: {
-        id: `resp_${Date.now()}`,
-        status: "failed",
-        error: {
-          type: "stream_error",
-          code: "stream_disconnected",
-          message: "stream closed before response.completed"
-        }
-      }
-    }
-  }, FORMATS.OPENAI_RESPONSES);
+  return formatSSE(
+    {
+      event: "response.failed",
+      data: {
+        type: "response.failed",
+        response: {
+          id: `resp_${Date.now()}`,
+          status: "failed",
+          error: {
+            type: "stream_error",
+            code: "stream_disconnected",
+            message: "stream closed before response.completed",
+          },
+        },
+      },
+    },
+    FORMATS.OPENAI_RESPONSES,
+  );
 }

@@ -4,7 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { useTheme } from "@/shared/hooks/useTheme";
 import { EMPTY_STATUS, DEFAULT_OIDC_FORM } from "../utils/profileConstants";
 import { downloadJsonFile } from "../utils/profileDownloadUtils";
-import { getOidcFormFromSettings, getOidcRedirectUri } from "../utils/profileOidcUtils";
+import {
+  getOidcFormFromSettings,
+  getOidcRedirectUri,
+} from "../utils/profileOidcUtils";
 import {
   exportDatabaseBackup,
   fetchSettings,
@@ -18,7 +21,11 @@ export function useProfileSettings() {
   const { theme, setTheme } = useTheme();
   const [settings, setSettings] = useState({ fallbackStrategy: "fill-first" });
   const [loading, setLoading] = useState(true);
-  const [passwords, setPasswords] = useState({ current: "", new: "", confirm: "" });
+  const [passwords, setPasswords] = useState({
+    current: "",
+    new: "",
+    confirm: "",
+  });
   const [passStatus, setPassStatus] = useState(EMPTY_STATUS);
   const [passLoading, setPassLoading] = useState(false);
   const [dbLoading, setDbLoading] = useState(false);
@@ -50,18 +57,21 @@ export function useProfileSettings() {
         setSettings(data);
         setOidcForm(getOidcFormFromSettings(data));
         setOidcClientSecret("");
-        if (data?.authMode === "oidc" || data?.authMode === "both") setOidcExpanded(true);
+        if (data?.authMode === "oidc" || data?.authMode === "both")
+          setOidcExpanded(true);
         setProxyForm({
           outboundProxyUrl: data?.outboundProxyUrl || "",
           outboundNoProxy: data?.outboundNoProxy || "",
-          connectionProxyHeadersTimeoutMs: data?.connectionProxyHeadersTimeoutMs || "",
+          connectionProxyHeadersTimeoutMs:
+            data?.connectionProxyHeadersTimeoutMs || "",
         });
       })
       .catch((err) => console.error("Failed to fetch settings:", err))
       .finally(() => setLoading(false));
   }, []);
 
-  const updateSettings = (data) => setSettings((prev) => ({ ...prev, ...data }));
+  const updateSettings = (data) =>
+    setSettings((prev) => ({ ...prev, ...data }));
 
   const updateOutboundProxy = async (e) => {
     e.preventDefault();
@@ -73,15 +83,19 @@ export function useProfileSettings() {
       const { ok, data } = await patchSettings({
         outboundProxyUrl: proxyForm.outboundProxyUrl,
         outboundNoProxy: proxyForm.outboundNoProxy,
-        connectionProxyHeadersTimeoutMs: proxyForm.connectionProxyHeadersTimeoutMs
-          ? parseInt(proxyForm.connectionProxyHeadersTimeoutMs, 10)
-          : null,
+        connectionProxyHeadersTimeoutMs:
+          proxyForm.connectionProxyHeadersTimeoutMs
+            ? parseInt(proxyForm.connectionProxyHeadersTimeoutMs, 10)
+            : null,
       });
       if (ok) {
         updateSettings(data);
         setProxyStatus({ type: "success", message: "Proxy settings applied" });
       } else {
-        setProxyStatus({ type: "error", message: data.error || "Failed to update proxy settings" });
+        setProxyStatus({
+          type: "error",
+          message: data.error || "Failed to update proxy settings",
+        });
       }
     } catch (err) {
       setProxyStatus({ type: "error", message: "An error occurred" });
@@ -95,7 +109,10 @@ export function useProfileSettings() {
 
     const proxyUrl = (proxyForm.outboundProxyUrl || "").trim();
     if (!proxyUrl) {
-      setProxyStatus({ type: "error", message: "Please enter a Proxy URL to test" });
+      setProxyStatus({
+        type: "error",
+        message: "Please enter a Proxy URL to test",
+      });
       return;
     }
 
@@ -105,9 +122,15 @@ export function useProfileSettings() {
     try {
       const { ok, data } = await testProxyUrl(proxyUrl);
       if (ok && data?.ok) {
-        setProxyStatus({ type: "success", message: `Proxy test OK (${data.status}) in ${data.elapsedMs}ms` });
+        setProxyStatus({
+          type: "success",
+          message: `Proxy test OK (${data.status}) in ${data.elapsedMs}ms`,
+        });
       } else {
-        setProxyStatus({ type: "error", message: data?.error || "Proxy test failed" });
+        setProxyStatus({
+          type: "error",
+          message: data?.error || "Proxy test failed",
+        });
       }
     } catch (err) {
       setProxyStatus({ type: "error", message: "An error occurred" });
@@ -124,9 +147,15 @@ export function useProfileSettings() {
       const { ok, data } = await patchSettings({ outboundProxyEnabled });
       if (ok) {
         updateSettings(data);
-        setProxyStatus({ type: "success", message: outboundProxyEnabled ? "Proxy enabled" : "Proxy disabled" });
+        setProxyStatus({
+          type: "success",
+          message: outboundProxyEnabled ? "Proxy enabled" : "Proxy disabled",
+        });
       } else {
-        setProxyStatus({ type: "error", message: data.error || "Failed to update proxy settings" });
+        setProxyStatus({
+          type: "error",
+          message: data.error || "Failed to update proxy settings",
+        });
       }
     } catch (err) {
       setProxyStatus({ type: "error", message: "An error occurred" });
@@ -151,10 +180,16 @@ export function useProfileSettings() {
         newPassword: passwords.new,
       });
       if (ok) {
-        setPassStatus({ type: "success", message: "Password updated successfully" });
+        setPassStatus({
+          type: "success",
+          message: "Password updated successfully",
+        });
         setPasswords({ current: "", new: "", confirm: "" });
       } else {
-        setPassStatus({ type: "error", message: data.error || "Failed to update password" });
+        setPassStatus({
+          type: "error",
+          message: data.error || "Failed to update password",
+        });
       }
     } catch (err) {
       setPassStatus({ type: "error", message: "An error occurred" });
@@ -173,13 +208,29 @@ export function useProfileSettings() {
   };
 
   const updateFallbackStrategy = (strategy) =>
-    patchSettingValue({ fallbackStrategy: strategy }, { fallbackStrategy: strategy }, "Failed to update settings:");
+    patchSettingValue(
+      { fallbackStrategy: strategy },
+      { fallbackStrategy: strategy },
+      "Failed to update settings:",
+    );
   const updateComboStrategy = (strategy) =>
-    patchSettingValue({ comboStrategy: strategy }, { comboStrategy: strategy }, "Failed to update combo strategy:");
+    patchSettingValue(
+      { comboStrategy: strategy },
+      { comboStrategy: strategy },
+      "Failed to update combo strategy:",
+    );
   const updateRequireLogin = (requireLogin) =>
-    patchSettingValue({ requireLogin }, { requireLogin }, "Failed to update require login:");
+    patchSettingValue(
+      { requireLogin },
+      { requireLogin },
+      "Failed to update require login:",
+    );
   const updateObservabilityEnabled = (enabled) =>
-    patchSettingValue({ enableObservability: enabled }, { enableObservability: enabled }, "Failed to update enableObservability:");
+    patchSettingValue(
+      { enableObservability: enabled },
+      { enableObservability: enabled },
+      "Failed to update enableObservability:",
+    );
 
   const updateStickyLimit = async (limit) => {
     const numLimit = parseInt(limit);
@@ -201,20 +252,29 @@ export function useProfileSettings() {
     );
   };
 
-  const updateOidcForm = (field, value) => setOidcForm((prev) => ({ ...prev, [field]: value }));
-  const updateProxyForm = (field, value) => setProxyForm((prev) => ({ ...prev, [field]: value }));
+  const updateOidcForm = (field, value) =>
+    setOidcForm((prev) => ({ ...prev, [field]: value }));
+  const updateProxyForm = (field, value) =>
+    setProxyForm((prev) => ({ ...prev, [field]: value }));
 
-  const saveOidcSettings = async (authMode = oidcForm.authMode || DEFAULT_OIDC_FORM.authMode) => {
+  const saveOidcSettings = async (
+    authMode = oidcForm.authMode || DEFAULT_OIDC_FORM.authMode,
+  ) => {
     const issuerUrl = oidcForm.oidcIssuerUrl.trim();
     const clientId = oidcForm.oidcClientId.trim();
     const scopes = oidcForm.oidcScopes.trim();
     const loginLabel = oidcForm.oidcLoginLabel.trim();
     const secret = oidcClientSecret.trim();
 
-    if (authMode !== "password" && (!issuerUrl || !clientId || !secret) && !settings.oidcConfigured) {
+    if (
+      authMode !== "password" &&
+      (!issuerUrl || !clientId || !secret) &&
+      !settings.oidcConfigured
+    ) {
       setOidcStatus({
         type: "error",
-        message: "Issuer URL, client ID, and client secret are required to enable OIDC.",
+        message:
+          "Issuer URL, client ID, and client secret are required to enable OIDC.",
       });
       return;
     }
@@ -247,7 +307,10 @@ export function useProfileSettings() {
                 : "OIDC settings saved",
         });
       } else {
-        setOidcStatus({ type: "error", message: data.error || "Failed to save OIDC settings" });
+        setOidcStatus({
+          type: "error",
+          message: data.error || "Failed to save OIDC settings",
+        });
       }
     } catch (err) {
       setOidcStatus({ type: "error", message: "An error occurred" });
@@ -263,7 +326,11 @@ export function useProfileSettings() {
     const secret = oidcClientSecret.trim();
 
     if (!issuerUrl || !clientId) {
-      setOidcTestStatus({ type: "error", message: "Issuer URL and client ID are required to test the connection." });
+      setOidcTestStatus({
+        type: "error",
+        message:
+          "Issuer URL and client ID are required to test the connection.",
+      });
       return;
     }
 
@@ -277,12 +344,16 @@ export function useProfileSettings() {
         oidcIssuerUrl: issuerUrl,
         oidcClientId: clientId,
         oidcScopes: scopes || DEFAULT_OIDC_FORM.oidcScopes,
-        oidcLoginLabel: oidcForm.oidcLoginLabel.trim() || DEFAULT_OIDC_FORM.oidcLoginLabel,
+        oidcLoginLabel:
+          oidcForm.oidcLoginLabel.trim() || DEFAULT_OIDC_FORM.oidcLoginLabel,
         ...(secret ? { oidcClientSecret: secret } : {}),
       };
       const { ok: saveOk, data: saved } = await patchSettings(savePayload);
       if (!saveOk) {
-        setOidcTestStatus({ type: "error", message: saved.error || "Failed to save OIDC settings before testing" });
+        setOidcTestStatus({
+          type: "error",
+          message: saved.error || "Failed to save OIDC settings before testing",
+        });
         return;
       }
 
@@ -299,7 +370,10 @@ export function useProfileSettings() {
           : `Connection OK. Discovery loaded from ${data.issuerUrl}.`;
         setOidcTestStatus({ type: "success", message: statusMessage });
       } else {
-        setOidcTestStatus({ type: "error", message: data.error || "OIDC connection test failed" });
+        setOidcTestStatus({
+          type: "error",
+          message: data.error || "OIDC connection test failed",
+        });
       }
     } catch (err) {
       setOidcTestStatus({ type: "error", message: "An error occurred" });
@@ -321,12 +395,17 @@ export function useProfileSettings() {
     setDbLoading(true);
     setDbStatus(EMPTY_STATUS);
     try {
-      const { ok, data } = await exportDatabaseBackup({ includeUsageAnalytics });
+      const { ok, data } = await exportDatabaseBackup({
+        includeUsageAnalytics,
+      });
       if (!ok) throw new Error(data.error || "Failed to export database");
       downloadJsonFile(data);
       setDbStatus({ type: "success", message: "Database backup downloaded" });
     } catch (err) {
-      setDbStatus({ type: "error", message: err.message || "Failed to export database" });
+      setDbStatus({
+        type: "error",
+        message: err.message || "Failed to export database",
+      });
     } finally {
       setDbLoading(false);
     }
@@ -343,7 +422,8 @@ export function useProfileSettings() {
       const raw = await file.text();
       const payload = JSON.parse(raw);
       const analyticsIncluded = !!payload?.usageAnalytics;
-      const shouldRestoreUsageAnalytics = analyticsIncluded && restoreUsageAnalytics;
+      const shouldRestoreUsageAnalytics =
+        analyticsIncluded && restoreUsageAnalytics;
       const { ok, data } = await importDatabaseBackup({
         ...payload,
         restoreUsageAnalytics: shouldRestoreUsageAnalytics,
@@ -359,7 +439,10 @@ export function useProfileSettings() {
             : "Database imported successfully",
       });
     } catch (err) {
-      setDbStatus({ type: "error", message: err.message || "Invalid backup file" });
+      setDbStatus({
+        type: "error",
+        message: err.message || "Invalid backup file",
+      });
     } finally {
       if (importFileRef.current) importFileRef.current.value = "";
       setDbLoading(false);
