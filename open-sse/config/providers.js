@@ -211,7 +211,7 @@ export const PROVIDERS = {
     baseUrl:
       "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse",
     format: "kiro",
-    retry: { 429: 2 },
+    retry: { 429: 2, 500: 3 },
     headers: {
       "Content-Type": "application/json",
       Accept: "application/vnd.amazon.eventstream",
