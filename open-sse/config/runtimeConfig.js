@@ -37,7 +37,7 @@ export const MEMORY_CONFIG = {
 };
 
 // Stream stall timeout: abort if no chunk received within this duration
-export const STREAM_STALL_TIMEOUT_MS = 60 * 1000;
+export const STREAM_STALL_TIMEOUT_MS = 5 * 60 * 1000;
 
 // Semantic stall timeout: abort if generated content size hasn't grown within this duration
 export const STREAM_SEMANTIC_STALL_TIMEOUT_MS =
