@@ -152,9 +152,8 @@ function aggregateByEndpoint(byEndpoint, stats, dateKey, providerNodeNameMap) {
 
 // --- Internal: overlay precise lastUsed timestamps from history ---
 
-function overlayLastUsedFromHistory(stats, maxDays, connectionMap) {
+function overlayLastUsedFromHistory(db, stats, maxDays, connectionMap) {
   const overlayCutoff = maxDays ? Date.now() - maxDays * 86400000 : 0;
-  const db = getAdapter();
   const histRows = db.all(
     `SELECT timestamp, provider, model, connectionId, apiKey, endpoint FROM usageHistory WHERE timestamp >= ?`,
     [new Date(overlayCutoff).toISOString()],
@@ -301,6 +300,9 @@ function aggregateLiveHistory(filtered, stats, connectionMap, apiKeyMap, provide
 
 function buildActiveRequests(connectionMap) {
   const activeRequests = [];
+  const seenProviders = new Set();
+
+  // 1) Requests tracked by account (connectionId present)
   for (const [connectionId, models] of Object.entries(
     pendingRequests.byAccount,
   )) {
@@ -310,15 +312,37 @@ function buildActiveRequests(connectionMap) {
           connectionMap[connectionId] ||
           `Account ${connectionId.slice(0, 8)}...`;
         const match = modelKey.match(/^(.*) \((.*)\)$/);
+        const provider = match ? match[2] : "unknown";
         activeRequests.push({
           model: match ? match[1] : modelKey,
-          provider: match ? match[2] : "unknown",
+          provider,
           account: accountName,
           count,
         });
+        seenProviders.add(provider.toLowerCase());
       }
     }
   }
+
+  // 2) Requests without connectionId (free/noAuth providers like mimo-free)
+  //    These are tracked in byModel only — extract provider from modelKey
+  for (const [modelKey, count] of Object.entries(
+    pendingRequests.byModel,
+  )) {
+    if (count <= 0) continue;
+    const match = modelKey.match(/^(.*) \((.*)\)$/);
+    if (!match) continue;
+    const provider = match[2];
+    if (seenProviders.has(provider.toLowerCase())) continue;
+    seenProviders.add(provider.toLowerCase());
+    activeRequests.push({
+      model: match[1],
+      provider,
+      account: "(Free)",
+      count,
+    });
+  }
+
   return activeRequests;
 }
 
@@ -429,7 +453,7 @@ export async function getUsageStats(period = "all") {
     const maxDays = periodDays[period] || null;
     const dayRows = loadDaysInRange(db, maxDays);
     aggregateDailyData(dayRows, stats, connectionMap, providerNodeNameMap, apiKeyMap);
-    overlayLastUsedFromHistory(stats, maxDays, connectionMap);
+    overlayLastUsedFromHistory(db, stats, maxDays, connectionMap);
   } else {
     // 24h / today: live history
     let cutoff;

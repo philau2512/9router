@@ -231,7 +231,8 @@ export function deduplicateRecentRequests(rows, maxItems = 20) {
   const seen = new Set();
   return rows
     .map((r) => {
-      const t = r.tokens || {};
+      // tokens may be a JSON string (from DB) or already-parsed object (from ring buffer)
+      const t = typeof r.tokens === "string" ? parseJson(r.tokens, {}) : (r.tokens || {});
       return {
         timestamp: r.timestamp,
         model: r.model,
