@@ -279,7 +279,7 @@ export default function UsageStats({
   const setPeriod = setPeriodProp ?? setPeriodLocal;
 
   // Fetch connected providers once, deduplicate by provider type
-  // Always include noAuth free providers (e.g. opencode) regardless of connections
+  // Always include noAuth free providers (e.g. opencode, mimo-free) regardless of connections
   useEffect(() => {
     fetch("/api/providers")
       .then((r) => (r.ok ? r.json() : null))

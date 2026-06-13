@@ -221,6 +221,55 @@ export function incrementStatsEntry(entry, promptTokens, completionTokens, cost,
     entry.lastUsed = timestamp;
 }
 
+// --- Active request extraction from pendingRequests state ---
+
+/**
+ * Extract active requests from pendingRequests global state.
+ *
+ * Accounts with connectionId are tracked in byAccount; free/noAuth providers
+ * (e.g. mimo-free) have no connectionId and are only in byModel.
+ * This function handles both cases and deduplicates by provider.
+ *
+ * @param {object} pending - { byAccount, byModel }
+ * @param {object} connectionMap - { [connectionId]: displayName }
+ * @returns {Array<{model, provider, account, count}>}
+ */
+export function extractActiveFromPending(pending, connectionMap = {}) {
+  const activeRequests = [];
+  const seenProviders = new Set();
+
+  // 1) Requests with connectionId tracked in byAccount
+  for (const [connectionId, models] of Object.entries(pending.byAccount || {})) {
+    for (const [modelKey, count] of Object.entries(models)) {
+      if (count <= 0) continue;
+      const accountName =
+        connectionMap[connectionId] || `Account ${connectionId.slice(0, 8)}...`;
+      const match = modelKey.match(/^(.*) \((.*)\)$/);
+      const provider = match ? match[2] : "unknown";
+      activeRequests.push({
+        model: match ? match[1] : modelKey,
+        provider,
+        account: accountName,
+        count,
+      });
+      seenProviders.add(provider.toLowerCase());
+    }
+  }
+
+  // 2) Free/noAuth providers (e.g. mimo-free) only tracked in byModel
+  for (const [modelKey, count] of Object.entries(pending.byModel || {})) {
+    if (count <= 0) continue;
+    const match = modelKey.match(/^(.*) \((.*)\)$/);
+    if (!match) continue;
+    const provider = match[2];
+    if (seenProviders.has(provider.toLowerCase())) continue;
+    seenProviders.add(provider.toLowerCase());
+    activeRequests.push({ model: match[1], provider, account: "(Free)", count });
+  }
+
+  return activeRequests;
+}
+
 // --- Deduplication for recent requests ---
 
 /**
@@ -250,6 +299,8 @@ export function deduplicateRecentRequests(rows, maxItems = 20) {
       seen.add(key);
       return true;
     })
+    // Always return newest-first regardless of input order
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     .slice(0, maxItems);
 }
 

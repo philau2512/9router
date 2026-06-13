@@ -199,11 +199,12 @@ function buildLayout(providers, activeSet, lastSet, errorSet) {
     draggable: false,
   });
 
-  const edgeStyle = (active, last, error, color) => {
+  const edgeStyle = (active, last, error, _color) => {
     if (error) return { stroke: "#ef4444", strokeWidth: 2.5, opacity: 0.9 };
     if (active) return { stroke: "#22c55e", strokeWidth: 2.5, opacity: 0.9 };
     if (last) return { stroke: "#f59e0b", strokeWidth: 2, opacity: 0.7 };
-    return { stroke: "var(--color-border)", strokeWidth: 1, opacity: 0.3 };
+    // Use hardcoded color instead of CSS variable for reliable cross-theme visibility
+    return { stroke: "#4b5563", strokeWidth: 1.5, opacity: 0.5 };
   };
 
   providers.forEach((p, i) => {

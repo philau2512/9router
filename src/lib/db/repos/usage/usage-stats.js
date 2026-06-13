@@ -17,6 +17,7 @@ import {
   createStatsEntry,
   incrementStatsEntry,
   deduplicateRecentRequests,
+  extractActiveFromPending,
   parseDateOrNull,
   normalizeApiKeyValue,
 } from "./usage-helpers.js";
@@ -299,51 +300,7 @@ function aggregateLiveHistory(filtered, stats, connectionMap, apiKeyMap, provide
 // --- Internal: build active requests list ---
 
 function buildActiveRequests(connectionMap) {
-  const activeRequests = [];
-  const seenProviders = new Set();
-
-  // 1) Requests tracked by account (connectionId present)
-  for (const [connectionId, models] of Object.entries(
-    pendingRequests.byAccount,
-  )) {
-    for (const [modelKey, count] of Object.entries(models)) {
-      if (count > 0) {
-        const accountName =
-          connectionMap[connectionId] ||
-          `Account ${connectionId.slice(0, 8)}...`;
-        const match = modelKey.match(/^(.*) \((.*)\)$/);
-        const provider = match ? match[2] : "unknown";
-        activeRequests.push({
-          model: match ? match[1] : modelKey,
-          provider,
-          account: accountName,
-          count,
-        });
-        seenProviders.add(provider.toLowerCase());
-      }
-    }
-  }
-
-  // 2) Requests without connectionId (free/noAuth providers like mimo-free)
-  //    These are tracked in byModel only — extract provider from modelKey
-  for (const [modelKey, count] of Object.entries(
-    pendingRequests.byModel,
-  )) {
-    if (count <= 0) continue;
-    const match = modelKey.match(/^(.*) \((.*)\)$/);
-    if (!match) continue;
-    const provider = match[2];
-    if (seenProviders.has(provider.toLowerCase())) continue;
-    seenProviders.add(provider.toLowerCase());
-    activeRequests.push({
-      model: match[1],
-      provider,
-      account: "(Free)",
-      count,
-    });
-  }
-
-  return activeRequests;
+  return extractActiveFromPending(pendingRequests, connectionMap);
 }
 
 // --- Internal: build recent requests (10-minute buckets) ---
