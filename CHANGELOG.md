@@ -1,3 +1,41 @@
+# v0.4.80 (2026-06-13)
+
+## Features
+
+- Kiro: multi-endpoint failover (`baseUrls` array) with lock-cascade prevention on AWS 500 errors
+- Kiro: `profileArn` auto-resolve for IDC connections (self-heal missing profileArn on refresh)
+- Vertex AI: support `gcloud auth application-default login` (ADC `authorized_user` credential format)
+- Qoder: COSY signing (RSA+AES+MD5) executor rewrite with full upstream implementation
+- MiMo Code Free: new free-tier provider (no auth required, `mimo-auto` model)
+- MiniMax M3: new model with Claude-format translation + `reasoning_content` echo
+- Gemini 3.5 Flash Extra Low: add pricing
+- GitHub Copilot: add GPT-5-mini, GPT-5.4-nano model slots
+- SSRF guard: block internal IP web fetch requests (`assertPublicUrl`)
+- Dashboard: re-auth with `verifyDashboardPassword` for DB export/import
+- Login: `mustChangePassword` flag for default-password remote access warning
+- Tailscale: add `/usr/sbin/tailscale` and `/snap/bin/tailscale` candidate paths
+
+## Fixes
+
+- Streaming: per-provider `stallTimeoutMs` (Qoder needs 120s; configurable)
+- Streaming: fix `nonStreamingHandler` null-content crash (`content` may be missing or non-array)
+- OAuth refresh: unified `classifyOAuthRefreshError` (permanent vs transient classification)
+- Codex OAuth: fix JSON body format on refresh
+- Gemini: fix unsigned thought routing (`delta.reasoning_content` instead of `delta.content`)
+- Translator: strip `x-anthropic-billing-header` from system messages sent upstream
+- Rate limiter: use `x-9r-real-ip` (TCP socket trusted) instead of forwarded headers
+- `tool_choice` fix for OpenAI-compatible providers
+- MiMo Code Free: add `mimo-free` filter to suggested-models endpoint (model list was empty)
+
+## Improvements
+
+- Dashboard: provider topology label fallback chain includes `nodeName`
+- Dashboard: combos page filter `kind === "llm"` (hide non-LLM combos)
+- Reasoning injector: add MiniMax + MiniMax-CN scope; kimi/deepseek use regex match
+- ConnectionRow: redesign badge layout — grouped Status / Events / Error rows for clarity
+- ConnectionRow: error messages no longer truncated (full `break-words` display)
+- i18n: merge upstream translations (fork strings preserved on conflict)
+
 # v0.4.71 (2026-06-06)
 
 ## Features
