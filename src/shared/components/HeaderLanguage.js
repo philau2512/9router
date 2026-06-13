@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
 import { LOCALE_FLAGS } from "@/shared/constants/locales";
 import LanguageSwitcher from "./LanguageSwitcher";
@@ -16,11 +16,8 @@ function getLocaleFromCookie() {
 
 export default function HeaderLanguage() {
   const [open, setOpen] = useState(false);
-  const [locale, setLocale] = useState("en");
-
-  useEffect(() => {
-    setLocale(getLocaleFromCookie());
-  }, [open]);
+  // Read locale from cookie on each render (SSR-safe via lazy initializer)
+  const [locale] = useState(getLocaleFromCookie);
 
   return (
     <>

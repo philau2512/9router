@@ -31,9 +31,8 @@ describe("OpenAI → Kiro", () => {
     ).not.toThrow();
   });
 
-  // openai-to-kiro.js:309 — maxTokens hardcoded to 32000, ignores body.max_tokens
-  // KNOWN BUG
-  it.fails("respects client max_tokens", () => {
+  // openai-to-kiro.js — maxTokens now respects client max_tokens (fixed by upstream)
+  it("respects client max_tokens", () => {
     const out = O2K({
       max_tokens: 100,
       messages: [{ role: "user", content: "hi" }],
