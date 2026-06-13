@@ -165,4 +165,34 @@ describe("buildKiroPayload", () => {
       );
     });
   });
+
+  describe("profileArn fallback", () => {
+    it("should fallback to builder-id profileArn when missing in credentials", () => {
+      const body = {
+        messages: [{ role: "user", content: "Hello" }],
+      };
+      const credentials = {
+        providerSpecificData: {
+          profileArn: null,
+          authMethod: "builder-id",
+        },
+      };
+      const result = buildKiroPayload("claude-sonnet-4.6", body, true, credentials);
+      expect(result.profileArn).toBe("arn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX");
+    });
+
+    it("should fallback to social profileArn when authMethod is google/github", () => {
+      const body = {
+        messages: [{ role: "user", content: "Hello" }],
+      };
+      const credentials = {
+        providerSpecificData: {
+          profileArn: null,
+          authMethod: "google",
+        },
+      };
+      const result = buildKiroPayload("claude-sonnet-4.6", body, true, credentials);
+      expect(result.profileArn).toBe("arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK");
+    });
+  });
 });
