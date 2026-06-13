@@ -183,6 +183,17 @@ export async function POST(request) {
           { status: 404 },
         );
       }
+      // Compatible/embedding nodes allow exactly one connection each.
+      const existingConnections = await getProviderConnections({ provider });
+      if (existingConnections.length > 0) {
+        return NextResponse.json(
+          {
+            error:
+              "Only one connection is allowed for this OpenAI Compatible node",
+          },
+          { status: 400 },
+        );
+      }
       providerSpecificData = {
         prefix: node.prefix,
         apiType: node.apiType,

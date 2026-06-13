@@ -215,6 +215,7 @@ function buildLayout(providers, activeSet, lastSet, errorSet) {
     const data = {
       label:
         (config.name !== p.provider ? config.name : null) ||
+        p.nodeName ||
         p.name ||
         p.provider,
       color: config.color || "#6b7280",

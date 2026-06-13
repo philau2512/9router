@@ -46,6 +46,28 @@ export const FREE_PROVIDERS = {
       type: "opencode-free",
     },
   },
+  qoder: {
+    id: "qoder",
+    alias: "qd",
+    name: "Qoder",
+    icon: "water_drop",
+    color: "#EC4899",
+    deprecated: true,
+    deprecationNotice: RISK_NOTICE,
+    website: "https://qoder.com",
+    notice: { signupUrl: "https://qoder.com" },
+  },
+  "mimo-free": {
+    id: "mimo-free",
+    alias: "mmf",
+    name: "MiMo Code Free",
+    icon: "smart_toy",
+    color: "#FF6900",
+    textIcon: "MF",
+    noAuth: true,
+    passthroughModels: true,
+    modelsFetcher: { url: "https://models.dev/api.json", type: "mimo-free" },
+  },
 };
 
 // Free Tier Providers (has free access but may require account/API key)
@@ -1961,6 +1983,8 @@ export const USAGE_SUPPORTED_PROVIDERS = [
   "glm-cn",
   "minimax",
   "minimax-cn",
+  "qoder",
+  "vercel-ai-gateway",
 ];
 
 // Subset that uses apikey auth (still surfaced on quota page)
@@ -1969,4 +1993,5 @@ export const USAGE_APIKEY_PROVIDERS = [
   "glm-cn",
   "minimax",
   "minimax-cn",
+  "vercel-ai-gateway",
 ];

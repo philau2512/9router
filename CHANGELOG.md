@@ -1,6 +1,45 @@
+# v0.4.80 (2026-06-13)
+
+## Features
+
+- Kiro: multi-endpoint failover (`baseUrls` array) with lock-cascade prevention on AWS 500 errors
+- Kiro: `profileArn` auto-resolve for IDC connections (self-heal missing profileArn on refresh)
+- Vertex AI: support `gcloud auth application-default login` (ADC `authorized_user` credential format)
+- Qoder: COSY signing (RSA+AES+MD5) executor rewrite with full upstream implementation
+- MiMo Code Free: new free-tier provider (no auth required, `mimo-auto` model)
+- MiniMax M3: new model with Claude-format translation + `reasoning_content` echo
+- Gemini 3.5 Flash Extra Low: add pricing
+- GitHub Copilot: add GPT-5-mini, GPT-5.4-nano model slots
+- SSRF guard: block internal IP web fetch requests (`assertPublicUrl`)
+- Dashboard: re-auth with `verifyDashboardPassword` for DB export/import
+- Login: `mustChangePassword` flag for default-password remote access warning
+- Tailscale: add `/usr/sbin/tailscale` and `/snap/bin/tailscale` candidate paths
+
+## Fixes
+
+- Streaming: per-provider `stallTimeoutMs` (Qoder needs 120s; configurable)
+- Streaming: fix `nonStreamingHandler` null-content crash (`content` may be missing or non-array)
+- OAuth refresh: unified `classifyOAuthRefreshError` (permanent vs transient classification)
+- Codex OAuth: fix JSON body format on refresh
+- Gemini: fix unsigned thought routing (`delta.reasoning_content` instead of `delta.content`)
+- Translator: strip `x-anthropic-billing-header` from system messages sent upstream
+- Rate limiter: use `x-9r-real-ip` (TCP socket trusted) instead of forwarded headers
+- `tool_choice` fix for OpenAI-compatible providers
+- MiMo Code Free: add `mimo-free` filter to suggested-models endpoint (model list was empty)
+
+## Improvements
+
+- Dashboard: provider topology label fallback chain includes `nodeName`
+- Dashboard: combos page filter `kind === "llm"` (hide non-LLM combos)
+- Reasoning injector: add MiniMax + MiniMax-CN scope; kimi/deepseek use regex match
+- ConnectionRow: redesign badge layout — grouped Status / Events / Error rows for clarity
+- ConnectionRow: error messages no longer truncated (full `break-words` display)
+- i18n: merge upstream translations (fork strings preserved on conflict)
+
 # v0.4.71 (2026-06-06)
 
 ## Features
+
 - Caveman: add wenyan classical Chinese levels and sync upstream prompts; locale-based visibility on endpoint page
 - i18n: endpoint exposure notice across multiple languages + Russian README
 - Antigravity: add gemini-3.5-flash-extra-low (Low) model
@@ -9,6 +48,7 @@
 - MiniMax: add MiniMax-M3 + update Quota Tracker coding/CN (#1631)
 
 ## Fixes
+
 - Codex: harden streaming timeouts (stall/connect raised to 60s, configurable per-provider), accept `response.done` event, and always emit a terminal `response.failed` + `[DONE]` for Responses passthrough when a stream closes, stalls, or aborts before a terminal event — prevents codex clients from hanging (#1648, #1680, #1688, #1618)
 - Codex: durable OAuth refresh lifecycle (#1664)
 - Tunnel: skip virtual interfaces to prevent false netchange watchdog
@@ -22,21 +62,25 @@
 - Model-test: route image/STT probes to their real endpoints, harden STT ping; add opencode-go + xiaomi-tokenplan to connection test (#1576, #1628)
 
 ## Improvements
+
 - Dashboard: reorganize menu actions across sidebar/header/profile
 - Translator: add data-driven coverage, bug-exposing cases, and real provider smoke tests
 
 # v0.4.66 (2026-05-29)
 
 ## Features
+
 - Add Qoder provider: device-flow OAuth, COSY signing, WAF-bypass body encoding, live model catalog, dashboard quota tracker, 11 models (#1372)
 - Add new models: Claude Opus 4.8 (Claude Code), GPT 5.4 Mini (Codex)
 
 ## Fixes
+
 - DeepSeek thinking mode: echo `reasoning_content` back on follow-up/tool-call turns so OpenCode-free and custom providers no longer 400 with "reasoning_content must be passed back" (#1543)
 - Reasoning injector: match deepseek/kimi model ids case-insensitively (covers custom providers using capitalized model names)
 - OpenCode suggested-models: include free models without the `-free` suffix, e.g. `big-pickle` (#1535)
 
 ## Improvements
+
 - Codex: trim sunset models, keep gpt-5.5 / gpt-5.4 / gpt-5.3-codex family, add gpt-5.4-mini
 - volcengine-ark: refresh model list (add DeepSeek-V4-Flash/Pro, drop EOL entries)
 - Lower stream stall timeout 35s → 30s for faster hang detection
@@ -44,10 +88,12 @@
 # v0.4.63 (2026-05-26)
 
 ## Fixes
+
 - GitHub Copilot: never route Gemini/Claude models to the `/responses` endpoint; prevents misleading "does not support Responses API" 400s (#1062)
 - proxyFetch: restore missing `Readable` import causing runtime `ReferenceError` in DNS-bypass fetch path
 
 ## Improvements
+
 - Lower stream stall timeout from 60s → 35s for faster hang detection
 
 # v0.4.62 (2026-05-26)

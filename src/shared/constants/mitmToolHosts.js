@@ -8,7 +8,11 @@ const TOOL_HOSTS = {
     "cloudcode-pa.googleapis.com",
   ],
   copilot: ["api.individual.githubcopilot.com"],
-  kiro: ["q.us-east-1.amazonaws.com", "codewhisperer.us-east-1.amazonaws.com"],
+  kiro: [
+    "runtime.us-east-1.kiro.dev",
+    "q.us-east-1.amazonaws.com",
+    "codewhisperer.us-east-1.amazonaws.com",
+  ],
   cursor: ["api2.cursor.sh"],
 };
 

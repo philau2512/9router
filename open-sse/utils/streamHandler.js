@@ -446,6 +446,7 @@ export function pipeWithDisconnect(
   onAbortTerminal = null,
   streamStateTracker = null,
   timing = null,
+  stallTimeoutMs = STREAM_STALL_TIMEOUT_MS,
 ) {
   let stallTimer = null;
   let semanticStallTimer = null;
@@ -480,11 +481,11 @@ export function pipeWithDisconnect(
       stallTimer = null;
       dbg(
         tag,
-        `STALL TIMEOUT ${STREAM_STALL_TIMEOUT_MS}ms | chunks=${chunkCount} | bytes=${totalBytes} | sinceLast=${Date.now() - lastChunkAt}ms`,
+        `STALL TIMEOUT ${stallTimeoutMs}ms | chunks=${chunkCount} | bytes=${totalBytes} | sinceLast=${Date.now() - lastChunkAt}ms`,
       );
       streamController.handleError?.(new Error("stream stall timeout"));
       streamController.abort?.();
-    }, STREAM_STALL_TIMEOUT_MS);
+    }, stallTimeoutMs);
   };
 
   const startSemanticStallWatchdog = () => {
@@ -560,7 +561,7 @@ export function pipeWithDisconnect(
   // (not at init) so fake-timer tests using runAllTimersAsync don't infinite-loop.
   dbg(
     tag,
-    `pipe start | stallTimeout=${STREAM_STALL_TIMEOUT_MS}ms | semanticStallTimeout=${STREAM_SEMANTIC_STALL_TIMEOUT_MS}ms`,
+    `pipe start | stallTimeout=${stallTimeoutMs}ms | semanticStallTimeout=${STREAM_SEMANTIC_STALL_TIMEOUT_MS}ms`,
   );
 
   const upstreamTap = new TransformStream({

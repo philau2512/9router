@@ -33,6 +33,7 @@ export const PROVIDER_MODELS = {
   // OAuth Providers (using alias)
   cc: [
     // Claude Code
+    { id: "claude-opus-4-8", name: "Claude Opus 4.8" },
     { id: "claude-opus-4-7", name: "Claude Opus 4.7" },
     { id: "claude-opus-4-6", name: "Claude Opus 4.6" },
     { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
@@ -44,6 +45,7 @@ export const PROVIDER_MODELS = {
     // OpenAI Codex
     { id: "gpt-5.5", name: "GPT 5.5" },
     { id: "gpt-5.4", name: "GPT 5.4" },
+    { id: "gpt-5.4-mini", name: "GPT 5.4 Mini" },
     // GPT 5.3 Codex - all thinking levels
     { id: "gpt-5.3-codex", name: "GPT 5.3 Codex" },
     { id: "gpt-5.3-codex-xhigh", name: "GPT 5.3 Codex (xHigh)" },
@@ -151,6 +153,7 @@ export const PROVIDER_MODELS = {
     // Antigravity - special case: models call different backends
     { id: "gemini-3-flash-agent", name: "Gemini 3.5 Flash (High)" },
     { id: "gemini-3.5-flash-low", name: "Gemini 3.5 Flash (Medium)" },
+    { id: "gemini-3.5-flash-extra-low", name: "Gemini 3.5 Flash (Low)" },
     { id: "gemini-pro-agent", name: "Gemini 3.1 Pro (High)" },
     { id: "gemini-3.1-pro-low", name: "Gemini 3.1 Pro (Low)" },
     { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6 (Thinking)" },
@@ -291,6 +294,33 @@ export const PROVIDER_MODELS = {
     // { id: "big-pickle", name: "Big Pickle", targetFormat: "claude" },
     // { id: "minimax-m2.5-free", name: "MiniMax M2.5", targetFormat: "claude" },
     // { id: "trinity-large-preview-free", name: "Trinity Large Preview" },
+  ],
+  qd: [
+    // Qoder - tier + frontier models (server-published catalog)
+    // Tier models — pick a quality/cost tradeoff
+    { id: "auto", name: "Qoder Auto" },
+    { id: "ultimate", name: "Qoder Ultimate" },
+    { id: "performance", name: "Qoder Performance" },
+    { id: "efficient", name: "Qoder Efficient" },
+    { id: "lite", name: "Qoder Lite" },
+    // Frontier models — pin a specific backing model
+    { id: "qmodel", name: "Qwen 3.6 Plus (Qoder)" },
+    { id: "qmodel_latest", name: "Qoder Qwen 3.7 Max" },
+    { id: "dmodel", name: "DeepSeek V4 Pro (Qoder)" },
+    { id: "dfmodel", name: "DeepSeek V4 Flash (Qoder)" },
+    { id: "gm51model", name: "GLM 5.1 (Qoder)" },
+    { id: "kmodel", name: "Kimi K2.6 (Qoder)" },
+    { id: "mmodel", name: "MiniMax M2.7 (Qoder)" },
+  ],
+  mmf: [
+    // MiMo Free — all requests route to mimo-auto on the backend,
+    // but frontend model selection is preserved per PR #1803 pattern
+    { id: "mimo-auto", name: "MiMo Auto" },
+    { id: "mimo-v2.5-pro", name: "MiMo V2.5 Pro" },
+    { id: "mimo-v2.5", name: "MiMo V2.5" },
+    { id: "mimo-v2-pro", name: "MiMo V2 Pro" },
+    { id: "mimo-v2-omni", name: "MiMo V2 Omni" },
+    { id: "mimo-v2-flash", name: "MiMo V2 Flash" },
   ],
 
   cl: [
@@ -563,6 +593,7 @@ export const PROVIDER_MODELS = {
     { id: "kimi-latest", name: "Kimi Latest" },
   ],
   minimax: [
+    { id: "MiniMax-M3", name: "MiniMax M3", targetFormat: "claude" },
     { id: "MiniMax-M2.7", name: "MiniMax M2.7" },
     { id: "MiniMax-M2.5", name: "MiniMax M2.5" },
     { id: "MiniMax-M2.1", name: "MiniMax M2.1" },
@@ -594,6 +625,7 @@ export const PROVIDER_MODELS = {
     { id: "qwen3-vl-plus", name: "Qwen3 VL Plus" },
   ],
   "minimax-cn": [
+    { id: "MiniMax-M3", name: "MiniMax M3", targetFormat: "claude" },
     { id: "MiniMax-M2.7", name: "MiniMax M2.7" },
     { id: "MiniMax-M2.5", name: "MiniMax M2.5" },
     { id: "MiniMax-M2.1", name: "MiniMax M2.1" },
@@ -1449,6 +1481,7 @@ const OAUTH_ALIASES = {
   kilocode: "kc",
   cline: "cl",
   opencode: "oc",
+  "mimo-free": "mmf",
   vertex: "vertex",
   "vertex-partner": "vertex-partner",
 };
