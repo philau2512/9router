@@ -32,7 +32,10 @@ export function checkFallbackError(status, errorText, backoffLevel = 0) {
       ).toLowerCase()
     : "";
 
-  if (lowerError.includes("model is not supported")) {
+  if (
+    lowerError.includes("model is not supported") ||
+    lowerError.includes("encountered an unexpected error when processing the request")
+  ) {
     return { shouldFallback: false, cooldownMs: 0 };
   }
 

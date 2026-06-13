@@ -215,7 +215,6 @@ export class BaseExecutor {
           proxyOptions,
         );
         clearTimeout(connectTimer);
-        clearTimeout(timeoutTimer);
 
         const ct = response.headers?.get?.("content-type") || "";
         const cl = response.headers?.get?.("content-length") || "?";
@@ -274,10 +273,6 @@ export class BaseExecutor {
 
         // Connection successful! Let the stream run indefinitely after headers arrive.
 
-        if (clientSignalListener && signal) {
-          signal.removeEventListener("abort", clientSignalListener);
-        }
-
         if (!response.ok) {
           let bodyText = "";
           try {
@@ -322,10 +317,6 @@ export class BaseExecutor {
         return { response, url, headers, transformedBody };
       } catch (error) {
         clearTimeout(connectTimer);
-        clearTimeout(timeoutTimer);
-        if (clientSignalListener && signal) {
-          signal.removeEventListener("abort", clientSignalListener);
-        }
 
         lastError = error;
         const isConnectTimeout =
@@ -337,13 +328,12 @@ export class BaseExecutor {
 
         // Preserve branch-specific provider timeout behavior.
         const isTimeout =
-          timedOut ||
           error.name === "TimeoutError" ||
           error.status === 504 ||
           isConnectTimeout;
         if (isTimeout) {
           const timeoutError = new Error(
-            `Connection to provider ${this.provider} timed out after ${timedOut ? timeoutMs : FETCH_CONNECT_TIMEOUT_MS}ms`,
+            `Connection to provider ${this.provider} timed out after ${timeoutMs}ms`,
           );
           timeoutError.name = "TimeoutError";
           timeoutError.status = 504;
