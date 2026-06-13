@@ -5,6 +5,8 @@ import {
   createPassthroughStreamWithLogger,
 } from "../../utils/stream.js";
 import { pipeWithDisconnect } from "../../utils/streamHandler.js";
+import { PROVIDERS } from "../../config/providers.js";
+import { STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamHelpers.js";
 import {
   buildRequestDetail,
@@ -137,6 +139,8 @@ export function handleStreamingResponse({
   const onAbortTerminal = isResponsesPassthrough
     ? buildAbortedResponsesTerminalBytes
     : null;
+  // Per-provider stall timeout override (e.g. Qoder reasoning models need 120s)
+  const stallTimeoutMs = PROVIDERS[provider]?.stallTimeoutMs || STREAM_STALL_TIMEOUT_MS;
 
   // Track accumulated content for semantic stall detection and mid-stream resume
   const streamStateTracker = {
@@ -171,6 +175,7 @@ export function handleStreamingResponse({
     onAbortTerminal,
     streamStateTracker,
     timing,
+    stallTimeoutMs,
   );
 
   setImmediate(() => {
