@@ -406,9 +406,14 @@ async function resolveKiroProfileArnPatch(
   if (providerSpecificData?.profileArn) return {};
   let profileArn = refreshedArn?.trim?.() || null;
   if (!profileArn) {
-    const { fetchKiroProfileArn } =
-      await import("../../src/lib/oauth/providers.js");
-    profileArn = await fetchKiroProfileArn(accessToken);
+    try {
+      const providers = await import("../../src/lib/oauth/providers.js");
+      if (typeof providers.fetchKiroProfileArn === "function") {
+        profileArn = await providers.fetchKiroProfileArn(accessToken);
+      }
+    } catch (err) {
+      // Ignore errors when dynamically importing or if the function is not defined
+    }
   }
   return profileArn ? { providerSpecificData: { profileArn } } : {};
 }
