@@ -30,7 +30,9 @@ const WINDOWS_TAILSCALE_BIN = "C:\\Program Files\\Tailscale\\tailscale.exe";
 const UNIX_TAILSCALE_CANDIDATES = [
   "/usr/local/bin/tailscale",
   "/opt/homebrew/bin/tailscale",
+  "/usr/sbin/tailscale",   // apt package on Debian/Ubuntu
   "/usr/bin/tailscale",
+  "/snap/bin/tailscale",   // Snap package
 ];
 
 const UNIX_TAILSCALED_CANDIDATES = [
@@ -88,7 +90,7 @@ function bgRefreshBin() {
 }
 
 // Sync getter: returns cached value, triggers background refresh if stale
-function getTailscaleBin() {
+export function getTailscaleBin() {
   if (Date.now() - binCache.fetchedAt > PROBE_TTL_MS) bgRefreshBin();
   // First call: synchronously probe common install paths (no exec, no event-loop block)
   if (binCache.value === undefined) {
