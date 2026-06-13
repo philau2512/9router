@@ -230,12 +230,10 @@ export async function getProviderCredentials(
       apiKey: connection.apiKey,
       accessToken: connection.accessToken,
       refreshToken: connection.refreshToken,
-      ...(isKiro
-        ? {
-            expiresAt: connection.expiresAt,
-            expiresIn: connection.expiresIn,
-          }
-        : {}),
+      idToken: connection.idToken,
+      expiresAt: connection.expiresAt,
+      expiresIn: connection.expiresIn,
+      lastRefreshAt: connection.lastRefreshAt,
       projectId: connection.projectId,
       connectionName:
         connection.displayName ||
