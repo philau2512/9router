@@ -75,7 +75,13 @@ export const MITM_TOOLS = {
     description: "GitHub Copilot IDE with MITM",
     configType: "mitm",
     mitmDomain: "api.individual.githubcopilot.com",
-    modelAliases: ["gpt-5-mini", "gpt-5.4-nano", "claude-haiku-4.5", "gpt-4o", "gpt-4.1"],
+    modelAliases: [
+      "gpt-5-mini",
+      "gpt-5.4-nano",
+      "claude-haiku-4.5",
+      "gpt-4o",
+      "gpt-4.1",
+    ],
     defaultModels: [
       // Verified via live MITM passthrough capture of the GitHub Copilot CLI: its model
       // picker offers "GPT-5 mini" (default → wire id "gpt-5-mini"), "Claude Haiku 4.5"
@@ -87,7 +93,11 @@ export const MITM_TOOLS = {
       // and gpt-5-mini is the CLI default, so the primary turn leaks.
       { id: "gpt-5-mini", name: "GPT-5 Mini", alias: "gpt-5-mini" },
       { id: "gpt-5.4-nano", name: "GPT-5.4 Nano", alias: "gpt-5.4-nano" },
-      { id: "claude-haiku-4.5", name: "Claude Haiku 4.5", alias: "claude-haiku-4.5" },
+      {
+        id: "claude-haiku-4.5",
+        name: "Claude Haiku 4.5",
+        alias: "claude-haiku-4.5",
+      },
       { id: "gpt-4o", name: "GPT-4o", alias: "gpt-4o" },
       { id: "gpt-4.1", name: "GPT-4.1", alias: "gpt-4.1" },
     ],

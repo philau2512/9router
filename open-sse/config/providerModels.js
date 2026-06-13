@@ -295,7 +295,8 @@ export const PROVIDER_MODELS = {
     // { id: "minimax-m2.5-free", name: "MiniMax M2.5", targetFormat: "claude" },
     // { id: "trinity-large-preview-free", name: "Trinity Large Preview" },
   ],
-  qd: [  // Qoder - tier + frontier models (server-published catalog)
+  qd: [
+    // Qoder - tier + frontier models (server-published catalog)
     // Tier models — pick a quality/cost tradeoff
     { id: "auto", name: "Qoder Auto" },
     { id: "ultimate", name: "Qoder Ultimate" },
@@ -311,7 +312,8 @@ export const PROVIDER_MODELS = {
     { id: "kmodel", name: "Kimi K2.6 (Qoder)" },
     { id: "mmodel", name: "MiniMax M2.7 (Qoder)" },
   ],
-  mmf: [  // MiMo Free — free channel only serves mimo-auto
+  mmf: [
+    // MiMo Free — free channel only serves mimo-auto
     { id: "mimo-auto", name: "MiMo Auto" },
   ],
 

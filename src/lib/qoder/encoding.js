@@ -12,13 +12,16 @@
  * pattern-matching the plaintext request body.
  */
 
-const QODER_STD_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-const QODER_CUSTOM_ALPHABET = "_doRTgHZBKcGVjlvpC,@aFSx#DPuNJme&i*MzLOEn)sUrthbf%Y^w.(kIQyXqWA!";
+const QODER_STD_ALPHABET =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const QODER_CUSTOM_ALPHABET =
+  "_doRTgHZBKcGVjlvpC,@aFSx#DPuNJme&i*MzLOEn)sUrthbf%Y^w.(kIQyXqWA!";
 
 const QODER_S2C = (() => {
   const table = new Int16Array(128).fill(-1);
   for (let i = 0; i < 64; i++) {
-    table[QODER_STD_ALPHABET.charCodeAt(i)] = QODER_CUSTOM_ALPHABET.charCodeAt(i);
+    table[QODER_STD_ALPHABET.charCodeAt(i)] =
+      QODER_CUSTOM_ALPHABET.charCodeAt(i);
   }
   table["=".charCodeAt(0)] = "$".charCodeAt(0);
   return table;

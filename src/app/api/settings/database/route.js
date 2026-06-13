@@ -13,7 +13,10 @@ function isCliRequest(request) {
 
 export async function GET(request) {
   try {
-    if (!isCliRequest(request) && !(await verifyDashboardPassword(request.headers.get(PASSWORD_HEADER)))) {
+    if (
+      !isCliRequest(request) &&
+      !(await verifyDashboardPassword(request.headers.get(PASSWORD_HEADER)))
+    ) {
       return NextResponse.json({ error: "Invalid password" }, { status: 401 });
     }
     const includeUsageAnalytics =
@@ -31,7 +34,11 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    const { password, restoreUsageAnalytics = false, ...payload } = await request.json();
+    const {
+      password,
+      restoreUsageAnalytics = false,
+      ...payload
+    } = await request.json();
     if (!isCliRequest(request) && !(await verifyDashboardPassword(password))) {
       return NextResponse.json({ error: "Invalid password" }, { status: 401 });
     }

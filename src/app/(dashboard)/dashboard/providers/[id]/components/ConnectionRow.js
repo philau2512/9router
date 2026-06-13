@@ -350,7 +350,8 @@ export default function ConnectionRow({
               {remainingExpiresAt ? ` (${remainingExpiresAt})` : ""}
             </div>
           )}
-          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
+          {/* Row 1 — Status badges (static connection properties) */}
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
             <Badge variant={getStatusVariant()} size="sm" dot>
               {connection.isActive === false
                 ? "disabled"
@@ -359,89 +360,108 @@ export default function ConnectionRow({
             <Badge variant="default" size="sm">
               {authLabel}
             </Badge>
-            {connection.warmedUp === true && (
-              <Badge
-                variant="success"
-                size="sm"
-                title={
-                  connection.warmedUpAt
-                    ? `Warmed up at: ${formatVietnameseExpiresAt(connection.warmedUpAt)}`
-                    : "Warmed up"
-                }
-              >
-                Warmed
-              </Badge>
-            )}
-            {warmupStatus?.state === "refreshing" && (
-              <Badge variant="primary" size="sm">
-                Warming...
-              </Badge>
-            )}
-            {warmupStatus?.state === "failed" && (
-              <Badge variant="error" size="sm" title={warmupStatus.error}>
-                Warmup failed
-              </Badge>
-            )}
             {hasAnyProxy && (
               <Badge variant={proxyBadgeVariant} size="sm">
                 Proxy
               </Badge>
-            )}
-            {isCooldown && connection.isActive !== false && (
-              <CooldownTimer until={modelLockUntil} />
-            )}
-            {connection.lastError && connection.isActive !== false && (
-              <span
-                className="w-full break-words text-xs text-red-500"
-                title={connection.lastError}
-              >
-                {connection.lastError}
-              </span>
-            )}
-            <span className="text-xs text-text-muted">
-              #{connection.priority}
-            </span>
-            {connection.globalPriority && (
-              <span className="text-xs text-text-muted">
-                Auto: {connection.globalPriority}
-              </span>
-            )}
-            {getOneByOneLabel() && (
-              <>
-                <Badge variant={getOneByOneVariant()} size="sm">
-                  {oneByOneStatus?.state === "failed" ? "failed" : getOneByOneLabel()}
-                </Badge>
-                {oneByOneStatus?.state === "failed" && oneByOneStatus?.error && (
-                  <span
-                    className="w-full break-words text-xs text-red-500"
-                    title={oneByOneStatus.error}
-                  >
-                    {oneByOneStatus.error}
-                  </span>
-                )}
-              </>
-            )}
-            {getManualRefreshLabel() && (
-              <>
-                <Badge variant={getManualRefreshVariant()} size="sm">
-                  {manualRefreshStatus?.state === "failed" ? "refresh failed" : getManualRefreshLabel()}
-                </Badge>
-                {manualRefreshStatus?.state === "failed" && manualRefreshStatus?.error && (
-                  <span
-                    className="w-full break-words text-xs text-red-500"
-                    title={manualRefreshStatus.error}
-                  >
-                    {manualRefreshStatus.error}
-                  </span>
-                )}
-              </>
             )}
             {connection.providerSpecificData?.autoRefreshEnabled === true && (
               <Badge variant="default" size="sm">
                 auto refresh
               </Badge>
             )}
+            {/* Priority — float to the right of status row */}
+            <span className="ml-auto text-xs text-text-muted">
+              #{connection.priority}
+              {connection.globalPriority && (
+                <span className="ml-1.5">
+                  Auto: {connection.globalPriority}
+                </span>
+              )}
+            </span>
           </div>
+
+          {/* Row 2 — Events badges (transient/dynamic states) */}
+          {(connection.warmedUp === true ||
+            warmupStatus?.state === "refreshing" ||
+            warmupStatus?.state === "failed" ||
+            isCooldown ||
+            getOneByOneLabel() ||
+            getManualRefreshLabel()) && (
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
+              {connection.warmedUp === true && (
+                <Badge
+                  variant="success"
+                  size="sm"
+                  title={
+                    connection.warmedUpAt
+                      ? `Warmed up at: ${formatVietnameseExpiresAt(connection.warmedUpAt)}`
+                      : "Warmed up"
+                  }
+                >
+                  Warmed
+                </Badge>
+              )}
+              {warmupStatus?.state === "refreshing" && (
+                <Badge variant="primary" size="sm">
+                  Warming...
+                </Badge>
+              )}
+              {warmupStatus?.state === "failed" && (
+                <Badge variant="error" size="sm" title={warmupStatus.error}>
+                  Warmup failed
+                </Badge>
+              )}
+              {isCooldown && connection.isActive !== false && (
+                <CooldownTimer until={modelLockUntil} />
+              )}
+              {getOneByOneLabel() && (
+                <Badge variant={getOneByOneVariant()} size="sm">
+                  {oneByOneStatus?.state === "failed"
+                    ? "failed"
+                    : getOneByOneLabel()}
+                </Badge>
+              )}
+              {getManualRefreshLabel() && (
+                <Badge variant={getManualRefreshVariant()} size="sm">
+                  {manualRefreshStatus?.state === "failed"
+                    ? "refresh failed"
+                    : getManualRefreshLabel()}
+                </Badge>
+              )}
+            </div>
+          )}
+
+          {/* Row 3 — Error details (conditional, visually distinct) */}
+          {(connection.lastError && connection.isActive !== false) ||
+          (oneByOneStatus?.state === "failed" && oneByOneStatus?.error) ||
+          (manualRefreshStatus?.state === "failed" &&
+            manualRefreshStatus?.error) ? (
+            <div className="mt-1 flex flex-col gap-0.5 border-l-2 border-red-500/60 pl-2">
+              {connection.lastError && connection.isActive !== false && (
+                <span className="break-words text-xs text-red-500">
+                  {connection.lastError}
+                </span>
+              )}
+              {oneByOneStatus?.state === "failed" && oneByOneStatus?.error && (
+                <span
+                  className="break-words text-xs text-red-500"
+                  title={oneByOneStatus.error}
+                >
+                  {oneByOneStatus.error}
+                </span>
+              )}
+              {manualRefreshStatus?.state === "failed" &&
+                manualRefreshStatus?.error && (
+                  <span
+                    className="break-words text-xs text-red-500"
+                    title={manualRefreshStatus.error}
+                  >
+                    {manualRefreshStatus.error}
+                  </span>
+                )}
+            </div>
+          ) : null}
           {hasAnyProxy && (
             <div className="mt-1 flex items-center gap-2 flex-wrap">
               <span

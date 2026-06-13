@@ -30,9 +30,9 @@ const WINDOWS_TAILSCALE_BIN = "C:\\Program Files\\Tailscale\\tailscale.exe";
 const UNIX_TAILSCALE_CANDIDATES = [
   "/usr/local/bin/tailscale",
   "/opt/homebrew/bin/tailscale",
-  "/usr/sbin/tailscale",   // apt package on Debian/Ubuntu
+  "/usr/sbin/tailscale", // apt package on Debian/Ubuntu
   "/usr/bin/tailscale",
-  "/snap/bin/tailscale",   // Snap package
+  "/snap/bin/tailscale", // Snap package
 ];
 
 const UNIX_TAILSCALED_CANDIDATES = [

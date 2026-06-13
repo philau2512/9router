@@ -28,7 +28,10 @@ export function claudeToOpenAIRequest(model, body, stream) {
   // System message
   if (body.system) {
     const systemContent = Array.isArray(body.system)
-      ? body.system.map((s) => stripAnthropicBillingHeader(s.text || "")).filter(Boolean).join("\n")
+      ? body.system
+          .map((s) => stripAnthropicBillingHeader(s.text || ""))
+          .filter(Boolean)
+          .join("\n")
       : stripAnthropicBillingHeader(body.system);
 
     if (systemContent) {

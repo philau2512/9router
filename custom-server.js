@@ -10,7 +10,8 @@ http.createServer = (...args) => {
   const rest = args.filter((a) => typeof a !== "function");
   if (!handler) return origCreate(...args);
   const wrapped = (req, res) => {
-    const ip = req.socket && req.socket.remoteAddress ? req.socket.remoteAddress : "";
+    const ip =
+      req.socket && req.socket.remoteAddress ? req.socket.remoteAddress : "";
     delete req.headers["x-9r-real-ip"];
     delete req.headers["x-forwarded-for"];
     req.headers["x-9r-real-ip"] = ip;

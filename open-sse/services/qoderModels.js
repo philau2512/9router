@@ -16,9 +16,7 @@ import { createHash } from "crypto";
 
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { buildCosyHeaders } from "@/lib/qoder/cosy.js";
-import {
-  QODER_MODEL_LIST_URL,
-} from "@/lib/qoder/constants.js";
+import { QODER_MODEL_LIST_URL } from "@/lib/qoder/constants.js";
 
 const FETCH_TIMEOUT_MS = 15_000;
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1h, same as the Kiro catalog
@@ -40,7 +38,11 @@ const inflight = new Map();
  */
 function cacheKey(credentials) {
   const psd = credentials?.providerSpecificData || {};
-  const seed = psd.userId || credentials?.refreshToken || credentials?.accessToken || "anonymous";
+  const seed =
+    psd.userId ||
+    credentials?.refreshToken ||
+    credentials?.accessToken ||
+    "anonymous";
   return createHash("sha256").update(`qoder:${seed}`).digest("hex");
 }
 
@@ -102,7 +104,8 @@ async function fetchQoderCatalogRaw(credentials, signal, proxyOptions = null) {
     );
   } finally {
     if (timer) clearTimeout(timer);
-    if (signal && abortListener) signal.removeEventListener("abort", abortListener);
+    if (signal && abortListener)
+      signal.removeEventListener("abort", abortListener);
   }
 
   if (!response.ok) return null;
@@ -180,7 +183,11 @@ export async function resolveQoderModels(credentials, options = {}) {
   }
 
   const fetchPromise = (async () => {
-    const fetched = await fetchQoderCatalogRaw(credentials, options.signal, options.proxyOptions);
+    const fetched = await fetchQoderCatalogRaw(
+      credentials,
+      options.signal,
+      options.proxyOptions,
+    );
     if (!fetched) return null;
     const entry = {
       expiresAt: Date.now() + CACHE_TTL_MS,

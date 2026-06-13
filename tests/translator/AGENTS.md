@@ -5,11 +5,13 @@ Tests for `open-sse/translator/`. Goals: (1) data-driven coverage of every provi
 ## 1. Translation layer structure (`open-sse/translator/`)
 
 Pipeline uses **OpenAI as the intermediate format**:
+
 - Request: `source → openai → target` (`translateRequest`)
 - Response (SSE chunk): `target → openai → source` (`translateResponse`)
 - If `source === target` → translation is skipped (passthrough).
 
 Components:
+
 - `index.js` — `translateRequest` / `translateResponse` / `register(from, to, requestFn, responseFn)` / registry.
 - `formats.js` — `FORMATS` enum (openai, claude, gemini, gemini-cli, openai-responses, antigravity, kiro, cursor, commandcode, ollama, vertex).
 - `request/<from>-to-<to>.js` — one-way request translation.
@@ -20,13 +22,13 @@ Components:
 
 ## 2. Test layout
 
-| File | Role |
-|---|---|
-| `matrix.js` | Reads `PROVIDER_MODELS` → builds matrix (alias, model, targetFormat, strip, upstreamId). DRY core. |
-| `registerAll.js` | Imports every translator to run `register()` side-effects. **Required** (see §5). |
-| `coverage-all-models.test.js` | Tier 1: every model translates without throwing; strip applied correctly. |
-| `format-roundtrip.test.js` | Tier 2: tool id/system/parallel survive the bridge. |
-| `bugs-openai-bridge.test.js` | Exposes concrete bugs (with source file:line). |
+| File                          | Role                                                                                               |
+| ----------------------------- | -------------------------------------------------------------------------------------------------- |
+| `matrix.js`                   | Reads `PROVIDER_MODELS` → builds matrix (alias, model, targetFormat, strip, upstreamId). DRY core. |
+| `registerAll.js`              | Imports every translator to run `register()` side-effects. **Required** (see §5).                  |
+| `coverage-all-models.test.js` | Tier 1: every model translates without throwing; strip applied correctly.                          |
+| `format-roundtrip.test.js`    | Tier 2: tool id/system/parallel survive the bridge.                                                |
+| `bugs-openai-bridge.test.js`  | Exposes concrete bugs (with source file:line).                                                     |
 
 ## 3. Running
 
@@ -40,6 +42,7 @@ cd app && npx vitest run --config tests/vitest.config.js "tests/translator/bugs-
 # real (calls live providers using credentials from the local DB)
 cd app && RUN_REAL=1 npx vitest run --config tests/vitest.config.js "tests/translator/real/"
 ```
+
 No-cred tests make NO network calls and need NO creds. Real tests (`real/`, gated by `RUN_REAL=1`) read active connections from `~/.9router/db/data.sqlite`, send a tiny prompt per provider through `handleChatCore`, and assert valid SSE. Account/quota errors (401/402/403/429) are treated as credential issues and skipped, not failures.
 
 ## 4. Adding a new provider → tests cover it AUTOMATICALLY

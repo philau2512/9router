@@ -140,7 +140,8 @@ export function handleStreamingResponse({
     ? buildAbortedResponsesTerminalBytes
     : null;
   // Per-provider stall timeout override (e.g. Qoder reasoning models need 120s)
-  const stallTimeoutMs = PROVIDERS[provider]?.stallTimeoutMs || STREAM_STALL_TIMEOUT_MS;
+  const stallTimeoutMs =
+    PROVIDERS[provider]?.stallTimeoutMs || STREAM_STALL_TIMEOUT_MS;
 
   // Track accumulated content for semantic stall detection and mid-stream resume
   const streamStateTracker = {

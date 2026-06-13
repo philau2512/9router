@@ -338,7 +338,10 @@ export async function refreshCodexToken(refreshToken, log) {
 
         if (!response.ok) {
           const errorText = await response.text();
-          const classified = classifyOAuthRefreshError(errorText, response.status);
+          const classified = classifyOAuthRefreshError(
+            errorText,
+            response.status,
+          );
 
           if (classified.permanent) {
             log?.error?.(
@@ -350,7 +353,10 @@ export async function refreshCodexToken(refreshToken, log) {
                 description: classified.description,
               },
             );
-            return { error: "unrecoverable_refresh_error", code: classified.code };
+            return {
+              error: "unrecoverable_refresh_error",
+              code: classified.code,
+            };
           }
 
           log?.error?.("TOKEN_REFRESH", "Failed to refresh Codex token", {
@@ -392,11 +398,16 @@ export async function refreshCodexToken(refreshToken, log) {
  * If providerSpecificData already has profileArn, returns empty patch.
  * Otherwise tries to use refreshedArn, or fetches via fetchKiroProfileArn.
  */
-async function resolveKiroProfileArnPatch(providerSpecificData, accessToken, refreshedArn) {
+async function resolveKiroProfileArnPatch(
+  providerSpecificData,
+  accessToken,
+  refreshedArn,
+) {
   if (providerSpecificData?.profileArn) return {};
   let profileArn = refreshedArn?.trim?.() || null;
   if (!profileArn) {
-    const { fetchKiroProfileArn } = await import("../../src/lib/oauth/providers.js");
+    const { fetchKiroProfileArn } =
+      await import("../../src/lib/oauth/providers.js");
     profileArn = await fetchKiroProfileArn(accessToken);
   }
   return profileArn ? { providerSpecificData: { profileArn } } : {};
@@ -470,7 +481,11 @@ export async function refreshKiroToken(
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken || refreshToken,
           expiresIn: tokens.expiresIn,
-          ...(await resolveKiroProfileArnPatch(providerSpecificData, tokens.accessToken, tokens.profileArn)),
+          ...(await resolveKiroProfileArnPatch(
+            providerSpecificData,
+            tokens.accessToken,
+            tokens.profileArn,
+          )),
         };
       }
 
@@ -511,7 +526,11 @@ export async function refreshKiroToken(
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken || refreshToken,
         expiresIn: tokens.expiresIn,
-        ...(await resolveKiroProfileArnPatch(providerSpecificData, tokens.accessToken, tokens.profileArn)),
+        ...(await resolveKiroProfileArnPatch(
+          providerSpecificData,
+          tokens.accessToken,
+          tokens.profileArn,
+        )),
       };
     },
     log,

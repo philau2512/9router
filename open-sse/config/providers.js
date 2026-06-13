@@ -110,7 +110,8 @@ export const PROVIDERS = {
     // ?Encode=1 + sigPath query params and bypass any provider-level URL
     // rewriting). baseUrl is kept for compatibility with introspection
     // helpers but the executor ignores it.
-    baseUrl: "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation",
+    baseUrl:
+      "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation",
     format: "openai",
     headers: {},
     // Reasoning models think long before first byte; raise both timeouts.
@@ -430,8 +431,16 @@ export const PROVIDERS = {
     baseUrl: "https://api.xiaomimimo.com/v1/chat/completions",
     format: "openai",
   },
-  "mimo-free": { baseUrl: "https://api.xiaomimimo.com/api/free-ai/openai/chat", format: "openai", noAuth: true },
-  mmf: { baseUrl: "https://api.xiaomimimo.com/api/free-ai/openai/chat", format: "openai", noAuth: true },
+  "mimo-free": {
+    baseUrl: "https://api.xiaomimimo.com/api/free-ai/openai/chat",
+    format: "openai",
+    noAuth: true,
+  },
+  mmf: {
+    baseUrl: "https://api.xiaomimimo.com/api/free-ai/openai/chat",
+    format: "openai",
+    noAuth: true,
+  },
   "xiaomi-tokenplan": {
     baseUrl: "https://token-plan-sgp.xiaomimimo.com/v1/chat/completions",
     format: "openai",

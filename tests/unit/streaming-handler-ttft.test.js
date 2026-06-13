@@ -101,7 +101,8 @@ describe("streamingHandler TTFT path", () => {
 
     // Use runAllImmediatesAsync to trigger the setImmediate in streamingHandler
     // without advancing timers (which would trigger stall/semantic-stall timers)
-    await vi.runAllImmediatesAsync?.() ?? await new Promise(r => setTimeout(r, 0));
+    (await vi.runAllImmediatesAsync?.()) ??
+      (await new Promise((r) => setTimeout(r, 0)));
     expect(saveRequestDetailMock).toHaveBeenCalledTimes(1);
   });
 

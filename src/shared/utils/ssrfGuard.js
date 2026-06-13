@@ -1,6 +1,10 @@
 // SSRF guard: block internal/private/metadata targets for server-side fetch.
 
-const BLOCKED_HOSTNAMES = new Set(["localhost", "ip6-localhost", "ip6-loopback"]);
+const BLOCKED_HOSTNAMES = new Set([
+  "localhost",
+  "ip6-localhost",
+  "ip6-loopback",
+]);
 const BLOCKED_SUFFIXES = [".internal", ".local", ".localhost"];
 
 // Parse dotted IPv4 to 32-bit integer, or null if not a valid IPv4 literal.
@@ -47,8 +51,11 @@ export function assertPublicUrl(rawUrl) {
   const parsed = new URL(rawUrl);
   const host = parsed.hostname.toLowerCase();
 
-  if (BLOCKED_HOSTNAMES.has(host)) throw new Error("Blocked URL: internal host");
-  if (BLOCKED_SUFFIXES.some((s) => host.endsWith(s))) throw new Error("Blocked URL: internal host");
+  if (BLOCKED_HOSTNAMES.has(host))
+    throw new Error("Blocked URL: internal host");
+  if (BLOCKED_SUFFIXES.some((s) => host.endsWith(s)))
+    throw new Error("Blocked URL: internal host");
   if (isBlockedIpv4(host)) throw new Error("Blocked URL: private IP");
-  if (host.includes(":") && isBlockedIpv6(host)) throw new Error("Blocked URL: private IP");
+  if (host.includes(":") && isBlockedIpv6(host))
+    throw new Error("Blocked URL: private IP");
 }

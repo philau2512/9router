@@ -67,7 +67,9 @@ export default function CombosPage() {
 
       // Only LLM combos here — webSearch/webFetch combos belong to media-providers/web
       if (combosRes.ok)
-        setCombos((combosData.combos || []).filter((c) => !c.kind || c.kind === "llm"));
+        setCombos(
+          (combosData.combos || []).filter((c) => !c.kind || c.kind === "llm"),
+        );
       if (providersRes.ok) {
         setActiveProviders(providersData.connections || []);
       }

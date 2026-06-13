@@ -47,7 +47,10 @@ export class KiroExecutor extends BaseExecutor {
   async execute(args) {
     const result = await super.execute(args);
     if (result?.response?.ok) {
-      result.response = this.transformEventStreamToSSE(result.response, args.model);
+      result.response = this.transformEventStreamToSSE(
+        result.response,
+        args.model,
+      );
     }
     return result;
   }

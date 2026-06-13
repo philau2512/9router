@@ -206,7 +206,10 @@ export class GithubExecutor extends BaseExecutor {
 
     // Only use /responses for models that are explicitly known to need it (e.g. gpt codex models)
     // and that the /responses endpoint actually serves (excludes Gemini/Claude, see #1062).
-    if (this.knownCodexModels.has(model) && this.supportsResponsesEndpoint(model)) {
+    if (
+      this.knownCodexModels.has(model) &&
+      this.supportsResponsesEndpoint(model)
+    ) {
       log?.debug("GITHUB", `Using cached /responses route for ${model}`);
       return this.executeWithResponsesEndpoint(options);
     }
@@ -223,7 +226,10 @@ export class GithubExecutor extends BaseExecutor {
       proxyOptions: options.proxyOptions || null,
     });
 
-    if (result.response.status === HTTP_STATUS.BAD_REQUEST && this.supportsResponsesEndpoint(model)) {
+    if (
+      result.response.status === HTTP_STATUS.BAD_REQUEST &&
+      this.supportsResponsesEndpoint(model)
+    ) {
       const errorBody = await result.response.clone().text();
 
       if (

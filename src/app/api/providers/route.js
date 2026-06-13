@@ -187,7 +187,10 @@ export async function POST(request) {
       const existingConnections = await getProviderConnections({ provider });
       if (existingConnections.length > 0) {
         return NextResponse.json(
-          { error: "Only one connection is allowed for this OpenAI Compatible node" },
+          {
+            error:
+              "Only one connection is allowed for this OpenAI Compatible node",
+          },
           { status: 400 },
         );
       }

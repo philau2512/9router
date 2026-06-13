@@ -99,7 +99,7 @@ export class VertexExecutor extends BaseExecutor {
       if (!projectId) {
         throw new Error(
           "Vertex OAuth/ADC requires a project_id. " +
-          "Add quota_project_id to your ADC JSON or set providerSpecificData.projectId."
+            "Add quota_project_id to your ADC JSON or set providerSpecificData.projectId.",
         );
       }
       const location =
@@ -167,10 +167,12 @@ export class VertexExecutor extends BaseExecutor {
         adcJson.refresh_token,
         adcJson.client_id,
         adcJson.client_secret,
-        log
+        log,
       );
       if (!result?.accessToken)
-        throw new Error("Vertex: failed to refresh access token from ADC JSON (authorized_user)");
+        throw new Error(
+          "Vertex: failed to refresh access token from ADC JSON (authorized_user)",
+        );
       credentials.accessToken = result.accessToken;
     }
 

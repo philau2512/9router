@@ -351,7 +351,13 @@ export const MODEL_PRICING = {
     reasoning: 4.5,
     cache_creation: 0.5,
   },
-  "gemini-3.5-flash-extra-low": { input: 0.5, output: 3.0, cached: 0.03, reasoning: 4.5, cache_creation: 0.5 },
+  "gemini-3.5-flash-extra-low": {
+    input: 0.5,
+    output: 3.0,
+    cached: 0.03,
+    reasoning: 4.5,
+    cache_creation: 0.5,
+  },
   "gemini-3-flash": {
     input: 0.5,
     output: 3.0,
@@ -530,7 +536,13 @@ export const MODEL_PRICING = {
     reasoning: 3.0,
     cache_creation: 0.5,
   },
-  "MiniMax-M3": { input: 0.30, output: 1.20, cached: 0.06, reasoning: 1.80, cache_creation: 0.30 },
+  "MiniMax-M3": {
+    input: 0.3,
+    output: 1.2,
+    cached: 0.06,
+    reasoning: 1.8,
+    cache_creation: 0.3,
+  },
   "MiniMax-M2.7": {
     input: 0.5,
     output: 2.0,
