@@ -336,6 +336,38 @@ export const PATTERN_PRICING = [
     },
   },
 
+  // --- MiMo (overseas USD per 1M tokens) ---
+  {
+    pattern: "mimo-v2-flash*",
+    pricing: {
+      input: 0.10,
+      output: 0.30,
+      cached: 0.01,
+      reasoning: 0.30,
+      cache_creation: 0.10,
+    },
+  },
+  {
+    pattern: "mimo-v2*",
+    pricing: {
+      input: 0.14,
+      output: 0.28,
+      cached: 0.0028,
+      reasoning: 0.28,
+      cache_creation: 0.14,
+    },
+  },
+  {
+    pattern: "mimo-*",
+    pricing: {
+      input: 0.14,
+      output: 0.28,
+      cached: 0.0028,
+      reasoning: 0.28,
+      cache_creation: 0.14,
+    },
+  },
+
   // --- Qwen ---
   {
     pattern: "qwen3-coder-*",

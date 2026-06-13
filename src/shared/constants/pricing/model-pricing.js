@@ -382,6 +382,66 @@ export const MODEL_PRICING = {
     cache_creation: 0.15,
   },
 
+  // === Xiaomi MiMo ===
+  // Source: https://mimo.mi.com/docs/en-US/price/pay-as-you-go (overseas USD)
+  "mimo-auto": {
+    input: 0.14,
+    output: 0.28,
+    cached: 0.0028,
+    reasoning: 0.28,
+    cache_creation: 0.14,
+  },
+  "mimo-v2.5-pro": {
+    input: 0.435,
+    output: 0.87,
+    cached: 0.0036,
+    reasoning: 0.87,
+    cache_creation: 0.435,
+  },
+  "mimo-v2.5": {
+    input: 0.14,
+    output: 0.28,
+    cached: 0.0028,
+    reasoning: 0.28,
+    cache_creation: 0.14,
+  },
+  "mimo-v2-pro": {
+    input: 0.435,
+    output: 0.87,
+    cached: 0.0036,
+    reasoning: 0.87,
+    cache_creation: 0.435,
+  },
+  "mimo-v2-omni": {
+    input: 0.14,
+    output: 0.28,
+    cached: 0.0028,
+    reasoning: 0.28,
+    cache_creation: 0.14,
+  },
+  "mimo-v2-flash": {
+    input: 0.10,
+    output: 0.30,
+    cached: 0.01,
+    reasoning: 0.30,
+    cache_creation: 0.10,
+  },
+  // TTS models are currently free (limited time)
+  "mimo-v2-tts": {
+    input: 0,
+    output: 0,
+    cached: 0,
+    reasoning: 0,
+    cache_creation: 0,
+  },
+  "mimo-v2.5-tts": {
+    input: 0,
+    output: 0,
+    cached: 0,
+    reasoning: 0,
+    cache_creation: 0,
+  },
+
   // === Qwen ===
   "qwen3-coder-plus": {
     input: 1.0,
