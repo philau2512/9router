@@ -313,8 +313,14 @@ export const PROVIDER_MODELS = {
     { id: "mmodel", name: "MiniMax M2.7 (Qoder)" },
   ],
   mmf: [
-    // MiMo Free — free channel only serves mimo-auto
+    // MiMo Free — all requests route to mimo-auto on the backend,
+    // but frontend model selection is preserved per PR #1803 pattern
     { id: "mimo-auto", name: "MiMo Auto" },
+    { id: "mimo-v2.5-pro", name: "MiMo V2.5 Pro" },
+    { id: "mimo-v2.5", name: "MiMo V2.5" },
+    { id: "mimo-v2-pro", name: "MiMo V2 Pro" },
+    { id: "mimo-v2-omni", name: "MiMo V2 Omni" },
+    { id: "mimo-v2-flash", name: "MiMo V2 Flash" },
   ],
 
   cl: [
@@ -1475,6 +1481,7 @@ const OAUTH_ALIASES = {
   kilocode: "kc",
   cline: "cl",
   opencode: "oc",
+  "mimo-free": "mmf",
   vertex: "vertex",
   "vertex-partner": "vertex-partner",
 };
