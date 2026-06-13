@@ -392,7 +392,7 @@ export default function ConnectionRow({
             )}
             {connection.lastError && connection.isActive !== false && (
               <span
-                className="max-w-full truncate text-xs text-red-500 sm:max-w-[300px]"
+                className="w-full break-words text-xs text-red-500"
                 title={connection.lastError}
               >
                 {connection.lastError}
@@ -407,14 +407,34 @@ export default function ConnectionRow({
               </span>
             )}
             {getOneByOneLabel() && (
-              <Badge variant={getOneByOneVariant()} size="sm">
-                {getOneByOneLabel()}
-              </Badge>
+              <>
+                <Badge variant={getOneByOneVariant()} size="sm">
+                  {oneByOneStatus?.state === "failed" ? "failed" : getOneByOneLabel()}
+                </Badge>
+                {oneByOneStatus?.state === "failed" && oneByOneStatus?.error && (
+                  <span
+                    className="w-full break-words text-xs text-red-500"
+                    title={oneByOneStatus.error}
+                  >
+                    {oneByOneStatus.error}
+                  </span>
+                )}
+              </>
             )}
             {getManualRefreshLabel() && (
-              <Badge variant={getManualRefreshVariant()} size="sm">
-                {getManualRefreshLabel()}
-              </Badge>
+              <>
+                <Badge variant={getManualRefreshVariant()} size="sm">
+                  {manualRefreshStatus?.state === "failed" ? "refresh failed" : getManualRefreshLabel()}
+                </Badge>
+                {manualRefreshStatus?.state === "failed" && manualRefreshStatus?.error && (
+                  <span
+                    className="w-full break-words text-xs text-red-500"
+                    title={manualRefreshStatus.error}
+                  >
+                    {manualRefreshStatus.error}
+                  </span>
+                )}
+              </>
             )}
             {connection.providerSpecificData?.autoRefreshEnabled === true && (
               <Badge variant="default" size="sm">
