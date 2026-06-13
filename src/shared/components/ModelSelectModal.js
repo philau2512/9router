@@ -242,6 +242,18 @@ export default function ModelSelectModal({
                 { id: providerId, name: providerInfo.name, value: alias },
               ];
           }
+        } else if (!kindFilter) {
+          // LLM context: merge hardcoded LLM models
+          const hardcodedModels = getModelsByProviderId(providerId)
+            .filter((m) => !m.type || m.type === "llm")
+            .map((m) => ({
+              id: m.id,
+              name: m.name,
+              value: `${alias}/${m.id}`,
+            }));
+          const hardcodedIds = new Set(hardcodedModels.map((m) => m.id));
+          const filteredAliases = aliasModels.filter((m) => !hardcodedIds.has(m.id));
+          combined = [...hardcodedModels, ...filteredAliases];
         }
 
         if (combined.length > 0) {
