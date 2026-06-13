@@ -1,7 +1,7 @@
 import { PROVIDERS } from "../config/providers.js";
 import { OAUTH_ENDPOINTS, GITHUB_COPILOT } from "../config/appConstants.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { dedupRefresh } from "./refresh-dedup.js";
+import { dedupRefresh, classifyOAuthRefreshError } from "./refresh-dedup.js";
 
 // xAI refresh — wraps the class method from src/lib/oauth/services/xai.js so
 // the token-refresh switches below can stay flat (one function per provider).
@@ -338,31 +338,19 @@ export async function refreshCodexToken(refreshToken, log) {
 
         if (!response.ok) {
           const errorText = await response.text();
+          const classified = classifyOAuthRefreshError(errorText, response.status);
 
-          // Detect unrecoverable errors (token reused/expired) — Auth0 revokes whole family on retry
-          let errorCode = null;
-          try {
-            const parsed = JSON.parse(errorText);
-            errorCode =
-              parsed?.error?.code ||
-              (typeof parsed?.error === "string" ? parsed.error : null);
-          } catch {}
-
-          if (
-            errorCode === "refresh_token_reused" ||
-            errorCode === "invalid_grant" ||
-            errorCode === "token_expired" ||
-            errorCode === "invalid_token"
-          ) {
+          if (classified.permanent) {
             log?.error?.(
               "TOKEN_REFRESH",
               "Codex refresh token already used or invalid. Re-auth required.",
               {
                 status: response.status,
-                errorCode,
+                code: classified.code,
+                description: classified.description,
               },
             );
-            return { error: "unrecoverable_refresh_error", code: errorCode };
+            return { error: "unrecoverable_refresh_error", code: classified.code };
           }
 
           log?.error?.("TOKEN_REFRESH", "Failed to refresh Codex token", {
@@ -397,6 +385,21 @@ export async function refreshCodexToken(refreshToken, log) {
     },
     log,
   );
+}
+
+/**
+ * Helper to resolve and patch profileArn if missing.
+ * If providerSpecificData already has profileArn, returns empty patch.
+ * Otherwise tries to use refreshedArn, or fetches via fetchKiroProfileArn.
+ */
+async function resolveKiroProfileArnPatch(providerSpecificData, accessToken, refreshedArn) {
+  if (providerSpecificData?.profileArn) return {};
+  let profileArn = refreshedArn?.trim?.() || null;
+  if (!profileArn) {
+    const { fetchKiroProfileArn } = await import("../../src/lib/oauth/providers.js");
+    profileArn = await fetchKiroProfileArn(accessToken);
+  }
+  return profileArn ? { providerSpecificData: { profileArn } } : {};
 }
 
 /**
@@ -467,6 +470,7 @@ export async function refreshKiroToken(
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken || refreshToken,
           expiresIn: tokens.expiresIn,
+          ...(await resolveKiroProfileArnPatch(providerSpecificData, tokens.accessToken, tokens.profileArn)),
         };
       }
 
@@ -507,6 +511,7 @@ export async function refreshKiroToken(
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken || refreshToken,
         expiresIn: tokens.expiresIn,
+        ...(await resolveKiroProfileArnPatch(providerSpecificData, tokens.accessToken, tokens.profileArn)),
       };
     },
     log,
