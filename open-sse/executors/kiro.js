@@ -1,6 +1,6 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "crypto";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
 
 /**
@@ -16,7 +16,7 @@ export class KiroExecutor extends BaseExecutor {
     const headers = {
       ...this.config.headers,
       "Amz-Sdk-Request": "attempt=1; max=3",
-      "Amz-Sdk-Invocation-Id": uuidv4(),
+      "Amz-Sdk-Invocation-Id": randomUUID(),
     };
 
     if (credentials.accessToken) {
