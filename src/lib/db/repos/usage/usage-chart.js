@@ -78,8 +78,16 @@ export async function getChartData(period = "7d") {
     return buckets;
   }
 
-  // --- 7d / 30d / 60d: daily buckets from usageDaily ---
-  const bucketCount = period === "7d" ? 7 : period === "30d" ? 30 : 60;
+  // --- 7d / 30d / 60d / all: daily buckets from usageDaily ---
+  let bucketCount;
+  if (period === "7d") bucketCount = 7;
+  else if (period === "30d") bucketCount = 30;
+  else if (period === "60d") bucketCount = 60;
+  else {
+    // "all" — load all available days from usageDaily
+    const allRows = db.all(`SELECT dateKey FROM usageDaily ORDER BY dateKey ASC`);
+    bucketCount = allRows.length || 1;
+  }
   const today = new Date();
   const labelFn = (d) =>
     d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
