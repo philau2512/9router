@@ -12,7 +12,9 @@
     "start:bun": "bun ./.next/standalone/server.js",
     "lint": "eslint .",
     "smoke:docker": "node scripts/docker-runtime-smoke.cjs",
-    "format": "prettier . --write"
+    "format": "prettier . --write",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -54,6 +56,7 @@
     "eslint": "^9.39.4",
     "eslint-config-next": "16.1.6",
     "postcss": "^8.5.6",
-    "tailwindcss": "^4"
+    "tailwindcss": "^4",
+    "vitest": "^4.1.8"
   }
 }
