@@ -138,6 +138,7 @@ export default function RequestDetailsTab() {
       const params = new URLSearchParams({
         page: pagination.page.toString(),
         pageSize: pagination.pageSize.toString(),
+        mode: "list",
       });
       if (filters.provider) params.append("provider", filters.provider);
       if (filters.startDate) params.append("startDate", filters.startDate);
@@ -171,8 +172,18 @@ export default function RequestDetailsTab() {
     return () => clearTimeout(timer);
   }, [fetchDetails]);
 
-  const handleViewDetail = (detail) => {
-    setSelectedDetail(detail);
+  const handleViewDetail = async (detail) => {
+    try {
+      // Fetch full detail data on demand
+      const res = await fetch(
+        `/api/usage/request-details?id=${detail.id}&mode=detail`,
+      );
+      const data = await res.json();
+      setSelectedDetail(data.detail || detail);
+    } catch (error) {
+      console.error("Failed to fetch detail:", error);
+      setSelectedDetail(detail); // Fallback to list data
+    }
     setIsDrawerOpen(true);
   };
 

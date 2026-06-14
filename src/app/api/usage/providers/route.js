@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getRequestDetails } from "@/lib/requestDetailsDb";
+import { getRequestDetailsList } from "@/lib/requestDetailsDb";
 import { getProviderNodes } from "@/lib/localDb";
 import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
 
@@ -9,7 +9,7 @@ import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
  */
 export async function GET() {
   try {
-    const { details } = await getRequestDetails({ pageSize: 9999 });
+    const { details } = await getRequestDetailsList({ pageSize: 9999 });
 
     // Extract unique providers
     const providerIds = [
