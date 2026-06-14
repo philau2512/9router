@@ -17,6 +17,35 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
   proxyAwareFetch: (...args) => fetchMock(...args),
 }));
 
+// Mock SQLite kvStore and proxyPoolsRepo for testing
+const { mockKv, store, mockProxyPools } = vi.hoisted(() => {
+  const store = {};
+  const mockProxyPools = [];
+  const mockKv = {
+    get: vi.fn(async (key, fallback = null) => {
+      return key in store ? store[key] : fallback;
+    }),
+    set: vi.fn(async (key, value) => {
+      store[key] = value;
+    }),
+    remove: vi.fn(async (key) => {
+      delete store[key];
+    }),
+    clear: vi.fn(async () => {
+      for (const key of Object.keys(store)) delete store[key];
+    }),
+  };
+  return { mockKv, store, mockProxyPools };
+});
+
+vi.mock("../../src/lib/db/helpers/kvStore.js", () => ({
+  makeKv: () => mockKv,
+}));
+
+vi.mock("../../src/lib/db/repos/proxyPoolsRepo.js", () => ({
+  getProxyPools: vi.fn(async () => mockProxyPools),
+}));
+
 import {
   MimoFreeExecutor,
   __test__,
@@ -40,6 +69,7 @@ const {
   SESSION_AFFINITY_PREFIX,
   BOOTSTRAP_URL,
   CHAT_URL,
+  kv,
 } = __test__;
 
 function jsonResponse(data, { ok = true, status = 200 } = {}) {
@@ -59,7 +89,13 @@ function makeJwt(expSec) {
 
 beforeEach(() => {
   fetchMock.mockReset();
-  resetJwtCache();
+  // Clear the in-memory mock store
+  for (const key of Object.keys(store)) delete store[key];
+  mockKv.get.mockClear();
+  mockKv.set.mockClear();
+  mockKv.remove.mockClear();
+  mockKv.clear.mockClear();
+  mockProxyPools.length = 0;
 });
 
 describe("generateSessionId", () => {
@@ -208,6 +244,104 @@ describe("bootstrapJwt", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ expiresIn: 3600 }));
     await expect(bootstrapJwt()).rejects.toThrow(/no JWT/);
   });
+
+  it("automatically rotates fingerprint and retries on 429 at bootstrap", async () => {
+    // 1st bootstrap attempt fails with 429
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 429 });
+    // 2nd bootstrap attempt succeeds
+    const freshJwt = makeJwt(Math.floor(Date.now() / 1000) + 3600);
+    fetchMock.mockResolvedValueOnce(jsonResponse({ jwt: freshJwt }));
+
+    await kv.set("fingerprint", "old-fingerprint");
+
+    const jwt = await bootstrapJwt();
+    expect(jwt).toBe(freshJwt);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const newFingerprint = await kv.get("fingerprint");
+    expect(newFingerprint).not.toBe("old-fingerprint");
+    expect(newFingerprint).toMatch(/^[a-f0-9]{64}$/);
+
+    const firstBootstrapBody = JSON.parse(fetchMock.mock.calls[0][1].body);
+    const secondBootstrapBody = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(firstBootstrapBody.client).toBe("old-fingerprint");
+    expect(secondBootstrapBody.client).toBe(newFingerprint);
+  });
+
+  it("automatically rotates proxy URLs from proxy pool on 429 retries", async () => {
+    // 1st attempt fails with 429
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 429 });
+    // 2nd attempt fails with 429
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 429 });
+    // 3rd attempt succeeds
+    const freshJwt = makeJwt(Math.floor(Date.now() / 1000) + 3600);
+    fetchMock.mockResolvedValueOnce(jsonResponse({ jwt: freshJwt }));
+
+    // Setup multiple proxy URLs separated by newlines
+    const proxyOptions = {
+      proxyPool: {
+        proxyUrl: "http://proxy-one.com:8080\nhttp://proxy-two.com:8080\nhttp://proxy-three.com:8080",
+      },
+    };
+
+    const jwt = await bootstrapJwt(proxyOptions);
+    expect(jwt).toBe(freshJwt);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    // Verify 1st bootstrap used proxy-one
+    expect(fetchMock.mock.calls[0][2].connectionProxyUrl).toBe("http://proxy-one.com:8080");
+    // Verify 2nd bootstrap used proxy-two
+    expect(fetchMock.mock.calls[1][2].connectionProxyUrl).toBe("http://proxy-two.com:8080");
+    // Verify 3rd bootstrap used proxy-three
+    expect(fetchMock.mock.calls[2][2].connectionProxyUrl).toBe("http://proxy-three.com:8080");
+  });
+
+  it("falls back and rotates through all active system proxy pools on 429 retries if no connection-specific pool is provided", async () => {
+    // 1st attempt fails with 429
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 429 });
+    // 2nd attempt succeeds
+    const freshJwt = makeJwt(Math.floor(Date.now() / 1000) + 3600);
+    fetchMock.mockResolvedValueOnce(jsonResponse({ jwt: freshJwt }));
+
+    // Setup active system proxy pools
+    mockProxyPools.push(
+      { type: "http", isActive: true, proxyUrl: "http://system-proxy-a.com:8888" },
+      { type: "http", isActive: true, proxyUrl: "http://system-proxy-b.com:8888" }
+    );
+
+    const jwt = await bootstrapJwt(null);
+    expect(jwt).toBe(freshJwt);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    expect(fetchMock.mock.calls[0][2].connectionProxyUrl).toBe("http://system-proxy-a.com:8888");
+    expect(fetchMock.mock.calls[1][2].connectionProxyUrl).toBe("http://system-proxy-b.com:8888");
+  });
+
+  it("prioritizes connection pool and rotates to system-wide pools on 429 retries", async () => {
+    // 1st attempt fails with 429
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 429 });
+    // 2nd attempt succeeds
+    const freshJwt = makeJwt(Math.floor(Date.now() / 1000) + 3600);
+    fetchMock.mockResolvedValueOnce(jsonResponse({ jwt: freshJwt }));
+
+    // Setup active system proxy pools
+    mockProxyPools.push(
+      { type: "http", isActive: true, proxyUrl: "http://system-proxy-fallback.com:8888" }
+    );
+
+    const proxyOptions = {
+      proxyPool: {
+        proxyUrl: "http://connection-proxy-primary.com:8080",
+      },
+    };
+
+    const jwt = await bootstrapJwt(proxyOptions);
+    expect(jwt).toBe(freshJwt);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    expect(fetchMock.mock.calls[0][2].connectionProxyUrl).toBe("http://connection-proxy-primary.com:8080");
+    expect(fetchMock.mock.calls[1][2].connectionProxyUrl).toBe("http://system-proxy-fallback.com:8888");
+  });
 });
 
 describe("MimoFreeExecutor", () => {
@@ -254,7 +388,7 @@ describe("MimoFreeExecutor", () => {
     expect(chatHeaders["Authorization"]).toMatch(/^Bearer /);
   });
 
-  it("re-bootstraps and retries once on a 403 from the chat endpoint", async () => {
+  it("re-bootstraps, rotates fingerprint, and retries once on a 403 from the chat endpoint", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({ jwt: makeJwt(Math.floor(Date.now() / 1000) + 3600) }),
     );
@@ -263,6 +397,9 @@ describe("MimoFreeExecutor", () => {
       jsonResponse({ jwt: makeJwt(Math.floor(Date.now() / 1000) + 3600) }),
     );
     fetchMock.mockResolvedValueOnce({ ok: true, status: 200 });
+    
+    await kv.set("fingerprint", "old-fingerprint");
+
     const { response } = await exec.execute({
       model: "mimo-auto",
       body: { messages: [{ role: "user", content: "hi" }] },
@@ -270,8 +407,16 @@ describe("MimoFreeExecutor", () => {
       credentials: {},
     });
     expect(response.status).toBe(200);
-    // bootstrap, chat(403), re-bootstrap, chat(200)
     expect(fetchMock).toHaveBeenCalledTimes(4);
+    
+    const newFingerprint = await kv.get("fingerprint");
+    expect(newFingerprint).not.toBe("old-fingerprint");
+    expect(newFingerprint).toMatch(/^[a-f0-9]{64}$/);
+
+    const firstBootstrapBody = JSON.parse(fetchMock.mock.calls[0][1].body);
+    const secondBootstrapBody = JSON.parse(fetchMock.mock.calls[2][1].body);
+    expect(firstBootstrapBody.client).toBe("old-fingerprint");
+    expect(secondBootstrapBody.client).toBe(newFingerprint);
   });
 });
 
