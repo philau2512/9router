@@ -288,12 +288,15 @@ export const PROVIDER_MODELS = {
     { id: "minimax-m2.5", name: "MiniMax M2.5", targetFormat: "claude" },
   ],
   oc: [
-    // OpenCode
-    // { id: "nemotron-3-super-free", name: "Nemotron 3 Super" },
-    // { id: "qwen3.6-plus-free", name: "Qwen 3.6 Plus" },
-    // { id: "big-pickle", name: "Big Pickle", targetFormat: "claude" },
-    // { id: "minimax-m2.5-free", name: "MiniMax M2.5", targetFormat: "claude" },
-    // { id: "trinity-large-preview-free", name: "Trinity Large Preview" },
+    // OpenCode — static fallback list shown when resolveOpenCodeModels() live fetch fails.
+    // Keep in sync with EXPLICIT_FREE_IDS in open-sse/services/opencodeModels.js
+    { id: "big-pickle", name: "Big Pickle", targetFormat: "claude" },
+    { id: "deepseek-v4-flash-free", name: "DeepSeek V4 Flash" },
+    { id: "mimo-v2.5-free", name: "MiMo V2.5" },
+    { id: "minimax-m3-free", name: "MiniMax M3", targetFormat: "claude" },
+    { id: "north-mini-code-free", name: "North Mini Code" },
+    { id: "nemotron-3-ultra-free", name: "Nemotron 3 Ultra" },
+    { id: "qwen3.6-plus-free", name: "Qwen 3.6 Plus" },
   ],
   qd: [
     // Qoder - tier + frontier models (server-published catalog)
