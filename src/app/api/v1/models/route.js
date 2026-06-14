@@ -16,6 +16,8 @@ import {
 } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
+import { resolveOpenCodeModels } from "open-sse/services/opencodeModels.js";
+import { PROVIDERS } from "open-sse/config/providers.js";
 
 // Per-provider live model resolvers. Each receives a connection record and
 // returns { models: [{ id, name? }, ...] } | null on failure.
@@ -32,6 +34,8 @@ const LIVE_MODEL_RESOLVERS = {
     );
     return result?.models?.length ? { models: result.models } : null;
   },
+  // noAuth provider — conn is synthetic, fetch live free-tier catalog instead
+  opencode: async (_conn) => resolveOpenCodeModels(),
 };
 
 const parseOpenAIStyleModels = (data) => {
@@ -198,6 +202,25 @@ export async function buildModelsList(kindFilter) {
     if (!activeConnectionByProvider.has(conn.provider)) {
       activeConnectionByProvider.set(conn.provider, conn);
     }
+  }
+
+  // Inject synthetic connection records for noAuth providers that have static
+  // models but no stored DB connection (they never go through an auth flow so
+  // they never appear in getProviderConnections). Real DB connections always
+  // take precedence — we only inject when the provider is absent from the map.
+  for (const [providerId, providerConfig] of Object.entries(PROVIDERS)) {
+    if (!providerConfig.noAuth) continue;
+    if (activeConnectionByProvider.has(providerId)) continue;
+    const alias = PROVIDER_ID_TO_ALIAS[providerId] || providerId;
+    const staticModels = PROVIDER_MODELS[alias] || [];
+    if (staticModels.length === 0) continue;
+    activeConnectionByProvider.set(providerId, {
+      provider: providerId,
+      isActive: true,
+      accessToken: null,
+      apiKey: null,
+      providerSpecificData: {},
+    });
   }
 
   const models = [];

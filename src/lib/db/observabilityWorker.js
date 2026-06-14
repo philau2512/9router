@@ -138,8 +138,9 @@ parentPort.on("message", async (message) => {
     }
 
     if (type === "write_details") {
-      const { items, maxRecords, maxJsonSize } = payload;
+      const { items, maxRecords, maxJsonSize, shouldPrune } = payload;
 
+      // Short transaction: insert only
       database.transaction(() => {
         for (const item of items) {
           if (!item.id) item.id = generateDetailId(item.model);
@@ -162,15 +163,21 @@ parentPort.on("message", async (message) => {
             response: truncateField(item.response, maxJsonSize),
           };
 
+          // Extract metadata for fast list queries
+          const latencyJson = JSON.stringify(record.latency);
+          const tokensJson = JSON.stringify(record.tokens);
+
           database.run(
-            `INSERT INTO requestDetails(id, timestamp, provider, model, connectionId, status, data) 
-             VALUES(?, ?, ?, ?, ?, ?, ?) 
-             ON CONFLICT(id) DO UPDATE SET 
-               timestamp = excluded.timestamp, 
-               provider = excluded.provider, 
-               model = excluded.model, 
-               connectionId = excluded.connectionId, 
-               status = excluded.status, 
+            `INSERT INTO requestDetails(id, timestamp, provider, model, connectionId, status, latency_json, tokens_json, data)
+             VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+               timestamp = excluded.timestamp,
+               provider = excluded.provider,
+               model = excluded.model,
+               connectionId = excluded.connectionId,
+               status = excluded.status,
+               latency_json = excluded.latency_json,
+               tokens_json = excluded.tokens_json,
                data = excluded.data`,
             [
               record.id,
@@ -179,11 +186,16 @@ parentPort.on("message", async (message) => {
               record.model,
               record.connectionId,
               record.status,
+              latencyJson,
+              tokensJson,
               stringifyJson(record),
             ],
           );
         }
+      });
 
+      // Prune separately (outside insert transaction)
+      if (shouldPrune) {
         const cnt = database.get(`SELECT COUNT(*) as c FROM requestDetails`);
         if (cnt && cnt.c > maxRecords) {
           database.run(
@@ -191,7 +203,7 @@ parentPort.on("message", async (message) => {
             [cnt.c - maxRecords],
           );
         }
-      });
+      }
     }
 
     if (type === "write_usage") {

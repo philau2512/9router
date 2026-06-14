@@ -2,5 +2,6 @@
 export {
   saveRequestDetail,
   getRequestDetails,
+  getRequestDetailsList,
   getRequestDetailById,
 } from "@/lib/db/index.js";

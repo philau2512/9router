@@ -114,6 +114,7 @@ export {
 export {
   saveRequestDetail,
   getRequestDetails,
+  getRequestDetailsList,
   getRequestDetailById,
 } from "./repos/requestDetailsRepo.js";
 

@@ -1,14 +1,38 @@
 import { NextResponse } from "next/server";
-import { getRequestDetails } from "@/lib/usageDb";
+import {
+  getRequestDetails,
+  getRequestDetailsList,
+  getRequestDetailById,
+} from "@/lib/usageDb";
 
 /**
  * GET /api/usage/request-details
- * Query parameters: page, pageSize (1-100), provider, model, connectionId, status, startDate, endDate
+ * Query parameters: page, pageSize (1-100), provider, model, connectionId, status, startDate, endDate, mode, id
+ * mode: "list" (default, metadata only) or "detail" (full data blob, requires id)
  */
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
 
+    const mode = searchParams.get("mode") || "list";
+    const id = searchParams.get("id");
+
+    // Detail mode: return full data blob for single record
+    if (mode === "detail") {
+      if (!id) {
+        return NextResponse.json(
+          { error: "id required for detail mode" },
+          { status: 400 },
+        );
+      }
+      const detail = await getRequestDetailById(id);
+      if (!detail) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+      return NextResponse.json({ detail });
+    }
+
+    // List mode: return metadata only (fast)
     const page = parseInt(searchParams.get("page")) || 1;
     const pageSize = parseInt(searchParams.get("pageSize")) || 20;
     const provider = searchParams.get("provider");
@@ -41,7 +65,7 @@ export async function GET(request) {
     if (startDate) filter.startDate = startDate;
     if (endDate) filter.endDate = endDate;
 
-    const result = await getRequestDetails(filter);
+    const result = await getRequestDetailsList(filter);
 
     return NextResponse.json(result);
   } catch (error) {
