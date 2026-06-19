@@ -192,6 +192,7 @@ export function openaiToClaudeResponse(chunk, state) {
 
   // Tool calls
   if (delta?.tool_calls) {
+    if (!state.toolCalls) state.toolCalls = new Map();
     for (const tc of delta.tool_calls) {
       const idx = tc.index ?? 0;
 
@@ -272,7 +273,7 @@ export function openaiToClaudeResponse(chunk, state) {
     stopThinkingBlock(state, results);
     stopTextBlock(state, results);
 
-    for (const [idx, toolInfo] of state.toolCalls) {
+    for (const [idx, toolInfo] of (state.toolCalls || [])) {
       let toolName = toolInfo.name;
       if (toolName.startsWith(CLAUDE_OAUTH_TOOL_PREFIX)) {
         toolName = toolName.slice(CLAUDE_OAUTH_TOOL_PREFIX.length);

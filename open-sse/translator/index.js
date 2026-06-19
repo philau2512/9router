@@ -80,6 +80,13 @@ export function translateRequest(
 
   // If same format, skip translation steps
   if (sourceFormat !== targetFormat) {
+    // Step 0: check direct source→target route (bypasses OpenAI pivot).
+    // Used by direct routes like claude→kiro that must not go through openai translation.
+    const directRoute = requestRegistry.get(`${sourceFormat}:${targetFormat}`);
+    if (directRoute) {
+      return directRoute(model, result, stream, credentials);
+    }
+
     // Step 1: source -> openai (if source is not openai)
     if (sourceFormat !== FORMATS.OPENAI) {
       const toOpenAI = requestRegistry.get(`${sourceFormat}:${FORMATS.OPENAI}`);
@@ -148,6 +155,14 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
 
   let results = [chunk];
   let openaiResults = null; // Store OpenAI intermediate results
+
+  // Step 0: check direct target→source route (bypasses OpenAI pivot).
+  // Used by direct routes like kiro→claude that must not go through openai translation.
+  const directRoute = responseRegistry.get(`${targetFormat}:${sourceFormat}`);
+  if (directRoute) {
+    const converted = directRoute(chunk, state);
+    return converted == null ? [] : (Array.isArray(converted) ? converted : [converted]);
+  }
 
   // Step 1: target -> openai (if target is not openai)
   if (targetFormat !== FORMATS.OPENAI) {

@@ -47,6 +47,7 @@ export const ANTIGRAVITY_CONFIG = {
 // Codex (OpenAI) API config
 export const CODEX_CONFIG = {
   usageUrl: "https://chatgpt.com/backend-api/wham/usage",
+  resetCreditsConsumeUrl: "https://chatgpt.com/backend-api/wham/redeem",
 };
 
 // Claude API config
