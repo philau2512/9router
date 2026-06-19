@@ -29,7 +29,7 @@ function isAuthExpiredMessage(usage) {
  * @param {boolean} force - Skip needsRefresh check and always attempt refresh
  * @returns Promise<{ connection, refreshed: boolean }>
  */
-async function refreshAndUpdateCredentials(
+export async function refreshAndUpdateCredentials(
   connection,
   force = false,
   proxyOptions = null,

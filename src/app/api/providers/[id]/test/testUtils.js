@@ -825,7 +825,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
       }
       case "perplexity": {
         const res = await fetchWithConnectionProxy(
-          "https://api.perplexity.ai/models",
+          "https://api.perplexity.ai/v1/models",
           { headers: { Authorization: `Bearer ${connection.apiKey}` } },
           effectiveProxy,
         );

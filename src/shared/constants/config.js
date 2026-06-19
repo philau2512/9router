@@ -98,3 +98,14 @@ export {
 
 // Re-export from models.js for backward compatibility
 export { PROVIDER_MODELS, AI_MODELS } from "./models.js";
+
+// Claude auto-ping scheduler config — warms the 5h quota window after reset
+export const CLAUDE_AUTOPING_CONFIG = {
+  settingsKey: "claudeAutoPing",
+  tickIntervalMs: 60_000,       // check every 60s
+  pingLeadMs: 90_000,           // ping up to 90s after reset
+  fiveHourKey: "five_hour",     // key in Claude usage quotas object
+  pingModel: "claude-haiku-4-5-20251001",
+  pingMaxTokens: 1,
+  pingText: "hi",
+};

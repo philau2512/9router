@@ -80,3 +80,60 @@ export function generateBinaryStyleId() {
 export function clearSessionStore() {
   runtimeSessionStore.clear();
 }
+
+// Client headers/body fields that carry an upstream session id (priority order)
+const SESSION_HEADER_KEYS = ["x-session-id", "session_id", "x-amp-thread-id", "x-client-request-id"];
+const CLAUDE_CODE_SESSION_RE = /_session_([a-f0-9-]+)$/;
+
+function normalizeSessionId(value) {
+  if (typeof value !== "string") return null;
+  const v = value.trim();
+  if (!v || v.length > 256) return null;
+  return v;
+}
+
+function extractClaudeCodeSession(userId) {
+  if (typeof userId !== "string" || !userId) return null;
+  const m = userId.match(CLAUDE_CODE_SESSION_RE);
+  if (m) return m[1];
+  if (userId[0] === "{") {
+    try { return normalizeSessionId(JSON.parse(userId)?.session_id); } catch { /* noop */ }
+  }
+  return null;
+}
+
+function headerValue(headers, key) {
+  if (!headers || typeof headers !== "object") return null;
+  return normalizeSessionId(headers[key] ?? headers[key.toLowerCase()]);
+}
+
+function extractClientSessionId(headers, body) {
+  const claude = extractClaudeCodeSession(body?.metadata?.user_id);
+  if (claude) return `claude:${claude}`;
+  for (const key of SESSION_HEADER_KEYS) {
+    const v = headerValue(headers, key);
+    if (v) return v;
+  }
+  return normalizeSessionId(body?.prompt_cache_key)
+    || normalizeSessionId(body?.session_id)
+    || normalizeSessionId(body?.conversation_id)
+    || null;
+}
+
+/**
+ * Resolve a conversation-stable session id from multiple sources:
+ * 1. Client-provided header/body session id
+ * 2. Derived from connectionId (stable per connection per process)
+ *
+ * @param {object} opts
+ * @param {object} [opts.headers] - Raw request headers
+ * @param {object} [opts.body] - Request body
+ * @param {string} [opts.connectionId] - Connection identifier
+ * @param {string} [opts.scope] - Scope prefix (e.g. "kiro")
+ * @returns {string} Stable session id
+ */
+export function resolveSessionId({ headers, body, connectionId, scope = "" } = {}) {
+  const client = extractClientSessionId(headers, body);
+  if (client) return client;
+  return deriveSessionId(connectionId);
+}

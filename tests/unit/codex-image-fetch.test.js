@@ -9,6 +9,11 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+// Mock DNS lookup so SSRF guard resolves example.com to a public IP.
+const lookupMock = vi.fn();
+vi.mock("node:dns/promises", () => ({ lookup: (...a) => lookupMock(...a) }));
+
 import { CodexExecutor } from "../../open-sse/executors/codex.js";
 import * as proxyFetchModule from "../../open-sse/utils/proxyFetch.js";
 
@@ -23,10 +28,20 @@ function makeImageBuffer(sizeBytes) {
 }
 
 function mockImageFetch(sizeBytes, mimeType = "image/jpeg") {
+  const bytes = new Uint8Array(makeImageBuffer(sizeBytes));
   return {
     ok: true,
     headers: { get: (k) => (k === "Content-Type" ? mimeType : null) },
     arrayBuffer: async () => makeImageBuffer(sizeBytes),
+    body: {
+      getReader() {
+        let sent = false;
+        return {
+          read: async () => sent ? { done: true, value: undefined } : (sent = true, { done: false, value: bytes }),
+          cancel: async () => {},
+        };
+      },
+    },
   };
 }
 
@@ -35,6 +50,9 @@ describe("CodexExecutor image handling", () => {
 
   beforeEach(() => {
     originalFetch = global.fetch;
+    // Default: example.com resolves to a public IP (SSRF guard passes)
+    lookupMock.mockReset();
+    lookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
   });
 
   afterEach(() => {

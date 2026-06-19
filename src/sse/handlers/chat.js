@@ -14,7 +14,7 @@ import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
-import { handleComboChat } from "open-sse/services/combo.js";
+import { handleComboChat, handleFusionChat } from "open-sse/services/combo.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import {
@@ -155,6 +155,20 @@ export async function handleChat(request, clientRawRequest = null) {
     const comboStrategy =
       comboSpecificStrategy || settings.comboStrategy || "fallback";
 
+    if (comboStrategy === "fusion") {
+      log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`);
+      return handleFusionChat({
+        body,
+        models: comboModels,
+        handleSingleModel: (b, m) =>
+          handleSingleModelChat(b, m, clientRawRequest, request, apiKey, { settings, timing: { ...timing } }),
+        log,
+        comboName: modelStr,
+        judgeModel: comboStrategies[modelStr]?.judgeModel,
+        tuning: comboStrategies[modelStr]?.fusionTuning,
+      });
+    }
+
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     log.info(
       "CHAT",
@@ -212,6 +226,20 @@ async function handleSingleModelChat(
       const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
       const comboStrategy =
         comboSpecificStrategy || chatSettings.comboStrategy || "fallback";
+
+      if (comboStrategy === "fusion") {
+        log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`);
+        return handleFusionChat({
+          body,
+          models: comboModels,
+          handleSingleModel: (b, m) =>
+            handleSingleModelChat(b, m, clientRawRequest, request, apiKey, { settings, timing: { ...timing } }),
+          log,
+          comboName: modelStr,
+          judgeModel: comboStrategies[modelStr]?.judgeModel,
+          tuning: comboStrategies[modelStr]?.fusionTuning,
+        });
+      }
 
       const comboStickyLimit = chatSettings.comboStickyRoundRobinLimit;
       log.info(

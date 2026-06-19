@@ -7,7 +7,7 @@ import { FORMATS } from "../formats.js";
 import { v4 as uuidv4, v5 as uuidv5 } from "uuid";
 import {
   resolveKiroModel,
-  isThinkingEnabled,
+  resolveKiroThinkingBudget,
   buildThinkingSystemPrefix,
   KIRO_AGENTIC_SYSTEM_PROMPT,
   resolveDefaultProfileArn,
@@ -606,8 +606,10 @@ export function buildKiroPayload(model, body, stream, credentials) {
     agentic,
     thinking: modelImpliesThinking,
   } = resolveKiroModel(normalizedModel);
-  const thinkingEnabled =
-    modelImpliesThinking || isThinkingEnabled(body, null, normalizedModel);
+  // Resolve thinking budget from client intent; null means disabled
+  const thinkingBudget = resolveKiroThinkingBudget(body, null, normalizedModel)
+    ?? (modelImpliesThinking ? undefined : null);
+  const thinkingEnabled = thinkingBudget !== null;
 
   const { history, currentMessage, toolsAttached } = convertMessages(
     messages,
@@ -629,7 +631,7 @@ export function buildKiroPayload(model, body, stream, credentials) {
   // then context/timestamp marker, then optional agentic chunked-write prompt.
   const prefixParts = [];
   if (thinkingEnabled) {
-    prefixParts.push(buildThinkingSystemPrefix());
+    prefixParts.push(buildThinkingSystemPrefix(thinkingBudget));
   }
   prefixParts.push(`[Context: Current time is ${timestamp}]`);
   if (agentic) {

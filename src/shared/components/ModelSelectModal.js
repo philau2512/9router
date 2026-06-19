@@ -154,10 +154,10 @@ export default function ModelSelectModal({
 
     // Filter a models[] array by kindFilter (keep only matching m.type)
     const filterByKind = (models) => {
-      // No kindFilter → LLM context: keep only LLM models (no type or type === "llm")
+      // No kindFilter → LLM context: keep LLM models + custom models (may have typed capabilities like imageToText)
       if (!kindFilter)
         return models.filter(
-          (m) => m.isPlaceholder || !m.type || m.type === "llm",
+          (m) => m.isPlaceholder || m.isCustom || !m.type || m.type === "llm",
         );
       if (!TYPED_KINDS.has(kindFilter)) return models;
       return models.filter((m) => m.isPlaceholder || m.type === kindFilter);

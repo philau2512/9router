@@ -18,6 +18,7 @@ import {
   ANTIGRAVITY_CONFIG,
   GITHUB_CONFIG,
   KIRO_CONFIG,
+  assertValidAwsRegion,
   CURSOR_CONFIG,
   KIMI_CODING_CONFIG,
   KILOCODE_CONFIG,
@@ -877,7 +878,7 @@ const PROVIDERS = {
       const trimmedRegion =
         typeof options.region === "string" ? options.region.trim() : "";
       const region = trimmedRegion || "us-east-1";
-      const trimmedStartUrl =
+      assertValidAwsRegion(region);
         typeof options.startUrl === "string" ? options.startUrl.trim() : "";
       const startUrl = trimmedStartUrl || config.startUrl;
       const authMethod = options.authMethod === "idc" ? "idc" : "builder-id";
@@ -946,6 +947,7 @@ const PROVIDERS = {
     },
     pollToken: async (config, deviceCode, codeVerifier, extraData) => {
       const region = extraData?._region || "us-east-1";
+      assertValidAwsRegion(region);
       const tokenUrl = `https://oidc.${region}.amazonaws.com/token`;
       const response = await fetch(tokenUrl, {
         method: "POST",
