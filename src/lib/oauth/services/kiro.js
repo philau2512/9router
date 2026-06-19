@@ -1,4 +1,4 @@
-import { KIRO_CONFIG } from "../constants/oauth.js";
+import { KIRO_CONFIG, assertValidAwsRegion } from "../constants/oauth.js";
 
 /**
  * Kiro OAuth Service
@@ -17,6 +17,7 @@ export class KiroService {
    * Returns clientId and clientSecret for device code flow
    */
   async registerClient(region = "us-east-1") {
+    assertValidAwsRegion(region);
     const endpoint = `https://oidc.${region}.amazonaws.com/client/register`;
 
     const response = await fetch(endpoint, {
@@ -55,6 +56,7 @@ export class KiroService {
     startUrl,
     region = "us-east-1",
   ) {
+    assertValidAwsRegion(region);
     const endpoint = `https://oidc.${region}.amazonaws.com/device_authorization`;
 
     const response = await fetch(endpoint, {
@@ -94,6 +96,7 @@ export class KiroService {
     deviceCode,
     region = "us-east-1",
   ) {
+    assertValidAwsRegion(region);
     const endpoint = `https://oidc.${region}.amazonaws.com/token`;
 
     const response = await fetch(endpoint, {
@@ -187,7 +190,9 @@ export class KiroService {
 
     // AWS SSO OIDC refresh (Builder ID or IDC)
     if (clientId && clientSecret) {
-      const endpoint = `https://oidc.${region || "us-east-1"}.amazonaws.com/token`;
+      const safeRegion = region || "us-east-1";
+      assertValidAwsRegion(safeRegion);
+      const endpoint = `https://oidc.${safeRegion}.amazonaws.com/token`;
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -264,6 +269,64 @@ export class KiroService {
     } catch (error) {
       throw new Error(`Token validation failed: ${error.message}`);
     }
+  }
+
+  /**
+   * List available CodeWhisperer profiles for an API key / access token.
+   * Returns the profileArn best matching the given region, or null.
+   */
+  async listAvailableProfiles(accessToken, region = "us-east-1") {
+    assertValidAwsRegion(region);
+    const endpoint = `https://codewhisperer.${region}.amazonaws.com`;
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-amz-json-1.0",
+        "x-amz-target": "AmazonCodeWhispererService.ListAvailableProfiles",
+        "Authorization": `Bearer ${accessToken}`,
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({ maxResults: 10 }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to list profiles: ${error}`);
+    }
+
+    const data = await response.json();
+    const profiles = Array.isArray(data?.profiles) ? data.profiles : [];
+    const arnOf = (p) => p?.arn || p?.profileArn || null;
+    const match = profiles.find((p) => arnOf(p)?.split(":")[3] === region) || profiles[0];
+    return arnOf(match);
+  }
+
+  /**
+   * Validate an API-key credential by listing profiles with it.
+   * API keys are long-lived bearer tokens (no refresh cycle).
+   * Returns a credential object ready to persist as authMethod="api_key".
+   */
+  async validateApiKey(apiKey, region = "us-east-1") {
+    if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
+      throw new Error("API key is required");
+    }
+    const trimmed = apiKey.trim();
+
+    let profileArn = null;
+    try {
+      profileArn = await this.listAvailableProfiles(trimmed, region);
+    } catch (error) {
+      throw new Error(`API key validation failed: ${error.message}`);
+    }
+
+    return {
+      accessToken: trimmed,
+      refreshToken: null,
+      profileArn,
+      region,
+      authMethod: "api_key",
+    };
   }
 
   /**

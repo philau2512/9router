@@ -37,6 +37,7 @@ export const UNSUPPORTED_SCHEMA_CONSTRAINTS = [
   "dependentRequired",
   // Other unsupported keywords
   "title",
+  "optional",
   "if",
   "then",
   "else",

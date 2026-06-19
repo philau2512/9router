@@ -7,6 +7,7 @@ import { openaiResponsesToOpenAIResponse } from "../translator/response/openai-r
 import { initState } from "../translator/index.js";
 import { parseSSELine, formatSSE } from "../utils/streamHelpers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
 import crypto from "crypto";
 
 export class GithubExecutor extends BaseExecutor {
@@ -198,6 +199,8 @@ export class GithubExecutor extends BaseExecutor {
     ) {
       delete transformed.reasoning_effort;
     }
+    // Config-driven strip of params unsupported by this provider/model
+    stripUnsupportedParams("github", model, transformed);
     return transformed;
   }
 

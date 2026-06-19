@@ -95,6 +95,10 @@ function isLoopbackHostname(h) {
 }
 
 export function isLocalRequest(request) {
+  // Stamped by custom-server.js when forwarding headers exist: request came through
+  // a reverse proxy, so the loopback socket is the proxy hop, not the end-user.
+  if (request.headers.get("x-9r-via-proxy")) return false;
+  // Trusted peer IP from TCP socket (custom-server.js); unspoofable. Primary anchor for "local".
   if (!isLoopbackHostname(request.headers.get("host"))) return false;
   const origin = request.headers.get("origin");
   if (origin) {

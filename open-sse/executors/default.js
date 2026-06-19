@@ -8,6 +8,7 @@ import { buildClineHeaders } from "../../src/shared/utils/clineAuth.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
+import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
 
 export class DefaultExecutor extends BaseExecutor {
   constructor(provider) {
@@ -16,11 +17,14 @@ export class DefaultExecutor extends BaseExecutor {
 
   transformRequest(model, body) {
     const transformed = this.applyJsonSchemaFallback(body);
-    return injectReasoningContent({
+    const result = injectReasoningContent({
       provider: this.provider,
       model,
       body: transformed,
     });
+    // Config-driven strip of params unsupported by this provider/model
+    stripUnsupportedParams(this.provider, model, result);
+    return result;
   }
 
   // Fallback json_schema → json_object for openai-compatible providers without native Structured Output.

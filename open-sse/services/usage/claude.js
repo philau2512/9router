@@ -65,8 +65,19 @@ async function getClaudeUsageLegacy(accessToken, proxyOptions = null) {
   }
 }
 
+// OAuth usage endpoint rate-limits (429); cool down per-token to stop hammering it.
+// Only the quota endpoint is affected — chat with the same token still works.
+const OAUTH_429_COOLDOWN_MS = 180000;
+const oauthCooldown = new Map();
+
 export async function getClaudeUsage(accessToken, proxyOptions = null) {
   try {
+    // Skip OAuth usage call while this token is cooling down from a recent 429
+    const cooldownUntil = oauthCooldown.get(accessToken);
+    if (cooldownUntil && Date.now() < cooldownUntil) {
+      return await getClaudeUsageLegacy(accessToken, proxyOptions);
+    }
+
     // Primary: OAuth usage endpoint (Claude Code consumer OAuth tokens)
     const oauthResponse = await proxyAwareFetch(
       CLAUDE_CONFIG.oauthUsageUrl,
@@ -129,6 +140,11 @@ export async function getClaudeUsage(accessToken, proxyOptions = null) {
         extraUsage: data.extra_usage ?? null,
         quotas,
       };
+    }
+
+    // Cool down OAuth usage polling after a 429 (quota endpoint only)
+    if (oauthResponse.status === 429) {
+      oauthCooldown.set(accessToken, Date.now() + OAUTH_429_COOLDOWN_MS);
     }
 
     // Fallback: legacy settings + org usage endpoint

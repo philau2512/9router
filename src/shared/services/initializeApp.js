@@ -33,6 +33,7 @@ import {
   startCodexProactiveRefreshTick,
   getCodexProactiveRefreshIntervalMs,
 } from "@/sse/services/tokenRefresh";
+import { startClaudeAutoPing } from "@/shared/services/claudeAutoPing";
 import {
   getMitmStatus,
   startMitm,
@@ -136,6 +137,7 @@ export async function initializeApp() {
     startWatchdog();
     startNetworkMonitor();
     startCodexProactiveRefreshMonitor();
+    startClaudeAutoPing();
     autoStartMitm();
   } catch (error) {
     console.error("[InitApp] Error:", error);

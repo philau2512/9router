@@ -148,3 +148,49 @@ export async function getCodexUsage(accessToken, proxyOptions = null) {
     throw new Error(`Failed to fetch Codex usage: ${error.message}`);
   }
 }
+
+/**
+ * Consume one Codex rate-limit reset credit (irreversible, spends 1 credit).
+ * Returns result object with ok/noCredit/status/code/windowsReset fields.
+ */
+export async function consumeCodexRateLimitResetCredit(accessToken, redeemRequestId, proxyOptions = null) {
+  if (!accessToken) {
+    throw new Error("No Codex access token available. Please re-authorize the connection.");
+  }
+  if (!redeemRequestId || typeof redeemRequestId !== "string") {
+    throw new Error("A redeem request id is required to consume a Codex reset credit.");
+  }
+
+  let response;
+  let data = null;
+  try {
+    response = await proxyAwareFetch(CODEX_CONFIG.resetCreditsConsumeUrl, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ redeem_request_id: redeemRequestId }),
+    }, proxyOptions);
+
+    const text = await response.text();
+    data = text ? JSON.parse(text) : null;
+  } catch (error) {
+    throw new Error(`Failed to consume Codex reset credit: ${error.message}`);
+  }
+
+  const code = data?.code || null;
+  const windowsReset = toFiniteNumber(data?.windows_reset, 0);
+  const success = response.ok && (code === "reset" || windowsReset > 0);
+
+  return {
+    ok: success,
+    noCredit: response.ok && code === "no_credit",
+    status: response.status,
+    code,
+    windowsReset,
+    message: data?.message || null,
+    raw: data,
+  };
+}

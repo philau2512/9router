@@ -4,6 +4,93 @@
 
 import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
 import { unavailableResponse } from "../utils/error.js";
+import { extractTextContent } from "../translator/helpers/geminiHelper.js";
+
+// Hard capabilities = input modalities; missing one drops request data (e.g. image
+// stripped). Must be prioritized. Soft (e.g. search) only degrades a feature.
+const HARD_CAPS = new Set(["vision", "pdf", "audioInput", "videoInput"]);
+
+// Trailing run of items after the last assistant/model turn = the current user turn.
+function trailingUserItems(arr) {
+  if (!Array.isArray(arr) || arr.length === 0) return [];
+  const isAssistant = (r) => r === "assistant" || r === "model";
+  let i = arr.length - 1;
+  while (i >= 0 && !isAssistant(arr[i]?.role)) i--;
+  return arr.slice(i + 1);
+}
+
+/**
+ * Detect which capabilities a request needs (vision, pdf, search).
+ * Only scans current user turn for modalities; tools array for search.
+ */
+export function detectRequiredCapabilities(body) {
+  const required = new Set();
+  if (!body || typeof body !== "object") return required;
+
+  const scanBlock = (b) => {
+    if (!b || typeof b !== "object") return;
+    const t = b.type;
+    if (t === "image_url" || t === "image" || t === "input_image") required.add("vision");
+    if (t === "file" || t === "document" || t === "input_file") required.add("pdf");
+    const mime = b.inlineData?.mimeType || b.fileData?.mimeType;
+    if (typeof mime === "string" && mime.startsWith("image/")) required.add("vision");
+    if (mime === "application/pdf") required.add("pdf");
+  };
+
+  const scanContent = (content) => {
+    if (Array.isArray(content)) for (const b of content) scanBlock(b);
+  };
+
+  for (const m of trailingUserItems(body.messages)) scanContent(m.content);
+  for (const it of trailingUserItems(body.input)) scanContent(it.content);
+  const contents = body.contents || body.request?.contents;
+  for (const c of trailingUserItems(contents)) scanContent(c.parts);
+
+  // search: web_search tool in request
+  if (Array.isArray(body.tools)) {
+    for (const t of body.tools) {
+      if (t?.type === "web_search") required.add("search");
+    }
+  }
+
+  return required;
+}
+
+/**
+ * Reorder combo models by capability fit. Stable; never drops a model (fallback intact).
+ * Tier 0: satisfies all hard + all soft. Tier 1: all hard only. Tier 2: rest.
+ * Falls back to original order when capabilities registry unavailable.
+ */
+export function reorderByCapabilities(models, required) {
+  if (!required || required.size === 0 || !Array.isArray(models) || models.length <= 1) return models;
+
+  // Try to load capabilities — gracefully skip reorder if registry not available
+  let getCapabilities;
+  try {
+    // Dynamic require pattern — capabilities.js may not exist pre-registry-migration
+    getCapabilities = null; // registry migration pending (Phase 6)
+  } catch {
+    getCapabilities = null;
+  }
+  if (!getCapabilities) return models;
+
+  const hard = [...required].filter((c) => HARD_CAPS.has(c));
+  const soft = [...required].filter((c) => !HARD_CAPS.has(c));
+
+  const tierOf = (m) => {
+    const slash = typeof m === "string" ? m.indexOf("/") : -1;
+    const provider = slash > 0 ? m.slice(0, slash) : "";
+    const model = slash > 0 ? m.slice(slash + 1) : m;
+    const caps = getCapabilities(provider, model) || {};
+    if (!hard.every((c) => caps[c] === true)) return 2;
+    return soft.every((c) => caps[c] === true) ? 0 : 1;
+  };
+
+  return models
+    .map((m, i) => ({ m, i, t: tierOf(m) }))
+    .sort((a, b) => a.t - b.t || a.i - b.i)
+    .map((x) => x.m);
+}
 
 /**
  * Track rotation state per combo (for round-robin strategy)
@@ -245,4 +332,232 @@ export async function handleComboChat({
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+// ─── Fusion Strategy ──────────────────────────────────────────────────────────
+
+// Prefixes used when flattening tool turns into plain prose for panel models.
+const TOOL_CALL_PREFIX = "[Called tools: ";
+const TOOL_RESULT_PREFIX = "[Tool result: ";
+
+// Flatten tool turns into prose so panel models keep the context but can't loop
+// on tools: drop the request's tools, turn tool/function results into assistant
+// text, and inline assistant tool_calls names instead of the structured field.
+function flattenToolHistory(messages) {
+  return messages
+    .filter((msg) => msg)
+    .map((msg) => {
+      if (msg.role === "tool" || msg.role === "function") {
+        return { role: "assistant", content: `${TOOL_RESULT_PREFIX}${extractTextContent(msg.content) || String(msg.content ?? "")}]` };
+      }
+      if (msg.role === "assistant" && Array.isArray(msg.tool_calls)) {
+        const { tool_calls, ...rest } = msg;
+        const names = tool_calls.map((c) => c?.function?.name || c?.name || "tool").join(", ");
+        const base = extractTextContent(rest.content) || (typeof rest.content === "string" ? rest.content : "");
+        return { ...rest, content: `${base}${base ? "\n" : ""}${TOOL_CALL_PREFIX}${names}]` };
+      }
+      return msg;
+    });
+}
+
+/**
+ * Extract assistant text from a non-stream completion across formats
+ * (OpenAI chat, Claude messages, Gemini, OpenAI Responses). Returns "" if none.
+ */
+function extractPanelText(json) {
+  if (!json || typeof json !== "object") return "";
+  const choice = json.choices?.[0];
+  if (choice) {
+    const msg = choice.message ?? choice.delta ?? {};
+    const t = extractTextContent(msg.content);
+    if (t.trim()) return t;
+    if (typeof choice.text === "string" && choice.text.trim()) return choice.text;
+  }
+  const claudeText = extractTextContent(json.content);
+  if (claudeText.trim()) return claudeText;
+  const parts = json.candidates?.[0]?.content?.parts;
+  if (Array.isArray(parts)) {
+    const t = parts.map((p) => p?.text || "").join("");
+    if (t.trim()) return t;
+  }
+  if (Array.isArray(json.output)) {
+    const t = json.output
+      .flatMap((o) => (Array.isArray(o.content) ? o.content.map((c) => c?.text || "") : []))
+      .join("");
+    if (t.trim()) return t;
+  }
+  return "";
+}
+
+/** Append a synthesized user turn to whichever message array the request uses. */
+function appendUserTurn(body, text) {
+  const next = { ...body };
+  if (Array.isArray(body.messages)) {
+    next.messages = [...body.messages, { role: "user", content: text }];
+  } else if (Array.isArray(body.input)) {
+    next.input = [...body.input, { role: "user", content: text }];
+  } else if (Array.isArray(body.contents)) {
+    next.contents = [...body.contents, { role: "user", parts: [{ text }] }];
+  } else {
+    next.messages = [{ role: "user", content: text }];
+  }
+  return next;
+}
+
+/**
+ * Build the judge directive. Sources anonymized to prevent brand-bias.
+ * Judge analyzes consensus/contradictions/blind-spots then writes one answer.
+ */
+function buildJudgePrompt(answers) {
+  const panel = answers.map((a, i) => `[Source ${i + 1}]\n${a.text}`).join("\n\n");
+  return [
+    `You are the JUDGE in a model-fusion panel. ${answers.length} expert models independently answered the user's most recent request. Their responses are below, anonymized by source.`,
+    "",
+    "Do NOT mention that multiple models were used, and do NOT refer to the sources. Produce ONE authoritative final answer addressed directly to the user.",
+    "",
+    "First, internally analyze the panel along these dimensions: consensus (points most sources agree on — treat as higher-confidence), contradictions (where they disagree — resolve with your own judgment), partial coverage, unique insights only one source surfaced, and blind spots every source missed. Then write the best possible final answer grounded in that analysis — more complete and correct than any single response, with no filler.",
+    "",
+    "=== PANEL RESPONSES ===",
+    panel,
+    "=== END PANEL RESPONSES ===",
+    "",
+    "Now write the final answer to the user's original request.",
+  ].join("\n");
+}
+
+// Fusion tuning — overridable per-combo via settings.comboStrategies[name].
+const FUSION_DEFAULTS = {
+  minPanel: 2,               // answers needed before stragglers get a grace window
+  stragglerGraceMs: 8000,    // wait this long for laggards once quorum is reached
+  panelHardTimeoutMs: 90000, // absolute cap so one hung model can't stall forever
+};
+
+// Resolve a promise within ms; loser keeps running but is ignored.
+function withTimeout(promise, ms) {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve({ __timeout: true }), ms);
+    Promise.resolve(promise)
+      .then((v) => { clearTimeout(t); resolve(v); })
+      .catch((e) => { clearTimeout(t); resolve({ __error: e }); });
+  });
+}
+
+/**
+ * Collect panel responses with quorum-grace: wait for minPanel successes,
+ * then give stragglers a short grace window before proceeding.
+ */
+function collectPanel(calls, { minPanel, stragglerGraceMs, panelHardTimeoutMs }) {
+  return new Promise((resolve) => {
+    const out = new Array(calls.length);
+    let settled = 0, ok = 0, finished = false, graceTimer = null;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(hardTimer);
+      if (graceTimer) clearTimeout(graceTimer);
+      resolve(out);
+    };
+    const hardTimer = setTimeout(finish, panelHardTimeoutMs);
+    calls.forEach((p, i) => {
+      Promise.resolve(p)
+        .then((v) => { out[i] = v; })
+        .catch((e) => { out[i] = { __error: e }; })
+        .finally(() => {
+          settled++;
+          if (out[i] && out[i].ok) ok++;
+          if (settled === calls.length) return finish();
+          if (ok >= minPanel && !graceTimer) graceTimer = setTimeout(finish, stragglerGraceMs);
+        });
+    });
+  });
+}
+
+/**
+ * Handle a fusion combo: fan the prompt out to every panel model in parallel,
+ * then a judge model synthesizes one final answer from all panel responses.
+ *
+ * Opt-in: only dispatched when combo strategy === "fusion".
+ * Degrades gracefully: 0 answers → 503, 1 answer → direct return.
+ *
+ * @param {Object} options
+ * @param {Object} options.body - Request body
+ * @param {string[]} options.models - Panel model strings
+ * @param {Function} options.handleSingleModel - (body, modelStr, noStream?) => Promise<Response>
+ * @param {Object} options.log - Logger
+ * @param {string} [options.comboName] - Combo name (logging)
+ * @param {string} [options.judgeModel] - Judge model; falls back to panel[0]
+ * @param {Object} [options.tuning] - Override FUSION_DEFAULTS
+ * @returns {Promise<Response>}
+ */
+export async function handleFusionChat({ body, models, handleSingleModel, log, comboName, judgeModel, tuning }) {
+  const panel = Array.isArray(models) ? models.filter(Boolean) : [];
+  if (panel.length === 0) {
+    return new Response(
+      JSON.stringify({ error: { message: "Fusion combo has no models" } }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  // Single-model fusion has nothing to fuse — answer directly.
+  if (panel.length === 1) return handleSingleModel(body, panel[0]);
+
+  const cfg = { ...FUSION_DEFAULTS, ...(tuning || {}) };
+  const minPanel = Math.min(Math.max(2, cfg.minPanel), panel.length);
+  const judge = judgeModel && judgeModel.trim() ? judgeModel.trim() : panel[0];
+  log.info("FUSION", `Combo "${comboName}" | panel=${panel.length} [${panel.join(", ")}] | judge=${judge} | quorum=${minPanel}`);
+
+  // 1. Fan out: non-streaming, tools stripped, tool history flattened.
+  const { tools, tool_choice, ...rest } = body;
+  const panelBody = { ...rest, stream: false };
+  if (Array.isArray(panelBody.messages)) {
+    panelBody.messages = flattenToolHistory(panelBody.messages);
+  } else if (Array.isArray(panelBody.input)) {
+    panelBody.input = flattenToolHistory(panelBody.input);
+  }
+
+  const t0 = Date.now();
+  const calls = panel.map((m) => withTimeout(handleSingleModel(panelBody, m, true), cfg.panelHardTimeoutMs));
+  const settled = await collectPanel(calls, { ...cfg, minPanel });
+  log.info("FUSION", `fan-out collected in ${Date.now() - t0}ms`);
+
+  // 2. Collect successful answers.
+  const answers = [];
+  for (let i = 0; i < settled.length; i++) {
+    const res = settled[i];
+    const model = panel[i];
+    if (!res) { log.warn("FUSION", `Panel ${model} dropped (straggler/timeout)`); continue; }
+    if (res.__timeout) { log.warn("FUSION", `Panel ${model} timed out`); continue; }
+    if (res.__error) { log.warn("FUSION", `Panel ${model} threw`, { error: res.__error?.message || String(res.__error) }); continue; }
+    if (!res.ok) { log.warn("FUSION", `Panel ${model} failed`, { status: res.status }); continue; }
+    try {
+      const json = await res.clone().json();
+      const text = extractPanelText(json);
+      if (text) {
+        answers.push({ model, text });
+        log.info("FUSION", `Panel ${model} ok (${text.length} chars)`);
+      } else {
+        log.warn("FUSION", `Panel ${model} returned empty content`);
+      }
+    } catch (e) {
+      log.warn("FUSION", `Panel ${model} unparseable`, { error: e.message || String(e) });
+    }
+  }
+
+  // 3. Degrade gracefully.
+  if (answers.length === 0) {
+    log.warn("FUSION", "All panel models failed");
+    return new Response(
+      JSON.stringify({ error: { message: "All fusion panel models failed" } }),
+      { status: 503, headers: { "Content-Type": "application/json" } }
+    );
+  }
+  if (answers.length === 1) {
+    log.info("FUSION", `Only ${answers[0].model} succeeded — answering directly (no fusion)`);
+    return handleSingleModel(body, answers[0].model);
+  }
+
+  // 4. Judge synthesizes one final answer.
+  const judgeBody = appendUserTurn(body, buildJudgePrompt(answers));
+  log.info("FUSION", `Judging ${answers.length} answers with ${judge}`);
+  return handleSingleModel(judgeBody, judge);
 }

@@ -1,6 +1,6 @@
 # 9Router Architecture
 
-_Last updated: 2026-05-28_
+_Last updated: 2026-06-19_
 
 ## Executive Summary
 
@@ -155,6 +155,11 @@ Usage DB:
 - API key generation/verification: `src/shared/utils/apiKey.js`
 - Provider secrets persisted in `providerConnections` entries
 - Optional proxy support for upstream calls via env proxy variables (`open-sse/utils/proxyFetch.js`)
+- **SSRF hardening (2026-06-19):**
+  - Reverse proxy loopback bypass: `custom-server.js` stamps `x-9r-via-proxy` header; `src/dashboardGuard.js` rejects loopback-appearing requests when header is set
+  - DNS rebinding protection: `open-sse/translator/helpers/imageHelper.js` resolves hostname once, pins to public IP, rejects redirects, enforces byte cap; blocked hosts list in `open-sse/config/mediaConfig.js`
+  - AWS region injection (GHSA-6mwv-4mrm-5p3m): `src/lib/oauth/constants/oauth.js` exports `assertValidAwsRegion()`; called in all Kiro region-interpolating code paths
+- **Kiro API-key auth (2026-06-19):** `POST /api/oauth/kiro/api-key` — headless auth without OAuth device flow; `src/lib/oauth/services/kiro.js` adds `validateApiKey()` and `listAvailableProfiles()`
 
 ## 5) Cloud URL Configuration
 
@@ -224,22 +229,30 @@ flowchart TD
     F --> G[Select account credentials]
     G --> H{Credentials available?}
     H -- No --> I[Return provider unavailable]
-    H -- Yes --> J[Execute request]
+    H -- Yes --> J{Fusion combo?}
 
-    J --> K{Success?}
-    K -- Yes --> L[Return response]
-    K -- No --> M{Fallback-eligible error?}
+    J -- Yes --> K[Fan out to all panel models in parallel]
+    K --> L[Collect panel responses]
+    L --> M[Judge synthesis via primary model]
+    M --> N[Stream synthesized answer]
 
-    M -- No --> N[Return error]
-    M -- Yes --> O[Mark account unavailable cooldown]
-    O --> P{Another account for provider?}
-    P -- Yes --> G
-    P -- No --> Q{In combo with next model?}
-    Q -- Yes --> E
-    Q -- No --> R[Return all unavailable]
+    J -- No --> O[Execute request]
+    O --> P{Success?}
+    P -- Yes --> Q[Return response]
+    P -- No --> R{Fallback-eligible error?}
+
+    R -- No --> S[Return error]
+    R -- Yes --> T[Mark account unavailable cooldown]
+    T --> U{Another account for provider?}
+    U -- Yes --> G
+    U -- No --> V{In combo with next model?}
+    V -- Yes --> E
+    V -- No --> W[Return all unavailable]
 ```
 
 Fallback decisions are driven by `open-sse/services/accountFallback.js` using status codes and error-message heuristics.
+
+**Fusion combo (2026-06-19):** `open-sse/services/combo.js` exports `handleFusionChat` — detects required capabilities (`detectRequiredCapabilities`), reorders panel by capability match (`reorderByCapabilities`), fans out to all models in parallel (`collectPanel`/`withTimeout`), flattens tool history to prevent 503 (`flattenToolHistory`), builds judge prompt (`buildJudgePrompt`), streams synthesized answer. Dispatched from `src/sse/handlers/chat.js` at both combo entry points.
 
 ## OAuth Onboarding and Token Refresh Lifecycle
 
@@ -425,10 +438,13 @@ flowchart LR
 
 ### Translation Registry and Format Converters
 
-- `open-sse/translator/index.js`: translator registry and orchestration
+- `open-sse/translator/index.js`: translator registry and orchestration; ESM static imports (no `require()`); Step 0 direct-route check bypasses OpenAI pivot when a `source:target` route is registered
 - Request translators: `open-sse/translator/request/*`
 - Response translators: `open-sse/translator/response/*`
 - Format constants: `open-sse/translator/formats.js`
+- **Direct CLAUDE↔KIRO routes (2026-06-19):** `open-sse/translator/request/claude-to-kiro.js` + `open-sse/translator/response/kiro-to-claude.js` — registered as direct routes, bypassing the CLAUDE→OPENAI→KIRO pivot for lower latency and correct tool/thinking handling
+- Translator concerns (DRY extractions): `open-sse/translator/concerns/thinking.js`, `thinkingUnified.js`, `paramSupport.js`, `usage.js`; schema enums: `open-sse/translator/schema/`
+- Config-driven param stripping: `stripUnsupportedParams` in `paramSupport.js`, called by default/github executors; `ANTIGRAVITY_REQUEST_BLACKLIST` in `antigravity.js`
 
 ### Persistence
 
@@ -511,6 +527,9 @@ Runtime visibility sources:
 - optional deep request/translation logs under `logs/` when `ENABLE_REQUEST_LOGS=true`
 - request logging masks auth-like header, URL query, and nested body keys (`authorization`, `x-api-key`, `cookie`, `token`, `secret`, `key`, `password`) as `[REDACTED]`
 - dashboard usage endpoints (`/api/usage/*`) for UI consumption
+- **Claude 429 cooldown (2026-06-19):** `open-sse/services/usage/claude.js` tracks per-token 180s cooldown on 429 responses to avoid usage-poller spam
+- **Claude auto-ping (2026-06-19):** `src/shared/services/claudeAutoPing.js` — 60s tick scheduler warms the 5h OAuth quota window after reset; opt-in per connection; started from `initializeApp.js`
+- **Codex reset credits (2026-06-19):** `POST /api/usage/[connectionId]/codex-reset-credits` — consumes one Codex rate-limit reset credit (irreversible); `open-sse/services/usage/codex.js` exports `consumeCodexRateLimitResetCredit()`
 
 ## Security-Sensitive Boundaries
 
@@ -548,6 +567,9 @@ Environment variables actively used by code:
 2. Request logger still writes payload structure and non-sensitive values when enabled; treat log directory as sensitive even with redaction.
 3. Cloud URL selection depends on correct `CLOUD_URL` / `NEXT_PUBLIC_CLOUD_URL` configuration and external endpoint reachability.
 4. Accessibility behavior is implemented as additive UI semantics: shared modal focus management, icon labels, sortable table buttons, chart summaries, toast live regions, and reduced-motion guards.
+5. **Translator direct-route registry (2026-06-19):** `translateRequest`/`translateResponse` check for a registered `source:target` direct route before falling back to the two-step OpenAI pivot. New direct routes must call `register()` in `translator/index.js`; the lazy-init Maps (`requestRegistry`, `responseRegistry`) are populated on first call via ESM static imports.
+6. **Provider registry split deferred:** The upstream refactor splitting providers into `open-sse/providers/registry/{id}.js` (110+ files) and migrating to LiteLLM-style `kind` schema has been intentionally deferred. `m.kind || m.type` guards are applied where needed; full migration remains a separate tracked item due to CRITICAL blast radius.
+7. **Fusion combo panel ordering:** `reorderByCapabilities` gracefully returns the original model list unchanged when the provider registry is unavailable (pre-registry-split state), so Fusion degrades safely to input order.
 
 ## Operational Verification Checklist
 
