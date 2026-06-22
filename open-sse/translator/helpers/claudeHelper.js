@@ -200,11 +200,16 @@ export function prepareClaudeRequest(
             const isThinking =
               block.type === "thinking" || block.type === "redacted_thinking";
             if (isThinking) {
-              hasThinking = true;
               if (isClaudeNative) {
-                if (isValidClaudeSignature(block.signature)) kept.push(block);
+                // Only keep thinking blocks with a valid signature — drop invalid
+                // ones without setting hasThinking so the fallback inject fires.
+                if (isValidClaudeSignature(block.signature)) {
+                  hasThinking = true;
+                  kept.push(block);
+                }
               } else {
                 block.signature = DEFAULT_THINKING_CLAUDE_SIGNATURE;
+                hasThinking = true;
                 kept.push(block);
               }
               continue;
@@ -240,7 +245,7 @@ export function prepareClaudeRequest(
             return {
               name: tool.function.name,
               description: tool.function.description,
-              input_schema: tool.function.parameters,
+              input_schema: tool.function.parameters ?? { type: "object", properties: {} },
             };
           }
           const { type, ...rest } = tool;

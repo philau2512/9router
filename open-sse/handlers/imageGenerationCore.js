@@ -88,6 +88,12 @@ export async function handleImageGenerationCore({
         }
       }
 
+      // Guard: surface empty result as an error instead of a silent 200 with b64_json=""
+      const firstResult = finalBody.data?.[0];
+      if (!firstResult?.b64_json && !firstResult?.url) {
+        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Image generation returned no image data");
+      }
+
       return {
         success: true,
         response: new Response(JSON.stringify(finalBody), {

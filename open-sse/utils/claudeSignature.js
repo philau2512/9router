@@ -31,7 +31,7 @@ export function isValidClaudeSignature(rawSignature) {
     if (sig[0] === "R") {
       const outer = Buffer.from(sig, "base64");
       if (!outer.length || outer[0] !== 0x45) return false; // 'E'
-      const inner = Buffer.from(outer.toString(), "base64");
+      const inner = Buffer.from(outer.toString("latin1"), "base64");
       return inner.length > 0 && inner[0] === CLAUDE_SIGNATURE_MARKER;
     }
     return false;

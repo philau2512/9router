@@ -181,7 +181,8 @@ export class DefaultExecutor extends BaseExecutor {
           // GitLab Duo uses Bearer token (PAT with ai_features scope, or OAuth access token)
           headers["Authorization"] =
             `Bearer ${credentials.apiKey || credentials.accessToken}`;
-        } else if (this.provider === "codebuddy") {
+        } else if (this.provider === "codebuddy-cn") {
+          // codebuddy-cn uses a dedicated CodeBuddyExecutor; this is a safety fallback only.
           headers["Authorization"] =
             `Bearer ${credentials.apiKey || credentials.accessToken}`;
         } else if (this.provider === "kilocode") {

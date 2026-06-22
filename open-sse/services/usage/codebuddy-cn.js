@@ -100,7 +100,10 @@ export async function getCodeBuddyCnUsage(
     const REFILL_GAP_MS = 2 * 24 * 60 * 60 * 1000;
     const isRefill = (acc) => {
       const ce = cycleEndMs(acc);
-      const de = Number(acc.DeductionEndTime);
+      // Normalize DeductionEndTime to ms: API may return Unix seconds (~1.7e9) while
+      // cycleEndMs() produces ms (~1.7e12). Values < 1e11 are treated as seconds.
+      const deRaw = Number(acc.DeductionEndTime);
+      const de = deRaw > 0 && deRaw < 1e11 ? deRaw * 1000 : deRaw;
       return Number.isFinite(ce) && Number.isFinite(de) && de - ce > REFILL_GAP_MS;
     };
     const byExpiry = (a, b) => cycleEndMs(a) - cycleEndMs(b);

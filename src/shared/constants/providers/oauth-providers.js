@@ -124,4 +124,16 @@ export const OAUTH_PROVIDERS = {
     notice: { signupUrl: "https://cline.bot" },
   },
   // opencode: { id: "opencode", alias: "oc", name: "OpenCode", icon: "terminal", color: "#E87040", textIcon: "OC" },
+  "codebuddy-cn": {
+    id: "codebuddy-cn",
+    alias: "cbcn",
+    name: "CodeBuddy CN",
+    icon: "smart_toy",
+    color: "#006EFF",
+    textIcon: "CB",
+    website: "https://cloud.tencent.com",
+    notice: { signupUrl: "https://cloud.tencent.com" },
+    authModes: ["oauth", "apikey"],
+    hasOAuth: true,
+  },
 };

@@ -135,7 +135,6 @@ export async function getAntigravityUsage(
         "gemini-3-flash",
         // Image generation models
         "gemini-3.1-flash-image",
-        "gemini-3-pro-image",
       ];
 
       for (const [modelKey, info] of Object.entries(data.models)) {
