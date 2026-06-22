@@ -29,6 +29,7 @@ export {
   refreshIflowToken,
   refreshGitHubToken,
   refreshCopilotToken,
+  refreshCodebuddyToken,
 } from "./refresh-providers.js";
 
 // ── Vertex AI ───────────────────────────────────────────────────────

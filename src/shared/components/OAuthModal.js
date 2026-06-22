@@ -196,7 +196,7 @@ export default function OAuthModal({
         "kiro",
         "kimi-coding",
         "kilocode",
-        "codebuddy",
+        "codebuddy-cn",
       ];
       if (deviceCodeProviders.includes(provider)) {
         setIsDeviceCode(true);
