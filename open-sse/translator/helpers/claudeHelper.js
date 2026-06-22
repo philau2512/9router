@@ -218,11 +218,23 @@ export function prepareClaudeRequest(
 
   // 3. Tools: filter built-in tools for non-Anthropic providers, then handle cache_control
   if (body.tools && Array.isArray(body.tools)) {
-    // Strip built-in tools (e.g. web_search_20250305) for providers that don't support them
+    // Strip built-in tools (e.g. web_search_20250305) and normalize to Anthropic-native shape
+    // (drop `type` field, fold `function.{name,description,parameters}`) for non-Anthropic providers.
+    // MiniMax and other Anthropic-compatible providers reject tools carrying a `type` field (error 2013).
     if (provider !== "claude") {
-      body.tools = body.tools.filter(
-        (tool) => !tool.type || tool.type === "function",
-      );
+      body.tools = body.tools
+        .filter((tool) => !tool.type || tool.type === "function")
+        .map((tool) => {
+          if (tool.function) {
+            return {
+              name: tool.function.name,
+              description: tool.function.description,
+              input_schema: tool.function.parameters,
+            };
+          }
+          const { type, ...rest } = tool;
+          return rest;
+        });
     }
 
     body.tools = body.tools.map((tool, i) => {

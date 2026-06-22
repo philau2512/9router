@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { NextResponse } from "next/server";
 import { exec } from "child_process";
@@ -38,10 +38,12 @@ const checkInstalled = async () => {
 const readJson = async (filePath) => {
   try {
     const content = await fs.readFile(filePath, "utf-8");
-    return JSON.parse(content);
+    // Tolerate JSONC (trailing commas) and treat unparseable files as "no config"
+    // rather than throwing a 500 that the UI misreads as "tool not installed".
+    const stripped = content.replace(/,(\s*[}\]])/g, "$1");
+    return JSON.parse(stripped);
   } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw error;
+    return null;
   }
 };
 

@@ -1,4 +1,4 @@
-import { BaseExecutor } from "./base.js";
+﻿import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { createHash, randomUUID } from "crypto";
@@ -13,6 +13,13 @@ const SESSION_ID_LENGTH = 24;
 const JWT_FALLBACK_TTL_SEC = 3000;
 const JWT_EXPIRY_BUFFER_MS = 300000;
 const SESSION_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
+
+// Anti-abuse gate: upstream rejects requests without a Chrome-like User-Agent with 403 "Illegal access"
+const USER_AGENTS = [
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+];
 
 // Anti-abuse gate marker: the free chat endpoint returns 403 "Illegal access"
 // unless a system message contains this exact MiMoCode signature substring.
@@ -149,7 +156,10 @@ async function bootstrapJwt(proxyOptions = null, forceNewFingerprint = false, lo
         BOOTSTRAP_URL,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "User-Agent": USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
+          },
           body: JSON.stringify({ client: fingerprint }),
         },
         activeProxyOptions,
@@ -202,6 +212,7 @@ export class MimoFreeExecutor extends BaseExecutor {
     return {
       "Content-Type": "application/json",
       "X-Mimo-Source": "mimocode-cli-free",
+      "User-Agent": USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
       "x-session-affinity": this.sessionId,
       Accept: stream ? "text/event-stream" : "application/json",
     };

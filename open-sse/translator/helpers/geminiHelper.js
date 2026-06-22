@@ -7,7 +7,6 @@ export const UNSUPPORTED_SCHEMA_CONSTRAINTS = [
   "maxLength",
   "exclusiveMinimum",
   "exclusiveMaximum",
-  "pattern",
   "minItems",
   "maxItems",
   "format",
