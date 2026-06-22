@@ -127,6 +127,13 @@ export async function handleChatCore({
     provider === "openai" || provider === "codex" || provider === "commandcode";
   let stream = providerRequiresStreaming ? true : body.stream !== false;
 
+  // Image generation models require non-streaming (Google v1internal:generateContent)
+  const modelType = getModelType(alias, model);
+  const isImageGenModel = modelType === "imageGen" || /image|imagen|image-generation/i.test(model);
+  if (isImageGenModel && (provider === "antigravity" || provider === "gemini-cli")) {
+    stream = false;
+  }
+
   // DeepSeek-TUI: interactive TUI panel sends stream:true and needs SSE.
   // Non-interactive mode (-p flag) sends without stream and can't parse SSE.
   // Only force non-streaming when client didn't explicitly request it.
