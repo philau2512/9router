@@ -172,14 +172,67 @@ export async function executeResumeRequest({
     vercelRelayUrl: credentials?.providerSpecificData?.vercelRelayUrl || "",
   };
 
+  let activeCredentials = credentials;
+  let activeProxyOptions = { ...proxyOptions };
+
   try {
-    const result = await executor.execute({
+    let result = await executor.execute({
       model,
       body: translatedBody,
       stream: true,
-      credentials,
-      proxyOptions,
+      credentials: activeCredentials,
+      proxyOptions: activeProxyOptions,
     });
+
+    if (!result.response.ok || result.response.status === 502 || result.response.status === 429) {
+      dbg(
+        "RESUME",
+        `First resume attempt failed with status: ${result.response.status}. Attempting key rotation...`,
+      );
+      try {
+        const { getProviderCredentials } = await import(
+          "../../src/sse/services/provider-credentials.js"
+        );
+        const rotated = await getProviderCredentials(
+          provider,
+          new Set([credentials?.connectionId]),
+          model,
+        );
+        if (
+          rotated &&
+          rotated.accessToken &&
+          rotated.connectionId !== credentials?.connectionId
+        ) {
+          dbg(
+            "RESUME",
+            `Rotating to alternative connection for resume: ${rotated.connectionName}`,
+          );
+          activeCredentials = rotated;
+          activeProxyOptions = {
+            connectionProxyEnabled:
+              rotated?.providerSpecificData?.connectionProxyEnabled === true,
+            connectionProxyUrl:
+              rotated?.providerSpecificData?.connectionProxyUrl || "",
+            connectionNoProxy:
+              rotated?.providerSpecificData?.connectionNoProxy || "",
+            connectionProxyHeadersTimeoutMs:
+              rotated?.providerSpecificData?.connectionProxyHeadersTimeoutMs,
+            vercelRelayUrl: rotated?.providerSpecificData?.vercelRelayUrl || "",
+          };
+
+          // Retry with rotated credentials
+          result = await executor.execute({
+            model,
+            body: translatedBody,
+            stream: true,
+            credentials: activeCredentials,
+            proxyOptions: activeProxyOptions,
+          });
+        }
+      } catch (rotationErr) {
+        dbg("RESUME", `Credential rotation during resume failed: ${rotationErr.message}`);
+      }
+    }
 
     if (!result.response.ok) {
       dbg(

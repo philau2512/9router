@@ -106,6 +106,8 @@ export function createSSEStream(options = {}) {
       streamStateTracker.accumulatedContent = accumulatedContent;
       streamStateTracker.accumulatedThinking = accumulatedThinking;
       streamStateTracker.totalContentLength = totalContentLength;
+      streamStateTracker.inThinking =
+        accumulatedThinking.length > 0 && accumulatedContent.length === 0;
     }
   };
 

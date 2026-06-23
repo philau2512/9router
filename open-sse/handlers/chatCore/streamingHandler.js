@@ -169,6 +169,23 @@ export function handleStreamingResponse({
     streamStateTracker,
   });
 
+  const resumeCtx = midStreamResumeEnabled
+    ? {
+        body,
+        provider,
+        model,
+        credentials,
+        sourceFormat,
+        targetFormat,
+        userAgent,
+        apiKey,
+        connectionId,
+        toolNameMap,
+        reqLogger,
+        clientRawRequest,
+      }
+    : null;
+
   const transformedBody = pipeWithDisconnect(
     providerResponse,
     transformStream,
@@ -177,6 +194,9 @@ export function handleStreamingResponse({
     streamStateTracker,
     timing,
     stallTimeoutMs,
+    model,
+    provider,
+    resumeCtx,
   );
 
   setImmediate(() => {

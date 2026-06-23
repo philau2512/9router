@@ -447,6 +447,9 @@ export function pipeWithDisconnect(
   streamStateTracker = null,
   timing = null,
   stallTimeoutMs = STREAM_STALL_TIMEOUT_MS,
+  model = null,
+  provider = null,
+  resumeCtx = null,
 ) {
   let stallTimer = null;
   let semanticStallTimer = null;
@@ -490,9 +493,18 @@ export function pipeWithDisconnect(
 
   const startSemanticStallWatchdog = () => {
     clearSemanticStall();
+    const isReasoningModel =
+      (model && (model.includes("reasoning") || model.includes("gpt-5") || model.includes("deepseek"))) ||
+      provider === "codex";
+    const dynamicTimeoutMs = isReasoningModel ? 180000 : STREAM_SEMANTIC_STALL_TIMEOUT_MS;
+
     semanticStallTimer = setInterval(() => {
       if (!streamController.isConnected()) {
         clearSemanticStall();
+        return;
+      }
+
+      if (streamStateTracker?.inThinking) {
         return;
       }
 
@@ -504,7 +516,7 @@ export function pipeWithDisconnect(
         if (currentLength === lastContentLength) {
           dbg(
             tag,
-            `SEMANTIC STALL TIMEOUT ${STREAM_SEMANTIC_STALL_TIMEOUT_MS}ms | content size ${currentLength} has not grown in the last interval. Aborting stream.`,
+            `SEMANTIC STALL TIMEOUT ${dynamicTimeoutMs}ms | content size ${currentLength} has not grown in the last interval. Aborting stream.`,
           );
           clearSemanticStall();
           clearStall();
@@ -516,7 +528,7 @@ export function pipeWithDisconnect(
           lastContentLength = currentLength;
         }
       }
-    }, STREAM_SEMANTIC_STALL_TIMEOUT_MS);
+    }, dynamicTimeoutMs);
   };
 
   // Wrap controller so every termination path clears the stall timer.
@@ -618,11 +630,12 @@ export function pipeWithDisconnect(
 
   return createDisconnectAwareStream(
     {
-      readable: transformedBody,
+      readable: transformedBody.pipeThrough(clientTap),
       writable: { getWriter: () => ({ abort: () => Promise.resolve() }) },
     },
     wrappedController,
     onAbortTerminal,
     streamStateTracker,
+    resumeCtx,
   );
 }
