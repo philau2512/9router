@@ -245,10 +245,8 @@ describe("bootstrapJwt", () => {
     await expect(bootstrapJwt()).rejects.toThrow(/no JWT/);
   });
 
-  it("automatically rotates fingerprint and retries on 429 at bootstrap", async () => {
-    // 1st bootstrap attempt fails with 429
+  it("retries on 429 at bootstrap without rotating fingerprint", async () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 429 });
-    // 2nd bootstrap attempt succeeds
     const freshJwt = makeJwt(Math.floor(Date.now() / 1000) + 3600);
     fetchMock.mockResolvedValueOnce(jsonResponse({ jwt: freshJwt }));
 
@@ -258,14 +256,13 @@ describe("bootstrapJwt", () => {
     expect(jwt).toBe(freshJwt);
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
-    const newFingerprint = await kv.get("fingerprint");
-    expect(newFingerprint).not.toBe("old-fingerprint");
-    expect(newFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    const fingerprint = await kv.get("fingerprint");
+    expect(fingerprint).toBe("old-fingerprint");
 
     const firstBootstrapBody = JSON.parse(fetchMock.mock.calls[0][1].body);
     const secondBootstrapBody = JSON.parse(fetchMock.mock.calls[1][1].body);
     expect(firstBootstrapBody.client).toBe("old-fingerprint");
-    expect(secondBootstrapBody.client).toBe(newFingerprint);
+    expect(secondBootstrapBody.client).toBe("old-fingerprint");
   });
 
   it("automatically rotates proxy URLs from proxy pool on 429 retries", async () => {
@@ -388,16 +385,12 @@ describe("MimoFreeExecutor", () => {
     expect(chatHeaders["Authorization"]).toMatch(/^Bearer /);
   });
 
-  it("re-bootstraps, rotates fingerprint, and retries once on a 403 from the chat endpoint", async () => {
+  it("returns the upstream response directly on 401/403 without rotating fingerprint", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({ jwt: makeJwt(Math.floor(Date.now() / 1000) + 3600) }),
     );
-    fetchMock.mockResolvedValueOnce({ ok: false, status: 403 });
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({ jwt: makeJwt(Math.floor(Date.now() / 1000) + 3600) }),
-    );
-    fetchMock.mockResolvedValueOnce({ ok: true, status: 200 });
-    
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 401 });
+
     await kv.set("fingerprint", "old-fingerprint");
 
     const { response } = await exec.execute({
@@ -406,17 +399,11 @@ describe("MimoFreeExecutor", () => {
       stream: true,
       credentials: {},
     });
-    expect(response.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-    
-    const newFingerprint = await kv.get("fingerprint");
-    expect(newFingerprint).not.toBe("old-fingerprint");
-    expect(newFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(response.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
 
-    const firstBootstrapBody = JSON.parse(fetchMock.mock.calls[0][1].body);
-    const secondBootstrapBody = JSON.parse(fetchMock.mock.calls[2][1].body);
-    expect(firstBootstrapBody.client).toBe("old-fingerprint");
-    expect(secondBootstrapBody.client).toBe(newFingerprint);
+    const fingerprint = await kv.get("fingerprint");
+    expect(fingerprint).toBe("old-fingerprint");
   });
 });
 

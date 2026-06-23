@@ -1,7 +1,7 @@
 ﻿import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { createHash, randomUUID } from "crypto";
+import { createHash } from "crypto";
 import os from "os";
 import { makeKv } from "../../src/lib/db/helpers/kvStore.js";
 import { getProxyPools } from "../../src/lib/db/repos/proxyPoolsRepo.js";
@@ -85,22 +85,17 @@ async function resetJwtCache() {
   await kv.remove("jwtExpiresAt");
 }
 
-async function bootstrapJwt(proxyOptions = null, forceNewFingerprint = false, log = null) {
+async function bootstrapJwt(proxyOptions = null, log = null) {
   let fingerprint = await kv.get("fingerprint");
-  if (!fingerprint || forceNewFingerprint) {
-    if (forceNewFingerprint) {
-      fingerprint = createHash("sha256").update(randomUUID()).digest("hex");
-      log?.warn?.("AUTH", `MiMo: Rotating fingerprint to: ${fingerprint}`);
-    } else {
-      fingerprint = generateFingerprint();
-    }
+  if (!fingerprint) {
+    fingerprint = generateFingerprint();
     await kv.set("fingerprint", fingerprint);
   }
 
   const cachedJwt = await kv.get("jwt");
   const jwtExpiresAt = await kv.get("jwtExpiresAt", 0);
 
-  if (!forceNewFingerprint && cachedJwt && Date.now() < jwtExpiresAt - JWT_EXPIRY_BUFFER_MS) {
+  if (cachedJwt && Date.now() < jwtExpiresAt - JWT_EXPIRY_BUFFER_MS) {
     return cachedJwt;
   }
 
@@ -168,9 +163,7 @@ async function bootstrapJwt(proxyOptions = null, forceNewFingerprint = false, lo
       if (response.status === 429) {
         attempt++;
         if (attempt < maxAttempts) {
-          fingerprint = createHash("sha256").update(randomUUID()).digest("hex");
-          await kv.set("fingerprint", fingerprint);
-          log?.warn?.("AUTH", `MiMo bootstrap got 429, rotating fingerprint (attempt ${attempt}/${maxAttempts}): ${fingerprint}`);
+          log?.warn?.("AUTH", `MiMo bootstrap got 429, retrying (attempt ${attempt}/${maxAttempts})`);
           continue;
         }
         throw new Error("MiMo bootstrap failed: 429");
@@ -233,7 +226,7 @@ export class MimoFreeExecutor extends BaseExecutor {
   }) {
     let jwt;
     try {
-      jwt = await bootstrapJwt(proxyOptions, false, log);
+      jwt = await bootstrapJwt(proxyOptions, log);
     } catch (error) {
       log?.error?.("AUTH", `MiMo bootstrap failed: ${error.message}`);
       throw error;
@@ -253,22 +246,6 @@ export class MimoFreeExecutor extends BaseExecutor {
       { method: "POST", headers, body: bodyStr, signal },
       proxyOptions,
     );
-
-    // On auth failure, invalidate cache, rotate fingerprint, and retry once with a fresh JWT
-    if (response.status === 401 || response.status === 403) {
-      log?.debug?.(
-        "AUTH",
-        `MiMo auth failed (${response.status}), rotating fingerprint and re-bootstrapping...`,
-      );
-      await resetJwtCache();
-      jwt = await bootstrapJwt(proxyOptions, true, log);
-      headers["Authorization"] = `Bearer ${jwt}`;
-      response = await proxyAwareFetch(
-        url,
-        { method: "POST", headers, body: bodyStr, signal },
-        proxyOptions,
-      );
-    }
 
     return { response, url, headers, transformedBody };
   }
