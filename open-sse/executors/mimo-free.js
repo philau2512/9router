@@ -1,4 +1,4 @@
-﻿import { BaseExecutor } from "./base.js";
+import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { createHash } from "crypto";
@@ -83,6 +83,7 @@ function injectSystemMarker(body) {
 async function resetJwtCache() {
   await kv.remove("jwt");
   await kv.remove("jwtExpiresAt");
+  await kv.remove("fingerprint");
 }
 
 async function bootstrapJwt(proxyOptions = null, log = null) {
@@ -111,20 +112,22 @@ async function bootstrapJwt(proxyOptions = null, log = null) {
     candidateProxyUrls.push(...urls);
   }
 
-  // Check all active proxy pools in the system as candidates/fallbacks
-  try {
-    const activePools = await getProxyPools({ isActive: true });
-    for (const pool of activePools) {
-      if (pool?.proxyUrl && (pool.type === "http" || pool.type === "socks" || !pool.type)) {
-        const urls = pool.proxyUrl
-          .split(/[\n,;]+/)
-          .map((u) => u.trim())
-          .filter(Boolean);
-        candidateProxyUrls.push(...urls);
+  // Check all active proxy pools in the system as candidates/fallbacks (only if proxy is enabled)
+  if (proxyOptions?.connectionProxyEnabled) {
+    try {
+      const activePools = await getProxyPools({ isActive: true });
+      for (const pool of activePools) {
+        if (pool?.proxyUrl && (pool.type === "http" || pool.type === "socks" || !pool.type)) {
+          const urls = pool.proxyUrl
+            .split(/[\n,;]+/)
+            .map((u) => u.trim())
+            .filter(Boolean);
+          candidateProxyUrls.push(...urls);
+        }
       }
+    } catch (err) {
+      log?.warn?.("AUTH", `MiMo: Failed to read active proxy pools: ${err.message}`);
     }
-  } catch (err) {
-    log?.warn?.("AUTH", `MiMo: Failed to read active proxy pools: ${err.message}`);
   }
 
   // Deduplicate candidate URLs
@@ -246,6 +249,27 @@ export class MimoFreeExecutor extends BaseExecutor {
       { method: "POST", headers, body: bodyStr, signal },
       proxyOptions,
     );
+
+    // On auth failure, invalidate cache and retry once with a fresh JWT (no fingerprint rotation)
+    if (response.status === 401 || response.status === 403) {
+      log?.warn?.(
+        "AUTH",
+        `MiMo auth failed (${response.status}), resetting JWT cache and retrying...`,
+      );
+      await resetJwtCache();
+      try {
+        jwt = await bootstrapJwt(proxyOptions, log);
+        headers["Authorization"] = `Bearer ${jwt}`;
+        log?.debug?.("FETCH", `MIMO-FREE retry → ${url} with new JWT`);
+        response = await proxyAwareFetch(
+          url,
+          { method: "POST", headers, body: bodyStr, signal },
+          proxyOptions,
+        );
+      } catch (retryError) {
+        log?.error?.("AUTH", `MiMo bootstrap retry failed: ${retryError.message}`);
+      }
+    }
 
     return { response, url, headers, transformedBody };
   }

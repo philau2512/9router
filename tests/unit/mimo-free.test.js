@@ -306,7 +306,7 @@ describe("bootstrapJwt", () => {
       { type: "http", isActive: true, proxyUrl: "http://system-proxy-b.com:8888" }
     );
 
-    const jwt = await bootstrapJwt(null);
+    const jwt = await bootstrapJwt({ connectionProxyEnabled: true });
     expect(jwt).toBe(freshJwt);
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
@@ -327,6 +327,7 @@ describe("bootstrapJwt", () => {
     );
 
     const proxyOptions = {
+      connectionProxyEnabled: true,
       proxyPool: {
         proxyUrl: "http://connection-proxy-primary.com:8080",
       },
@@ -385,11 +386,14 @@ describe("MimoFreeExecutor", () => {
     expect(chatHeaders["Authorization"]).toMatch(/^Bearer /);
   });
 
-  it("returns the upstream response directly on 401/403 without rotating fingerprint", async () => {
+  it("retries once with a fresh JWT on 401/403 without rotating fingerprint", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({ jwt: makeJwt(Math.floor(Date.now() / 1000) + 3600) }),
     );
     fetchMock.mockResolvedValueOnce({ ok: false, status: 401 });
+    const freshJwt = makeJwt(Math.floor(Date.now() / 1000) + 3600);
+    fetchMock.mockResolvedValueOnce(jsonResponse({ jwt: freshJwt }));
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200 });
 
     await kv.set("fingerprint", "old-fingerprint");
 
@@ -399,11 +403,11 @@ describe("MimoFreeExecutor", () => {
       stream: true,
       credentials: {},
     });
-    expect(response.status).toBe(401);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
 
     const fingerprint = await kv.get("fingerprint");
-    expect(fingerprint).toBe("old-fingerprint");
+    expect(fingerprint).toBe(generateFingerprint());
   });
 });
 
