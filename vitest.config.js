@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": resolve(__dirname, "src"),
+      "open-sse": resolve(__dirname, "open-sse"),
     },
   },
   test: {

@@ -42,6 +42,7 @@ export async function handleImageGenerationCore({
   binaryOutput = false,
   onCredentialsRefreshed,
   onRequestSuccess,
+  request,
 }) {
   const { provider, model } = modelInfo;
 

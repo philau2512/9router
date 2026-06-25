@@ -879,6 +879,7 @@ const PROVIDERS = {
         typeof options.region === "string" ? options.region.trim() : "";
       const region = trimmedRegion || "us-east-1";
       assertValidAwsRegion(region);
+      const trimmedStartUrl =
         typeof options.startUrl === "string" ? options.startUrl.trim() : "";
       const startUrl = trimmedStartUrl || config.startUrl;
       const authMethod = options.authMethod === "idc" ? "idc" : "builder-id";

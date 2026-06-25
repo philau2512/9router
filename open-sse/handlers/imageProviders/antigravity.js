@@ -18,7 +18,7 @@ function resolveImageInput(input) {
   return null;
 }
 
-export default {
+const antigravityAdapter = {
   // Delegate to executor instead of building URL/headers/body manually
   useExecutor: true,
 
@@ -39,24 +39,24 @@ export default {
       if (inlineData) parts.unshift(inlineData);
     }
 
-    const chatBody = {
-      contents: [{ role: "user", parts }],
-    };
-
-    const result = await executor.execute({
+    const { response } = await executor.execute({
       model,
-      body: chatBody,
-      stream: false,
+      body: {
+        contents: [{ role: "user", parts }],
+        generationConfig: {
+          numberOfImages: body.n || 1,
+          outputMimeType: (body.output_format || "png").toLowerCase() === "jpeg" ? "image/jpeg" : "image/png",
+          aspectRatio: body.size === "1024x1024" ? "1:1" : body.size === "16:9" || body.size === "1920x1080" ? "16:9" : "1:1",
+        },
+      },
       credentials,
-      log,
     });
 
-    if (!result.response.ok) {
-      const text = await result.response.text();
-      throw new Error(text || `HTTP ${result.response.status}`);
+    if (!response.ok) {
+      throw new Error(`Failed to generate image via antigravity executor: ${response.statusText}`);
     }
 
-    return result.response.json();
+    return response.json();
   },
 
   normalize: (responseBody, prompt) => {
@@ -71,3 +71,5 @@ export default {
     };
   },
 };
+
+export default antigravityAdapter;
