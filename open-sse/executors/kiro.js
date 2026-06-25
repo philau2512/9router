@@ -456,30 +456,15 @@ export class KiroExecutor extends BaseExecutor {
       },
 
       flush(controller) {
-        // Emit finish chunk if not already sent
+        // If upstream disconnects before sending messageStopEvent, it's a premature close.
+        // Throw an error so streamHandler's transparent mid-stream resume can kick in.
         if (!state.finishEmitted) {
-          state.finishEmitted = true;
-          const finishChunk = {
-            id: responseId,
-            object: "chat.completion.chunk",
-            created,
-            model,
-            choices: [
-              {
-                index: 0,
-                delta: {},
-                finish_reason: state.hasToolCalls ? "tool_calls" : "stop",
-              },
-            ],
-          };
-          if (state.usage) {
-            finishChunk.usage = state.usage;
-          }
-          controller.enqueue(
-            new TextEncoder().encode(
-              `data: ${JSON.stringify(finishChunk)}\n\n`,
+          controller.error(
+            new Error(
+              "Upstream connection closed unexpectedly without messageStopEvent",
             ),
           );
+          return;
         }
 
         // Send final done message
