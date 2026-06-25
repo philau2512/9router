@@ -108,7 +108,7 @@ async function tryGotScrapingFetch(url, options) {
 */
 
 // DNS cache — use Map to avoid prototype pollution via malformed hostnames
-const DNS_CACHE = new Map();
+export const DNS_CACHE = new Map();
 
 const bypassKeepAliveAgent = new https.Agent({
   keepAlive: true,
@@ -149,31 +149,69 @@ function normalizeString(value) {
 }
 
 /**
- * Resolve real IP using Google DNS (bypass system DNS)
+ * Helper to perform actual DNS resolution and update the cache
  */
-async function resolveRealIP(hostname) {
-  const cached = DNS_CACHE.get(hostname);
-  if (cached && Date.now() < cached.expiry) return cached.ip;
-
+async function performDnsResolve(hostname) {
   try {
-    const dns = await import("dns");
-    const { promisify } = await import("util");
-    const resolver = new dns.Resolver();
+    const resolver = new dns.promises.Resolver();
     resolver.setServers(GOOGLE_DNS_SERVERS);
-    const resolve4 = promisify(resolver.resolve4.bind(resolver));
-    const addresses = await resolve4(hostname);
+    const addresses = await resolver.resolve4(hostname);
+    const ip = addresses[0];
     DNS_CACHE.set(hostname, {
-      ip: addresses[0],
+      ip,
       expiry: Date.now() + MEMORY_CONFIG.dnsCacheTtlMs,
+      refreshing: false,
     });
-    return addresses[0];
+    return ip;
   } catch (error) {
     console.warn(
       `[ProxyFetch] DNS resolve failed for ${hostname}:`,
       error.message,
     );
+    const existing = DNS_CACHE.get(hostname);
+    if (existing) {
+      existing.refreshing = false;
+      return existing.ip;
+    }
     return null;
   }
+}
+
+/**
+ * Resolve real IP using Google DNS (bypass system DNS) with SWR (Stale-While-Revalidate) caching
+ */
+export async function resolveRealIP(hostname) {
+  const cached = DNS_CACHE.get(hostname);
+  const now = Date.now();
+
+  if (cached) {
+    // 1. Cache has expired completely -> Force synchronous resolve
+    if (now >= cached.expiry) {
+      return await performDnsResolve(hostname);
+    }
+
+    // 2. Cache is close to expiry (within last 30s) and not already refreshing -> Trigger background resolve
+    const refreshThresholdMs = 30 * 1000;
+    if (now >= cached.expiry - refreshThresholdMs && !cached.refreshing) {
+      cached.refreshing = true;
+      performDnsResolve(hostname)
+        .then(() => {
+          dbg("DNS", `Background DNS refresh succeeded for ${hostname}`);
+        })
+        .catch((err) => {
+          dbg(
+            "DNS",
+            `Background DNS refresh failed for ${hostname}: ${err.message}`,
+          );
+        });
+    }
+
+    // 3. Return cached IP instantly (0ms delay)
+    return cached.ip;
+  }
+
+  // 4. Cache miss -> Synchronous resolve first time
+  return await performDnsResolve(hostname);
 }
 
 /**
@@ -388,7 +426,10 @@ async function getDirectAgent(targetUrl) {
         try {
           oldestAgent.close();
         } catch (e) {
-          dbg("POOL", `Failed to close evicted agent for ${oldestKey}: ${e.message}`);
+          dbg(
+            "POOL",
+            `Failed to close evicted agent for ${oldestKey}: ${e.message}`,
+          );
         }
       }
       directAgents.delete(oldestKey);
@@ -409,7 +450,10 @@ async function getDirectAgent(targetUrl) {
         },
       }),
     );
-    dbg("POOL", `Created pooled agent for ${origin} (total: ${directAgents.size})`);
+    dbg(
+      "POOL",
+      `Created pooled agent for ${origin} (total: ${directAgents.size})`,
+    );
   }
 
   return directAgents.get(origin);
@@ -671,7 +715,10 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   const directAgent = await getDirectAgent(targetUrl);
   if (directAgent) {
     timing.mode = "pooled";
-    const response = await originalFetch(url, { ...options, dispatcher: directAgent });
+    const response = await originalFetch(url, {
+      ...options,
+      dispatcher: directAgent,
+    });
     timing.headersAt = Date.now();
     response.__timing = timing;
     return response;
