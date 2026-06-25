@@ -10,6 +10,11 @@ import { dbg } from "./debugLog.js";
 const originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
 
+// ─── Connection pooling per-host (direct path) ────────────────────────────
+// Reuse TCP+TLS connections across requests to the same upstream origin,
+// avoiding repeated handshakes that add 200-800ms per cold request.
+const directAgents = new Map();
+
 // ─── TLS fingerprinting via got-scraping (browser-like JA3) ───────────────
 // Disabled: not in use. Kept commented for future re-enable.
 // Restore the original block to re-enable per-host JA3 spoofing.
@@ -362,6 +367,55 @@ async function fetchViaProxyWithHeadersTimeout(
 }
 
 /**
+ * Get or create a pooled undici Agent for direct (non-proxy) upstream requests.
+ * Keyed by origin (scheme + hostname + port) to match HTTP connection semantics.
+ */
+async function getDirectAgent(targetUrl) {
+  let origin;
+  try {
+    const parsed = new URL(targetUrl);
+    origin = parsed.origin; // e.g. "https://api.opencode.ai"
+  } catch {
+    return null;
+  }
+
+  if (!directAgents.has(origin)) {
+    // Evict oldest entry if max size reached
+    if (directAgents.size >= MEMORY_CONFIG.directAgentsMaxSize) {
+      const oldestKey = directAgents.keys().next().value;
+      const oldestAgent = directAgents.get(oldestKey);
+      if (oldestAgent) {
+        try {
+          oldestAgent.close();
+        } catch (e) {
+          dbg("POOL", `Failed to close evicted agent for ${oldestKey}: ${e.message}`);
+        }
+      }
+      directAgents.delete(oldestKey);
+    }
+    const { Agent } = await import("undici");
+    directAgents.set(
+      origin,
+      new Agent({
+        keepAliveTimeout: 60_000,
+        keepAliveMaxTimeout: 300_000,
+        connections: 10,
+        pipelining: 1,
+        allowH2: true,
+        connect: {
+          timeout: 30_000,
+          keepAlive: true,
+          keepAliveInitialDelay: 1000,
+        },
+      }),
+    );
+    dbg("POOL", `Created pooled agent for ${origin} (total: ${directAgents.size})`);
+  }
+
+  return directAgents.get(origin);
+}
+
+/**
  * Create proxy dispatcher lazily (undici-compatible)
  */
 async function getDispatcher(proxyUrl) {
@@ -613,8 +667,17 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
     }
   }
 
-  // got-scraping disabled — use native fetch directly
-  // (Re-enable per-host by wrapping with tryGotScrapingFetch when needed)
+  // Use pooled undici Agent for direct requests (connection reuse, HTTP/2)
+  const directAgent = await getDirectAgent(targetUrl);
+  if (directAgent) {
+    timing.mode = "pooled";
+    const response = await originalFetch(url, { ...options, dispatcher: directAgent });
+    timing.headersAt = Date.now();
+    response.__timing = timing;
+    return response;
+  }
+
+  // Fallback to native fetch if Agent creation failed
   const response = await originalFetch(url, options);
   timing.headersAt = Date.now();
   response.__timing = timing;
