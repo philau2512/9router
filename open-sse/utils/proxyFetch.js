@@ -7,13 +7,20 @@ import {
 } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
 
+// Helper & Manager Modules (extracted for modularity and testing)
+import { resolveRealIP, shouldBypassMitmDns } from "./dns-resolver.js";
+import { getDirectAgent } from "./connection-pool.js";
+import {
+  normalizeString,
+  getEnvProxyUrl,
+  normalizeProxyUrl,
+  resolveConnectionProxyUrl,
+  sanitizeProxyError,
+  resolveProxyHeadersTimeoutMs,
+} from "./proxy-helper.js";
+
 const originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
-
-// ─── Connection pooling per-host (direct path) ────────────────────────────
-// Reuse TCP+TLS connections across requests to the same upstream origin,
-// avoiding repeated handshakes that add 200-800ms per cold request.
-const directAgents = new Map();
 
 // ─── TLS fingerprinting via got-scraping (browser-like JA3) ───────────────
 // Disabled: not in use. Kept commented for future re-enable.
@@ -107,9 +114,6 @@ async function tryGotScrapingFetch(url, options) {
 }
 */
 
-// DNS cache — use Map to avoid prototype pollution via malformed hostnames
-export const DNS_CACHE = new Map();
-
 const bypassKeepAliveAgent = new https.Agent({
   keepAlive: true,
   keepAliveMsecs: 1000,
@@ -130,224 +134,10 @@ const bypassKeepAliveAgent = new https.Agent({
       });
   },
 });
-const MITM_BYPASS_HOSTS = [
-  "cloudcode-pa.googleapis.com",
-  "daily-cloudcode-pa.googleapis.com",
-  "api.individual.githubcopilot.com",
-  "q.us-east-1.amazonaws.com",
-  "codewhisperer.us-east-1.amazonaws.com",
-  "api2.cursor.sh",
-];
-const GOOGLE_DNS_SERVERS = ["8.8.8.8", "8.8.4.4"];
+
 const HTTPS_PORT = 443;
 const HTTP_SUCCESS_MIN = 200;
 const HTTP_SUCCESS_MAX = 300;
-
-function normalizeString(value) {
-  if (value === undefined || value === null) return "";
-  return String(value).trim();
-}
-
-/**
- * Helper to perform actual DNS resolution and update the cache
- */
-async function performDnsResolve(hostname) {
-  try {
-    const resolver = new dns.promises.Resolver();
-    resolver.setServers(GOOGLE_DNS_SERVERS);
-    const addresses = await resolver.resolve4(hostname);
-    const ip = addresses[0];
-    DNS_CACHE.set(hostname, {
-      ip,
-      expiry: Date.now() + MEMORY_CONFIG.dnsCacheTtlMs,
-      refreshing: false,
-    });
-    return ip;
-  } catch (error) {
-    console.warn(
-      `[ProxyFetch] DNS resolve failed for ${hostname}:`,
-      error.message,
-    );
-    const existing = DNS_CACHE.get(hostname);
-    if (existing) {
-      existing.refreshing = false;
-      return existing.ip;
-    }
-    return null;
-  }
-}
-
-/**
- * Resolve real IP using Google DNS (bypass system DNS) with SWR (Stale-While-Revalidate) caching
- */
-export async function resolveRealIP(hostname) {
-  const cached = DNS_CACHE.get(hostname);
-  const now = Date.now();
-
-  if (cached) {
-    // 1. Cache has expired completely -> Force synchronous resolve
-    if (now >= cached.expiry) {
-      return await performDnsResolve(hostname);
-    }
-
-    // 2. Cache is close to expiry (within last 30s) and not already refreshing -> Trigger background resolve
-    const refreshThresholdMs = 30 * 1000;
-    if (now >= cached.expiry - refreshThresholdMs && !cached.refreshing) {
-      cached.refreshing = true;
-      performDnsResolve(hostname)
-        .then(() => {
-          dbg("DNS", `Background DNS refresh succeeded for ${hostname}`);
-        })
-        .catch((err) => {
-          dbg(
-            "DNS",
-            `Background DNS refresh failed for ${hostname}: ${err.message}`,
-          );
-        });
-    }
-
-    // 3. Return cached IP instantly (0ms delay)
-    return cached.ip;
-  }
-
-  // 4. Cache miss -> Synchronous resolve first time
-  return await performDnsResolve(hostname);
-}
-
-/**
- * Check if request should bypass MITM DNS redirect
- */
-function shouldBypassMitmDns(url) {
-  try {
-    const hostname = new URL(url).hostname;
-    return MITM_BYPASS_HOSTS.some((host) => hostname.includes(host));
-  } catch {
-    return false;
-  }
-}
-
-function shouldBypassByNoProxy(targetUrl, noProxyValue) {
-  const noProxy = normalizeString(noProxyValue);
-  if (!noProxy) return false;
-
-  let hostname;
-  try {
-    hostname = new URL(targetUrl).hostname.toLowerCase();
-  } catch {
-    return false;
-  }
-  const patterns = noProxy
-    .split(",")
-    .map((p) => p.trim().toLowerCase())
-    .filter(Boolean);
-
-  return patterns.some((pattern) => {
-    if (pattern === "*") return true;
-    if (pattern.startsWith("."))
-      return hostname.endsWith(pattern) || hostname === pattern.slice(1);
-    return hostname === pattern || hostname.endsWith(`.${pattern}`);
-  });
-}
-
-/**
- * Get proxy URL from environment
- */
-function getEnvProxyUrl(targetUrl) {
-  const noProxy = process.env.NO_PROXY || process.env.no_proxy;
-  if (shouldBypassByNoProxy(targetUrl, noProxy)) return null;
-
-  let protocol;
-  try {
-    protocol = new URL(targetUrl).protocol;
-  } catch {
-    return null;
-  }
-
-  if (protocol === "https:") {
-    return (
-      process.env.HTTPS_PROXY ||
-      process.env.https_proxy ||
-      process.env.ALL_PROXY ||
-      process.env.all_proxy
-    );
-  }
-
-  return (
-    process.env.HTTP_PROXY ||
-    process.env.http_proxy ||
-    process.env.ALL_PROXY ||
-    process.env.all_proxy
-  );
-}
-
-/**
- * Normalize proxy URL (allow host:port)
- */
-function normalizeProxyUrl(proxyUrl) {
-  const normalizedInput = normalizeString(proxyUrl);
-  if (!normalizedInput) return null;
-
-  try {
-    new URL(normalizedInput);
-    return normalizedInput;
-  } catch {
-    // Allow "127.0.0.1:7890" style values
-    return `http://${normalizedInput}`;
-  }
-}
-
-function resolveConnectionProxyUrl(targetUrl, proxyOptions) {
-  const enabled =
-    proxyOptions?.enabled === true ||
-    proxyOptions?.connectionProxyEnabled === true;
-  if (!enabled) return null;
-
-  const proxyUrlRaw = normalizeString(
-    proxyOptions?.url ?? proxyOptions?.connectionProxyUrl,
-  );
-  if (!proxyUrlRaw) return null;
-
-  const noProxy = normalizeString(
-    proxyOptions?.noProxy ?? proxyOptions?.connectionNoProxy,
-  );
-  if (noProxy && shouldBypassByNoProxy(targetUrl, noProxy)) return null;
-
-  return normalizeProxyUrl(proxyUrlRaw);
-}
-
-function maskProxyUrl(proxyUrl) {
-  try {
-    const parsed = new URL(proxyUrl);
-    if (parsed.username) parsed.username = "***";
-    if (parsed.password) parsed.password = "***";
-    return parsed.toString();
-  } catch {
-    return "<invalid-proxy-url>";
-  }
-}
-
-function sanitizeProxyError(error) {
-  const name = normalizeString(error?.name) || "Error";
-  const code = normalizeString(error?.code);
-  const message = normalizeString(error?.message)
-    .replace(/\b(?:https?|socks5?|socks4):\/\/[^\s]+/gi, "<redacted-url>")
-    .replace(
-      /(proxy-authorization|authorization)\s*[:=]\s*[^\s,;]+/gi,
-      "$1=<redacted>",
-    )
-    .slice(0, 240);
-
-  return `${name}${code ? `/${code}` : ""}${message ? `: ${message}` : ""}`;
-}
-
-function resolveProxyHeadersTimeoutMs(proxyOptions) {
-  const configured = Number(
-    proxyOptions?.connectionProxyHeadersTimeoutMs ??
-      proxyOptions?.headersTimeoutMs,
-  );
-  if (Number.isFinite(configured) && configured > 0) return configured;
-  return CONNECTION_PROXY_HEADERS_TIMEOUT_MS;
-}
 
 async function fetchViaProxyWithHeadersTimeout(
   url,
@@ -402,61 +192,6 @@ async function fetchViaProxyWithHeadersTimeout(
       upstreamSignal.removeEventListener("abort", upstreamAbortListener);
     }
   }
-}
-
-/**
- * Get or create a pooled undici Agent for direct (non-proxy) upstream requests.
- * Keyed by origin (scheme + hostname + port) to match HTTP connection semantics.
- */
-async function getDirectAgent(targetUrl) {
-  let origin;
-  try {
-    const parsed = new URL(targetUrl);
-    origin = parsed.origin; // e.g. "https://api.opencode.ai"
-  } catch {
-    return null;
-  }
-
-  if (!directAgents.has(origin)) {
-    // Evict oldest entry if max size reached
-    if (directAgents.size >= MEMORY_CONFIG.directAgentsMaxSize) {
-      const oldestKey = directAgents.keys().next().value;
-      const oldestAgent = directAgents.get(oldestKey);
-      if (oldestAgent) {
-        try {
-          oldestAgent.close();
-        } catch (e) {
-          dbg(
-            "POOL",
-            `Failed to close evicted agent for ${oldestKey}: ${e.message}`,
-          );
-        }
-      }
-      directAgents.delete(oldestKey);
-    }
-    const { Agent } = await import("undici");
-    directAgents.set(
-      origin,
-      new Agent({
-        keepAliveTimeout: 60_000,
-        keepAliveMaxTimeout: 300_000,
-        connections: 10,
-        pipelining: 1,
-        allowH2: true,
-        connect: {
-          timeout: 30_000,
-          keepAlive: true,
-          keepAliveInitialDelay: 1000,
-        },
-      }),
-    );
-    dbg(
-      "POOL",
-      `Created pooled agent for ${origin} (total: ${directAgents.size})`,
-    );
-  }
-
-  return directAgents.get(origin);
 }
 
 /**

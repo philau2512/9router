@@ -35,7 +35,7 @@ describe("DNS Cache SWR (Stale-While-Revalidate)", () => {
     });
 
     // 2. Clear DNS_CACHE singleton to isolate tests
-    const { DNS_CACHE } = await import("open-sse/utils/proxyFetch.js");
+    const { DNS_CACHE } = await import("open-sse/utils/dns-resolver.js");
     DNS_CACHE.clear();
   });
 
@@ -45,7 +45,7 @@ describe("DNS Cache SWR (Stale-While-Revalidate)", () => {
   });
 
   it("performs synchronous resolve on cache miss and caches the result", async () => {
-    const { resolveRealIP } = await import("open-sse/utils/proxyFetch.js");
+    const { resolveRealIP } = await import("open-sse/utils/dns-resolver.js");
 
     const ip = await resolveRealIP("api.opencode.ai");
     expect(ip).toBe("1.1.1.1");
@@ -53,7 +53,7 @@ describe("DNS Cache SWR (Stale-While-Revalidate)", () => {
   });
 
   it("returns cached IP instantly on cache hit without re-resolving", async () => {
-    const { resolveRealIP } = await import("open-sse/utils/proxyFetch.js");
+    const { resolveRealIP } = await import("open-sse/utils/dns-resolver.js");
 
     // 1st call - Cache miss
     await resolveRealIP("api.opencode.ai");
@@ -66,7 +66,7 @@ describe("DNS Cache SWR (Stale-While-Revalidate)", () => {
   });
 
   it("triggers background refresh when cache is stale (30s before expiry) but returns old IP instantly", async () => {
-    const { resolveRealIP, DNS_CACHE } = await import("open-sse/utils/proxyFetch.js");
+    const { resolveRealIP, DNS_CACHE } = await import("open-sse/utils/dns-resolver.js");
     const { MEMORY_CONFIG } = await import("open-sse/config/runtimeConfig.js");
 
     // 1st call - Cache miss
@@ -95,7 +95,7 @@ describe("DNS Cache SWR (Stale-While-Revalidate)", () => {
   });
 
   it("does not trigger multiple background refreshes concurrently (race protection)", async () => {
-    const { resolveRealIP } = await import("open-sse/utils/proxyFetch.js");
+    const { resolveRealIP } = await import("open-sse/utils/dns-resolver.js");
     const { MEMORY_CONFIG } = await import("open-sse/config/runtimeConfig.js");
 
     // 1st call - Cache miss
@@ -124,7 +124,7 @@ describe("DNS Cache SWR (Stale-While-Revalidate)", () => {
   });
 
   it("retains old IP if background refresh fails", async () => {
-    const { resolveRealIP } = await import("open-sse/utils/proxyFetch.js");
+    const { resolveRealIP } = await import("open-sse/utils/dns-resolver.js");
     const { MEMORY_CONFIG } = await import("open-sse/config/runtimeConfig.js");
 
     // 1st call - Cache miss
