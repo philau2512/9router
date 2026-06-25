@@ -15,6 +15,7 @@ import {
   getEnvProxyUrl,
   normalizeProxyUrl,
   resolveConnectionProxyUrl,
+  maskProxyUrl,
   sanitizeProxyError,
   resolveProxyHeadersTimeoutMs,
 } from "./proxy-helper.js";
