@@ -575,7 +575,7 @@ export const PROVIDERS = {
     format: "openai",
   },
   blackbox: {
-    baseUrl: "https://api.blackbox.ai/chat/completions",
+    baseUrl: "https://api.blackbox.ai/v1/chat/completions",
     format: "openai",
   },
 };

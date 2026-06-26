@@ -19,8 +19,15 @@ export class KiroExecutor extends BaseExecutor {
       "Amz-Sdk-Invocation-Id": randomUUID(),
     };
 
+    const authMethod = credentials?.providerSpecificData?.authMethod;
+
     if (credentials.accessToken) {
       headers["Authorization"] = `Bearer ${credentials.accessToken}`;
+      // Enterprise / Microsoft Entra (external_idp) tokens require TokenType header
+      // so CodeWhisperer binds the request to the correct profile.
+      if (authMethod === "external_idp") {
+        headers["TokenType"] = "EXTERNAL_IDP";
+      }
     }
 
     return headers;

@@ -7,6 +7,8 @@ import { handleChat } from "@/sse/handlers/chat.js";
 import { initTranslators } from "open-sse/translator/index.js";
 
 let initialized = false;
+// Gemini model id charset — blocks path traversal characters in model strings.
+const GEMINI_NATIVE_MODEL_PATTERN = /^[a-zA-Z0-9_.:\/-]+$/;
 
 /**
  * Initialize translators once
@@ -67,6 +69,11 @@ export async function POST(request, { params }) {
       model = modelAction
         .replace(":streamGenerateContent", "")
         .replace(":generateContent", "");
+    }
+
+    // Block path traversal — only allow safe characters in model id
+    if (!GEMINI_NATIVE_MODEL_PATTERN.test(model)) {
+      return Response.json({ error: { message: "Invalid model" } }, { status: 400 });
     }
 
     const body = await request.json();

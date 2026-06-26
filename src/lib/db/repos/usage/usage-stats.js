@@ -20,6 +20,7 @@ import {
   extractActiveFromPending,
   parseDateOrNull,
   normalizeApiKeyValue,
+  maskApiKey,
 } from "./usage-helpers.js";
 
 // --- Internal: aggregate daily summary data into stats ---
@@ -108,23 +109,26 @@ function aggregateByApiKey(byApiKey, stats, dateKey, apiKeyMap, providerNodeName
     const keyName =
       keyInfo?.name ||
       (apiKeyVal ? apiKeyVal.slice(0, 8) + "..." : "Local (No API Key)");
-    const apiKeyKey = apiKeyVal || "local-no-key";
-    if (!stats.byApiKey[akKey]) {
-      stats.byApiKey[akKey] = createStatsEntry({
+    const apiKeyMasked = maskApiKey(apiKeyVal);
+    const apiKeyKey = apiKeyMasked || "local-no-key";
+    // Use apiKeyKey (masked) as outer dict key — akKey from stored daily summaries
+    // contains the raw API key string, which would expose keys in response object keys.
+    if (!stats.byApiKey[apiKeyKey]) {
+      stats.byApiKey[apiKeyKey] = createStatsEntry({
         rawModel,
         provider: providerDisplayName,
-        apiKey: apiKeyVal,
+        apiKeyMasked,
         keyName,
         apiKeyKey,
         lastUsed: dateKey,
       });
     }
-    stats.byApiKey[akKey].requests += ak.requests || 0;
-    stats.byApiKey[akKey].promptTokens += ak.promptTokens || 0;
-    stats.byApiKey[akKey].completionTokens += ak.completionTokens || 0;
-    stats.byApiKey[akKey].cost += ak.cost || 0;
-    if (dateKey > (stats.byApiKey[akKey].lastUsed || ""))
-      stats.byApiKey[akKey].lastUsed = dateKey;
+    stats.byApiKey[apiKeyKey].requests += ak.requests || 0;
+    stats.byApiKey[apiKeyKey].promptTokens += ak.promptTokens || 0;
+    stats.byApiKey[apiKeyKey].completionTokens += ak.completionTokens || 0;
+    stats.byApiKey[apiKeyKey].cost += ak.cost || 0;
+    if (dateKey > (stats.byApiKey[apiKeyKey].lastUsed || ""))
+      stats.byApiKey[apiKeyKey].lastUsed = dateKey;
   }
 }
 
@@ -182,7 +186,7 @@ function overlayLastUsedFromHistory(db, stats, maxDays, connectionMap) {
 
     const apiKeyKey =
       e.apiKey && typeof e.apiKey === "string"
-        ? `${e.apiKey}|${e.model}|${e.provider || "unknown"}`
+        ? `${maskApiKey(e.apiKey)}|${e.model}|${e.provider || "unknown"}`
         : "local-no-key";
     if (
       stats.byApiKey[apiKeyKey] &&
@@ -256,14 +260,15 @@ function aggregateLiveHistory(filtered, stats, connectionMap, apiKeyMap, provide
     if (r.apiKey && typeof r.apiKey === "string") {
       const keyInfo = apiKeyMap[r.apiKey];
       const keyName = keyInfo?.name || r.apiKey.slice(0, 8) + "...";
-      const akKey = `${r.apiKey}|${r.model}|${r.provider || "unknown"}`;
+      const apiKeyMasked = maskApiKey(r.apiKey);
+      const akKey = `${apiKeyMasked}|${r.model}|${r.provider || "unknown"}`;
       if (!stats.byApiKey[akKey]) {
         stats.byApiKey[akKey] = createStatsEntry({
           rawModel: r.model,
           provider: providerDisplayName,
-          apiKey: r.apiKey,
+          apiKeyMasked,
           keyName,
-          apiKeyKey: r.apiKey,
+          apiKeyKey: apiKeyMasked,
           lastUsed: r.timestamp,
         });
       }
@@ -273,7 +278,7 @@ function aggregateLiveHistory(filtered, stats, connectionMap, apiKeyMap, provide
         stats.byApiKey["local-no-key"] = createStatsEntry({
           rawModel: r.model,
           provider: providerDisplayName,
-          apiKey: null,
+          apiKeyMasked: null,
           keyName: "Local (No API Key)",
           apiKeyKey: "local-no-key",
           lastUsed: r.timestamp,

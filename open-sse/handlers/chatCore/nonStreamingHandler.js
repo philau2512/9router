@@ -237,7 +237,13 @@ export async function handleNonStreamingResponse({
     providerResponse.headers,
     responseBody,
   );
-  if (onRequestSuccess) await onRequestSuccess();
+  if (onRequestSuccess) {
+    Promise.resolve()
+      .then(onRequestSuccess)
+      .catch(err => {
+        console.error("[ChatCore] onRequestSuccess failed:", err?.message || err);
+      });
+  }
 
   // Decloak tool_use names once on raw Claude body, before any translation (INPUT side)
   responseBody = decloakToolNames(responseBody, toolNameMap);

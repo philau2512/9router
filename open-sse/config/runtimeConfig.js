@@ -47,6 +47,9 @@ export const STREAM_SEMANTIC_STALL_TIMEOUT_MS =
 // Fetch connect timeout: abort if upstream doesn't return response headers within this duration
 export const FETCH_CONNECT_TIMEOUT_MS = 60 * 1000;
 
+// Gemini native TTS fetch timeout: abort if Google does not return response headers in time.
+export const GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS = parseInt(process.env.GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS, 10) || 45 * 1000;
+
 // Proxy headers timeout: abort if proxy doesn't return response headers within this duration
 export const CONNECTION_PROXY_HEADERS_TIMEOUT_MS =
   parseInt(process.env.CONNECTION_PROXY_HEADERS_TIMEOUT_MS, 10) || 60 * 1000;

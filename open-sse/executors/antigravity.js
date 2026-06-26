@@ -22,7 +22,25 @@ function sanitizeFunctionName(name) {
 }
 
 const MAX_RETRY_AFTER_MS = 10000;
+const ANTIGRAVITY_TRANSIENT_RETRY_MAX_MS = 15000;
 const MAX_ANTIGRAVITY_OUTPUT_TOKENS = 16384;
+
+const ANTIGRAVITY_TRANSIENT_ERROR_PATTERNS = [
+  /high\s+traffic/i,
+  /agent\s+(execution\s+)?terminated\s+due\s+to\s+error/i,
+  /capacity/i,
+  /temporarily\s+unavailable/i,
+  /timeout/i,
+  /stream\s+(ended|closed|terminated|interrupted)/i,
+  /empty\s+response/i,
+];
+
+const ANTIGRAVITY_TRANSIENT_STATUSES = new Set([
+  HTTP_STATUS.SERVER_ERROR,
+  HTTP_STATUS.BAD_GATEWAY,
+  HTTP_STATUS.SERVICE_UNAVAILABLE,
+  HTTP_STATUS.GATEWAY_TIMEOUT,
+]);
 
 // Fields Google generateContent rejects (e.g. Claude adaptive output_config) — stripped from antigravity request envelope
 const ANTIGRAVITY_REQUEST_BLACKLIST = ["output_config"];
@@ -161,21 +179,29 @@ export class AntigravityExecutor extends BaseExecutor {
 
     if (tools && tools.length > 0) {
       // Merge all groups into a single functionDeclarations group (Gemini expects 1 group)
-      const allDeclarations = tools.flatMap((group) =>
-        (group.functionDeclarations || []).map((fn) => ({
-          ...fn,
-          name: sanitizeFunctionName(fn.name),
-          parameters: fn.parameters
-            ? cleanJSONSchemaForAntigravity(structuredClone(fn.parameters))
-            : {
-                type: "object",
-                properties: {
-                  reason: { type: "string", description: "Brief explanation" },
+      // Deduplicate by sanitized name to avoid "Tool names must be unique" rejections.
+      const seenToolNames = new Set();
+      const allDeclarations = [];
+      for (const group of tools) {
+        for (const fn of group.functionDeclarations || []) {
+          const name = sanitizeFunctionName(fn.name);
+          if (seenToolNames.has(name)) continue;
+          seenToolNames.add(name);
+          allDeclarations.push({
+            ...fn,
+            name,
+            parameters: fn.parameters
+              ? cleanJSONSchemaForAntigravity(structuredClone(fn.parameters))
+              : {
+                  type: "object",
+                  properties: {
+                    reason: { type: "string", description: "Brief explanation" },
+                  },
+                  required: ["reason"],
                 },
-                required: ["reason"],
-              },
-        })),
-      );
+          });
+        }
+      }
       tools =
         allDeclarations.length > 0
           ? [{ functionDeclarations: allDeclarations }]

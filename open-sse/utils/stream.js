@@ -115,6 +115,7 @@ export function createSSEStream(options = {}) {
   let currentOpenAIResponsesEvent = null;
   let openAIResponsesTerminalSeen = false;
   let openAIResponsesDoneSent = false;
+  let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
 
   return new TransformStream({
     transform(chunk, controller) {
@@ -234,7 +235,12 @@ export function createSSEStream(options = {}) {
                 output = `data: ${JSON.stringify(parsed)}\n`;
                 injectedUsage = true;
               }
-            } catch {}
+            } catch {
+              // Skip non-JSON data lines silently — don't forward garbage to clients.
+              // Upstream providers sometimes return plain-text errors (HTML, rate-limit
+              // messages) in the SSE stream that would break downstream JSON decoders.
+              continue;
+            }
           }
 
           if (!injectedUsage) {
@@ -291,10 +297,12 @@ export function createSSEStream(options = {}) {
             sseEmittedCount++;
           }
 
-          const output = "data: [DONE]\n\n";
-          reqLogger?.appendConvertedChunk?.(output);
-          controller.enqueue(sharedEncoder.encode(output));
-          if (keepsOpenAIResponsesFormat) openAIResponsesDoneSent = true;
+          // [DONE] not emitted in translate mode — some clients' SSE decoders
+          // fail to parse the OpenAI sentinel on Claude-format translated streams.
+          // message_stop already signals end-of-response; stream close handles it.
+          // Note: openAIResponsesDoneSent intentionally NOT set here — the flush
+          // handler emits [DONE] for Responses format clients after response.failed.
+          streamDoneSent = true;
           continue;
         }
 
@@ -438,9 +446,11 @@ export function createSSEStream(options = {}) {
 
           // IMPORTANT: Enqueue [DONE] sentinel FIRST — before any heavy logging.
           // Clients (e.g. OpenClaw) can hang without it.
-          const doneOutput = "data: [DONE]\n\n";
-          reqLogger?.appendConvertedChunk?.(doneOutput);
-          controller.enqueue(sharedEncoder.encode(doneOutput));
+          if (!streamDoneSent) {
+            const doneOutput = "data: [DONE]\n\n";
+            reqLogger?.appendConvertedChunk?.(doneOutput);
+            controller.enqueue(sharedEncoder.encode(doneOutput));
+          }
 
           // Defer heavy operations (usage estimation, DB writes) to next tick
           // so the stream closes immediately for the client.
@@ -550,7 +560,9 @@ export function createSSEStream(options = {}) {
           openAIResponsesTerminalSeen = true;
         }
 
-        if (!keepsOpenAIResponsesFormat || !openAIResponsesDoneSent) {
+        // [DONE] not emitted in plain translate mode — message_stop already signals end-of-stream.
+        // OpenAI Responses format (Codex) clients still need [DONE] for protocol compatibility.
+        if (keepsOpenAIResponsesFormat && !openAIResponsesDoneSent) {
           const doneOutput = "data: [DONE]\n\n";
           reqLogger?.appendConvertedChunk?.(doneOutput);
           controller.enqueue(sharedEncoder.encode(doneOutput));

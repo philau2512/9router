@@ -130,7 +130,13 @@ export function handleStreamingResponse({
   midStreamResumeEnabled,
   timing,
 }) {
-  if (onRequestSuccess) onRequestSuccess();
+  if (onRequestSuccess) {
+    Promise.resolve()
+      .then(onRequestSuccess)
+      .catch(err => {
+        console.error("[ChatCore] onRequestSuccess failed:", err?.message || err);
+      });
+  }
 
   // Responses passthrough: synthesize response.failed + [DONE] if the stream aborts/stalls before a terminal event
   const isResponsesPassthrough =

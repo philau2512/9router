@@ -60,6 +60,7 @@ const RESPONSES_API_ALLOWLIST = new Set([
   "include",
   "prompt_cache_key",
   "client_metadata",
+  "text",
 ]);
 
 // Convert role=system → role=developer in body.input (keeps content in cacheable prefix)
