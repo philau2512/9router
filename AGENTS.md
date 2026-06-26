@@ -41,3 +41,70 @@ This project is indexed by GitNexus as **9router** (14273 symbols, 29270 relatio
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+
+## Upstream Sync Guide
+
+### Repository Relationship
+
+Fork: `philau2512/9router` ← upstream: `decolua/9router`
+
+```bash
+git remote add upstream https://github.com/decolua/9router.git
+git fetch upstream
+```
+
+### Sync Process
+
+1. `git log --oneline upstream/master` — identify target commit range
+2. `git diff --stat <base>..<head>` — understand scope before committing to anything
+3. Work on `test-upstream` branch; apply commits **manually** (not cherry-pick) because fork paths differ
+4. Apply per-phase: Security → Stream/Transport → Translator → Providers → Kiro/Auth → TTS/UI/i18n
+5. Run `npx vitest run tests/unit/security-audit.test.js tests/unit/openai-responses-terminal-event.test.js tests/unit/codebuddy-reasoning-optin.test.js tests/unit/param-support.test.js tests/unit/stream-stability-improvements.test.js` after each phase
+
+### Architecture Differences (fork ≠ upstream)
+
+| Area | Upstream Path | Fork Equivalent | Status |
+|------|---------------|-----------------|--------|
+| Provider registry | `open-sse/providers/registry/*.js` (per-file) | `open-sse/config/providers.js` (flat) + `open-sse/providers/registry/` compat layer | Partially aligned (v0.5.12) |
+| Model capabilities | `open-sse/providers/capabilities.js` | `open-sse/providers/capabilities.js` | ✅ Aligned (v0.5.12) |
+| Provider models | Distributed in registry files | `open-sse/config/providerModels.js` (flat, keyed by alias) | Flat stays |
+| Usage tracking | `src/lib/db/repos/usageRepo.js` (monolithic) | `src/lib/db/repos/usage/*.js` (sub-modules) | Sub-modules stay |
+| Providers page | `src/app/(dashboard)/dashboard/providers/[id]/page.js` | `components/` + `hooks/` | Modular stays |
+| chatCore | `open-sse/handlers/chatCore.js` | Same + `chatCore/streamingHandler.js` + `chatCore/nonStreamingHandler.js` | Split stays |
+| tokenRefresh | `open-sse/services/tokenRefresh/providers.js` | No equivalent in fork | **Skip** |
+| thinkingUnified | Full `applyFormat` + `toGeminiThinkingLevel` | Simplified — `extractThinking` only | Fork subset |
+
+### Auto-Skip (never applicable to fork)
+
+- `# v0.x.y` version bump commits
+- `docker-compose.yml` chores (fork has own)
+- `open-sse/providers/registry/*.js` bulk changes — requires mapping to individual registry files OR `open-sse/config/providers.js`
+- `open-sse/services/tokenRefresh/providers.js` — not in fork
+
+### Mapping Upstream Diffs to Modularized Files
+
+When upstream changes a file the fork has split:
+
+```bash
+# Get the upstream diff
+git show <hash> -- path/to/upstream/file.js
+
+# Find fork equivalent
+grep -rn "relevant_function_name" open-sse/ src/
+
+# Apply to correct fork sub-module
+```
+
+**Patterns:**
+- `handlers/chatCore.js` → map hunks to `chatCore/streamingHandler.js` or `chatCore/nonStreamingHandler.js`
+- `src/lib/db/repos/usageRepo.js` → map to `usage/usage-writer.js`, `usage/usage-query.js`, etc.
+- `src/app/(dashboard)/dashboard/providers/[id]/page.js` → map to `components/` or `hooks/`
+
+### Last Sync
+
+- **Date**: 2026-06-26
+- **Range**: `cb65a45e` → `cce47dd` (v0.5.12), 31 commits
+- **Applied**: 29/31 (skipped: docker-compose chore, version bump)
+- **Commits**: `aad50a7` (main sync, 44 files) + `6983d39` (100% completion, 5 files)
+- **Deferred**: thinkingUnified full impl, tokenRefresh/providers.js, computeRetryDelay refactor
