@@ -350,6 +350,21 @@ export class AntigravityExecutor extends BaseExecutor {
     return totalMs > 0 ? totalMs : null;
   }
 
+  extractErrorMessage(errorJson, bodyText = "") {
+    return [
+      errorJson?.error?.message,
+      errorJson?.message,
+      errorJson?.error,
+      bodyText,
+    ].filter(Boolean).map(v => typeof v === "string" ? v : JSON.stringify(v)).join("\n");
+  }
+
+  isTransientAntigravityError(status, message) {
+    if (status === HTTP_STATUS.RATE_LIMITED) return true;
+    if (ANTIGRAVITY_TRANSIENT_STATUSES.has(status)) return true;
+    return ANTIGRAVITY_TRANSIENT_ERROR_PATTERNS.some(pattern => pattern.test(message || ""));
+  }
+
   async execute({
     model,
     body,
@@ -400,22 +415,22 @@ export class AntigravityExecutor extends BaseExecutor {
 
         if (
           response.status === HTTP_STATUS.RATE_LIMITED ||
-          response.status === HTTP_STATUS.SERVICE_UNAVAILABLE
+          ANTIGRAVITY_TRANSIENT_STATUSES.has(response.status)
         ) {
-          // Try to get retry time from headers first
+          // Read error body once for Retry-After parsing + transient error detection
           let retryMs = this.parseRetryHeaders(response.headers);
+          let retryBodyText = "";
+          let retryErrorJson = null;
+          try {
+            retryBodyText = await response.clone().text();
+            retryErrorJson = retryBodyText ? JSON.parse(retryBodyText) : null;
+          } catch {
+            // ignore parse errors — fall through to status/message based retry
+          }
+          const retryErrorMessage = this.extractErrorMessage(retryErrorJson, retryBodyText);
 
-          // If no retry time in headers, try to parse from error message body
           if (!retryMs) {
-            try {
-              const errorBody = await response.clone().text();
-              const errorJson = JSON.parse(errorBody);
-              const errorMessage =
-                errorJson?.error?.message || errorJson?.message || "";
-              retryMs = this.parseRetryFromErrorMessage(errorMessage);
-            } catch (e) {
-              // Ignore parse errors, will fall back to exponential backoff
-            }
+            retryMs = this.parseRetryFromErrorMessage(retryErrorMessage);
           }
 
           if (
@@ -433,21 +448,24 @@ export class AntigravityExecutor extends BaseExecutor {
             continue;
           }
 
-          // Auto retry only for 429 when retryMs is 0 or undefined
+          // Auto retry transient errors (429 + 5xx capacity patterns) with bounded backoff
           if (
-            response.status === HTTP_STATUS.RATE_LIMITED &&
+            this.isTransientAntigravityError(response.status, retryErrorMessage) &&
             (!retryMs || retryMs === 0) &&
             retryAttemptsByUrl[urlIndex] < MAX_AUTO_RETRIES
           ) {
             retryAttemptsByUrl[urlIndex]++;
-            // Exponential backoff: 2s, 4s, 8s...
+            const cap = response.status === HTTP_STATUS.RATE_LIMITED
+              ? MAX_RETRY_AFTER_MS
+              : ANTIGRAVITY_TRANSIENT_RETRY_MAX_MS;
             const backoffMs = Math.min(
               1000 * 2 ** retryAttemptsByUrl[urlIndex],
-              MAX_RETRY_AFTER_MS,
+              cap,
             );
+            const label = response.status === HTTP_STATUS.RATE_LIMITED ? "429" : `${response.status} transient`;
             log?.debug?.(
               "RETRY",
-              `429 auto retry ${retryAttemptsByUrl[urlIndex]}/${MAX_AUTO_RETRIES} after ${backoffMs / 1000}s`,
+              `${label} auto retry ${retryAttemptsByUrl[urlIndex]}/${MAX_AUTO_RETRIES} after ${backoffMs / 1000}s`,
             );
             await new Promise((resolve) => setTimeout(resolve, backoffMs));
             urlIndex--;

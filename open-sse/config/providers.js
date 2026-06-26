@@ -574,6 +574,10 @@ export const PROVIDERS = {
     baseUrl: "https://glhf.chat/api/openai/v1/chat/completions",
     format: "openai",
   },
+  venice: {
+    baseUrl: "https://api.venice.ai/api/v1/chat/completions",
+    format: "openai",
+  },
   blackbox: {
     baseUrl: "https://api.blackbox.ai/v1/chat/completions",
     format: "openai",

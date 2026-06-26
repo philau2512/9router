@@ -42,6 +42,7 @@ import {
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
+import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings } from "../rtk/headroom.js";
 
 function maskLoggedUrl(rawUrl) {
   try {
@@ -77,6 +78,9 @@ export async function handleChatCore({
   apiKey,
   ccFilterNaming,
   rtkEnabled,
+  headroomEnabled,
+  headroomUrl,
+  headroomCompressUserMessages,
   cavemanEnabled,
   cavemanLevel,
   midStreamResumeEnabled,
@@ -220,6 +224,27 @@ export async function handleChatCore({
   // Token savers: applied at the final body just before dispatch
   // Covers both passthrough (source shape) and translated (target shape) flows
   const finalFormat = passthrough ? sourceFormat : targetFormat;
+
+  // Headroom: compress messages via external proxy when configured (fail-open)
+  const headroomDiagnostics = {};
+  const headroomStats = await compressWithHeadroom(translatedBody, {
+    enabled: headroomEnabled,
+    url: headroomUrl,
+    model,
+    format: finalFormat,
+    compressUserMessages: headroomCompressUserMessages,
+    diagnostics: headroomDiagnostics,
+  });
+  const headroomLine = formatHeadroomLog(headroomStats);
+  const headroomSizeLine = formatHeadroomSizeLog(headroomDiagnostics);
+  if (headroomLine) {
+    log?.info?.("HEADROOM", `${headroomLine}${headroomSizeLine ? ` | ${headroomSizeLine}` : ""}`);
+    if (isHeadroomPhantomSavings(headroomStats, headroomDiagnostics)) {
+      log?.warn?.("HEADROOM", `reported token delta, but outbound JSON shrank <5%; provider may bill near-original payload | ${headroomSizeLine}`);
+    }
+  } else if (headroomEnabled) {
+    log?.warn?.("HEADROOM", `skipped: ${headroomDiagnostics.reason || "compression unavailable"}${headroomDiagnostics.endpoint ? ` (${headroomDiagnostics.endpoint})` : ""}`);
+  }
 
   // TTS models don't support tool messages/function calling
   if (getModelType(alias, model) === "tts" && translatedBody.messages) {
