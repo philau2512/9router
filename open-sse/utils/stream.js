@@ -69,6 +69,9 @@ export function createSSEStream(options = {}) {
     apiKey = null,
     streamStateTracker = null,
     targetModelAlias = null,
+    armStall = null,
+    onUpstreamFirstByte = null,
+    onClearStall = null,
   } = options;
 
   let buffer = "";
@@ -97,13 +100,13 @@ export function createSSEStream(options = {}) {
   const emitFirstChunkLog = (output, meta = {}) => {
     if (firstEmittedChunkAt) return;
     firstEmittedChunkAt = Date.now();
-    firstEmittedChunkBytes = new TextEncoder().encode(output || "").byteLength;
+    firstEmittedChunkBytes = sharedEncoder.encode(output || "").byteLength;
     log.info(
       "SSE-FIRST",
       `${provider || "unknown"}/${model || "unknown"} | mode=${mode} | firstEmitMs=${firstEmittedChunkAt - streamStartAt}ms | bytes=${firstEmittedChunkBytes}${meta.kind ? ` | kind=${meta.kind}` : ""}`,
     );
   };
-  const rawChunkEncoder = new TextEncoder();
+  // rawChunkEncoder removed — use sharedEncoder (module-level)
 
   const updateTracker = () => {
     if (streamStateTracker) {
@@ -122,15 +125,22 @@ export function createSSEStream(options = {}) {
   let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
   const outputItemCollector = createOutputItemCollector(); // Phase 4: Codex output reconstruction
 
+  let upstreamFirstByteRecorded = false;
+
   return new TransformStream({
     transform(chunk, controller) {
+      armStall?.(); // Phase 4: inline stall reset (was upstreamStallTap)
+      if (onUpstreamFirstByte && !upstreamFirstByteRecorded) {
+        upstreamFirstByteRecorded = true;
+        onUpstreamFirstByte();
+      }
       if (!ttftAt) ttftAt = Date.now();
       const text = decoder.decode(chunk, { stream: true });
       if (!firstRawChunkLogged) {
         firstRawChunkLogged = true;
         log.info(
           "SSE-FIRST",
-          `${provider || "unknown"}/${model || "unknown"} | mode=${mode} | firstRawMs=${Date.now() - streamStartAt}ms | bytes=${rawChunkEncoder.encode(text).byteLength}`,
+          `${provider || "unknown"}/${model || "unknown"} | mode=${mode} | firstRawMs=${Date.now() - streamStartAt}ms | bytes=${sharedEncoder.encode(text).byteLength}`,
         );
       }
       buffer += text;
@@ -501,6 +511,7 @@ export function createSSEStream(options = {}) {
     },
 
     flush(controller) {
+      onClearStall?.(); // Phase 4: clear stall on upstream EOF
       const evtSummary =
         Object.entries(eventTypeCounts)
           .map(([k, v]) => `${k}=${v}`)
@@ -707,6 +718,9 @@ export function createSSETransformStreamWithLogger(
   onStreamComplete = null,
   apiKey = null,
   streamStateTracker = null,
+  armStall = null,
+  onUpstreamFirstByte = null,
+  onClearStall = null,
 ) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
@@ -721,6 +735,9 @@ export function createSSETransformStreamWithLogger(
     onStreamComplete,
     apiKey,
     streamStateTracker,
+    armStall,
+    onUpstreamFirstByte,
+    onClearStall,
   });
 }
 
@@ -734,6 +751,9 @@ export function createPassthroughStreamWithLogger(
   apiKey = null,
   streamStateTracker = null,
   targetModelAlias = null,
+  armStall = null,
+  onUpstreamFirstByte = null,
+  onClearStall = null,
 ) {
   return createSSEStream({
     mode: STREAM_MODE.PASSTHROUGH,
@@ -746,5 +766,8 @@ export function createPassthroughStreamWithLogger(
     apiKey,
     streamStateTracker,
     targetModelAlias,
+    armStall,
+    onUpstreamFirstByte,
+    onClearStall,
   });
 }

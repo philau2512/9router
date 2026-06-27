@@ -40,6 +40,9 @@ function buildTransformStream({
   apiKey,
   streamStateTracker,
   targetModelAlias = null,
+  armStall = null,
+  onUpstreamFirstByte = null,
+  onClearStall = null,
 }) {
   const isDroidCLI =
     userAgent?.toLowerCase().includes("droid") ||
@@ -102,6 +105,9 @@ function buildTransformStream({
     apiKey,
     streamStateTracker,
     targetModelAlias,
+    armStall,
+    onUpstreamFirstByte,
+    onClearStall,
   );
 }
 

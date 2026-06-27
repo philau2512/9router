@@ -1,4 +1,5 @@
 // Stream handler with disconnect detection - shared for all providers
+const _sharedEnc = new TextEncoder(); // module-level — reuse across requests
 import {
   STREAM_STALL_TIMEOUT_MS,
   STREAM_SEMANTIC_STALL_TIMEOUT_MS,
@@ -368,9 +369,8 @@ export function createDisconnectAwareStream(
                 code: "stream_failed",
               },
             };
-            const encoder = new TextEncoder();
             controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify(errorBody)}\n\n`),
+              _sharedEnc.encode(`data: ${JSON.stringify(errorBody)}\n\n`),
             );
           } catch (e) {
             // Ignore if stream is already closed
@@ -579,14 +579,13 @@ export function pipeWithDisconnect(
     `pipe start | stallTimeout=${stallTimeoutMs}ms | semanticStallTimeout=${STREAM_SEMANTIC_STALL_TIMEOUT_MS}ms`,
   );
 
+  // Stall tap: tracks bytes/timing, resets stall timer per chunk
   const upstreamStallTap = new TransformStream({
     transform(chunk, controller) {
       chunkCount++;
       if (!upstreamFirstByteAt) {
         upstreamFirstByteAt = Date.now();
-        if (timing && !timing.upstreamFirstByteAt)
-          timing.upstreamFirstByteAt = upstreamFirstByteAt;
-        // Start semantic stall watchdog after first byte from upstream
+        if (timing && !timing.upstreamFirstByteAt) timing.upstreamFirstByteAt = upstreamFirstByteAt;
         startSemanticStallWatchdog();
       }
       const sz = chunk?.byteLength || chunk?.length || 0;
@@ -594,24 +593,14 @@ export function pipeWithDisconnect(
       const now = Date.now();
       const gap = now - lastChunkAt;
       lastChunkAt = now;
-      if (
-        isDebugEnabled &&
-        (chunkCount <= 5 || chunkCount % 20 === 0 || gap > 5000)
-      ) {
-        dbg(
-          tag,
-          `chunk #${chunkCount} | size=${sz}B | gap=${gap}ms | total=${totalBytes}B`,
-        );
+      if (isDebugEnabled && (chunkCount <= 5 || chunkCount % 20 === 0 || gap > 5000)) {
+        dbg(tag, `chunk #${chunkCount} | size=${sz}B | gap=${gap}ms | total=${totalBytes}B`);
       }
       armStall();
       controller.enqueue(chunk);
     },
     flush() {
-      dbg(
-        tag,
-        `upstream EOF | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`,
-      );
-      // Clear both stall and semantic stall on upstream EOF — no more data arriving
+      dbg(tag, `upstream EOF | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);
       clearStall();
     },
   });

@@ -32,7 +32,7 @@ export const CACHE_TTL = {
 export const MEMORY_CONFIG = {
   sessionTtlMs: 2 * 60 * 60 * 1000,
   sessionCleanupIntervalMs: 30 * 60 * 1000,
-  dnsCacheTtlMs: 5 * 60 * 1000,
+  dnsCacheTtlMs: 30 * 60 * 1000, // Extended: AI provider IPs are stable (was 5min)
   proxyDispatchersMaxSize: 20,
   directAgentsMaxSize: 30,
 };
