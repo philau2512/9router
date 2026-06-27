@@ -129,4 +129,85 @@ describe("KiroExecutor thinking tag stripping", () => {
     );
     expect(emptyContentChunks.length).toBe(0);
   });
+
+  it("strips thinking from claude-sonnet model", async () => {
+    const executor = new KiroExecutor();
+
+    const f1 = createMockFrame("assistantResponseEvent", { content: "<thinking>Reasoning here...</thinking>Answer here." });
+    const fStop = createMockFrame("messageStopEvent", {});
+
+    const readableStream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(f1);
+        controller.enqueue(fStop);
+        controller.close();
+      }
+    });
+
+    const mockResponse = { body: readableStream };
+    const transformedResponse = executor.transformEventStreamToSSE(mockResponse, "claude-sonnet-4-5");
+
+    const output = await readAllSSE(transformedResponse.body);
+    const dataLines = output.split("\n").filter(line => line.startsWith("data: ") && !line.includes("[DONE]"));
+    const chunks = dataLines.map(line => JSON.parse(line.slice(6)));
+
+    // Thinking text emitted as reasoning_content
+    const reasoningText = chunks
+      .filter(c => c.choices[0].delta.reasoning_content)
+      .map(c => c.choices[0].delta.reasoning_content).join("");
+    expect(reasoningText).toContain("Reasoning here...");
+
+    // Regular content preserved
+    const regularText = chunks
+      .filter(c => c.choices[0].delta.content)
+      .map(c => c.choices[0].delta.content).join("");
+    expect(regularText).toBe("Answer here.");
+
+    // Tags stripped
+    expect(output).not.toContain("<thinking>");
+    expect(output).not.toContain("</thinking>");
+  });
+
+  it("handles multi-chunk thinking block spanning several frames", async () => {
+    const executor = new KiroExecutor();
+
+    const f1 = createMockFrame("assistantResponseEvent", { content: "<thinking>Part 1 of thinking..." });
+    const f2 = createMockFrame("assistantResponseEvent", { content: "Part 2 of thinking..." });
+    const f3 = createMockFrame("assistantResponseEvent", { content: "Part 3 of thinking.</thinking>Final answer." });
+    const fStop = createMockFrame("messageStopEvent", {});
+
+    const readableStream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(f1);
+        controller.enqueue(f2);
+        controller.enqueue(f3);
+        controller.enqueue(fStop);
+        controller.close();
+      }
+    });
+
+    const mockResponse = { body: readableStream };
+    const transformedResponse = executor.transformEventStreamToSSE(mockResponse, "claude-opus-4-5-agentic");
+
+    const output = await readAllSSE(transformedResponse.body);
+    const dataLines = output.split("\n").filter(line => line.startsWith("data: ") && !line.includes("[DONE]"));
+    const chunks = dataLines.map(line => JSON.parse(line.slice(6)));
+
+    // All thinking parts routed to reasoning_content
+    const reasoningText = chunks
+      .filter(c => c.choices[0].delta.reasoning_content)
+      .map(c => c.choices[0].delta.reasoning_content).join("");
+    expect(reasoningText).toContain("Part 1 of thinking...");
+    expect(reasoningText).toContain("Part 2 of thinking...");
+    expect(reasoningText).toContain("Part 3 of thinking.");
+
+    // Only final answer in regular content
+    const regularText = chunks
+      .filter(c => c.choices[0].delta.content)
+      .map(c => c.choices[0].delta.content).join("");
+    expect(regularText).toBe("Final answer.");
+
+    expect(output).not.toContain("<thinking>");
+    expect(output).not.toContain("</thinking>");
+  });
 });
