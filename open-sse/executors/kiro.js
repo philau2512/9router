@@ -2,6 +2,7 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { randomUUID } from "crypto";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
+import { resolveDefaultProfileArn } from "../config/kiroConstants.js";
 
 /**
  * KiroExecutor - Executor for Kiro AI (AWS CodeWhisperer)
@@ -28,6 +29,15 @@ export class KiroExecutor extends BaseExecutor {
       if (authMethod === "external_idp") {
         headers["TokenType"] = "EXTERNAL_IDP";
       }
+    }
+
+    // Inject profileArn header — required by Kiro/CodeWhisperer gateway for all auth methods.
+    // Without this header, the API returns 403 "User is not authorized to make this call."
+    // Fallback to public default ARN when not stored (e.g. old connections pre-fix).
+    const profileArn = credentials?.providerSpecificData?.profileArn ||
+      resolveDefaultProfileArn(authMethod);
+    if (profileArn) {
+      headers["x-amzn-codewhisperer-profile-arn"] = profileArn;
     }
 
     return headers;
