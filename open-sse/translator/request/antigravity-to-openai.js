@@ -146,14 +146,14 @@ function convertContent(content) {
       continue;
     }
 
-    // Text with thoughtSignature = regular text after thinking
+    // Text with thoughtSignature = regular text after thinking (skip empty)
     if (part.thoughtSignature && part.text !== undefined) {
-      textParts.push({ type: "text", text: part.text });
+      if (part.text) textParts.push({ type: "text", text: part.text });
       continue;
     }
 
-    // Regular text
-    if (part.text !== undefined) {
+    // Regular text (skip empty strings)
+    if (part.text !== undefined && part.text !== "") {
       textParts.push({ type: "text", text: part.text });
     }
 

@@ -4,9 +4,9 @@ const migration = {
   version: 3,
   name: "request-details-metadata",
   up(db) {
-    // Add metadata columns (safe: ALTER TABLE ADD COLUMN is no-op if column exists)
-    db.exec(`ALTER TABLE requestDetails ADD COLUMN latency_json TEXT`);
-    db.exec(`ALTER TABLE requestDetails ADD COLUMN tokens_json TEXT`);
+    // Add metadata columns — wrapped in try/catch for idempotency (sql.js throws on duplicate)
+    try { db.exec(`ALTER TABLE requestDetails ADD COLUMN latency_json TEXT`); } catch { /* already exists */ }
+    try { db.exec(`ALTER TABLE requestDetails ADD COLUMN tokens_json TEXT`); } catch { /* already exists */ }
 
     // Backfill existing data from data blob
     const rows = db.all(`SELECT id, data FROM requestDetails`);

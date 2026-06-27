@@ -85,6 +85,15 @@ function getToolForHost(host) {
   return null;
 }
 
+// Patterns for models that must NOT be re-routed — pass through natively
+// (e.g. tab-autocomplete: latency-critical inline completion)
+const MODEL_NO_MAP = {
+  antigravity: [
+    /^tab_jump_flash_lite_preview$/i,
+    /^tab_flash_lite_preview$/i,
+  ],
+};
+
 module.exports = {
   IS_DEV,
   LSOF_BIN,
@@ -92,6 +101,7 @@ module.exports = {
   URL_PATTERNS,
   MODEL_SYNONYMS,
   MODEL_PATTERNS,
+  MODEL_NO_MAP,
   LOG_BLACKLIST_URL_PARTS,
   getToolForHost,
 };

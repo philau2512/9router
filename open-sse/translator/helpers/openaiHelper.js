@@ -63,6 +63,13 @@ export function filterToOpenAIFormat(body) {
         filteredContent.push({ type: "text", text: "" });
       }
 
+      // Flatten text-only arrays to string for OpenAI-compatible endpoints
+      const allText = filteredContent.every((b) => b.type === "text");
+      if (allText) {
+        const flat = filteredContent.map((b) => b.text).join("\n");
+        return { ...msg, content: flat };
+      }
+
       return { ...msg, content: filteredContent };
     }
 

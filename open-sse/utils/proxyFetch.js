@@ -23,6 +23,32 @@ import {
 const originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
 
+// TLS fingerprinting via got-scraping for api.anthropic.com
+let _gotScraping = null;
+let _gotScrapingChecked = false;
+async function getGotScraping() {
+  if (_gotScrapingChecked) return _gotScraping;
+  _gotScrapingChecked = true;
+  try {
+    const mod = await import("got-scraping");
+    _gotScraping = typeof mod.gotScraping === "function" ? mod.gotScraping : null;
+  } catch { _gotScraping = null; }
+  return _gotScraping;
+}
+
+async function gotScrapingFetch(url, options) {
+  const gs = await getGotScraping();
+  if (!gs) return null;
+  const method = (options.method || "GET").toUpperCase();
+  const headersInit = options.headers || {};
+  const headers = headersInit instanceof Headers ? Object.fromEntries(headersInit.entries()) : { ...headersInit };
+  const result = await gs({ url, method, headers, body: (method === "GET" || method === "HEAD") ? undefined : options.body, throwHttpErrors: false, retry: { limit: 0 }, followRedirect: false, decompress: true });
+  if (!result) return null;
+  const { statusCode, statusMessage, headers: resHeaders, rawBody } = result;
+  const headerObj = new Headers(resHeaders || {});
+  return new Response(rawBody || null, { status: statusCode || 200, statusText: statusMessage || "OK", headers: headerObj });
+}
+
 // ─── TLS fingerprinting via got-scraping (browser-like JA3) ───────────────
 // Disabled: not in use. Kept commented for future re-enable.
 // Restore the original block to re-enable per-host JA3 spoofing.
@@ -312,6 +338,16 @@ async function createBypassRequest(parsedUrl, realIP, options, timing = null) {
 }
 
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
+  // Route api.anthropic.com non-streaming through got-scraping for TLS fingerprinting
+  try {
+    const urlObj = new URL(url);
+    const isAnthropic = urlObj.hostname === "api.anthropic.com";
+    const isStreaming = String(options.headers?.Accept || options.headers?.accept || "").includes("text/event-stream");
+    if (isAnthropic && !isStreaming) {
+      const gsResp = await gotScrapingFetch(url, options).catch(() => null);
+      if (gsResp) return gsResp;
+    }
+  } catch { /* ignore URL parse errors */ }
   const targetUrl = typeof url === "string" ? url : url.toString();
   const timing = {
     startedAt: Date.now(),
