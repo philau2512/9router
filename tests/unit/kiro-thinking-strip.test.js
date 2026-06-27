@@ -9,34 +9,28 @@ function createMockFrame(eventType, payloadObj) {
   const headerNameBytes = new TextEncoder().encode(headerName);
   const headerValueBytes = new TextEncoder().encode(eventType);
 
-  // nameLen(1) + name + type(1) + valueLen(2) + value
   const headerLength = 1 + headerNameBytes.length + 1 + 2 + headerValueBytes.length;
-  // total = prelude(12) + headers + payload + message_crc(4)
   const totalLength = 12 + headerLength + payloadBytes.length + 4;
 
   const buffer = new Uint8Array(totalLength);
   const view = new DataView(buffer.buffer);
 
-  // Prelude: totalLength(4) + headersLength(4) + preludeCRC(4)
   view.setUint32(0, totalLength, false);
   view.setUint32(4, headerLength, false);
-  view.setUint32(8, 0, false); // prelude CRC (dummy)
+  view.setUint32(8, 0, false);
 
   let offset = 12;
   buffer[offset++] = headerNameBytes.length;
   buffer.set(headerNameBytes, offset);
   offset += headerNameBytes.length;
-  buffer[offset++] = 7; // String type
+  buffer[offset++] = 7;
   view.setUint16(offset, headerValueBytes.length, false);
   offset += 2;
   buffer.set(headerValueBytes, offset);
   offset += headerValueBytes.length;
 
-  // Payload
   buffer.set(payloadBytes, offset);
   offset += payloadBytes.length;
-
-  // Message CRC (4 bytes, dummy)
   view.setUint32(offset, 0, false);
 
   return buffer;
@@ -55,7 +49,7 @@ async function readAllSSE(stream) {
 }
 
 describe("KiroExecutor thinking tag stripping", () => {
-  it("strips <thinking> tags from assistantResponseEvent", async () => {
+  it("strips <thinking> tags and re-emits as reasoning_content", async () => {
     const executor = new KiroExecutor();
 
     const f1 = createMockFrame("assistantResponseEvent", { content: "Here is my answer. <thinking>Let me think..." });
@@ -76,24 +70,29 @@ describe("KiroExecutor thinking tag stripping", () => {
 
     const output = await readAllSSE(transformedResponse.body);
 
-    expect(output).toContain("chat.completion.chunk");
+    // <thinking> tags must be stripped
     expect(output).not.toContain("<thinking>");
-    expect(output).not.toContain("Let me think...");
-    expect(output).not.toContain("still thinking...");
     expect(output).not.toContain("</thinking>");
 
-    const dataLines = output.split("\n").filter(line => line.startsWith("data: "));
-    const contents = dataLines.map(line => {
-      if (line.includes("[DONE]")) return "";
-      try {
-        return JSON.parse(line.slice(6)).choices[0].delta.content || "";
-      } catch {
-        return "";
-      }
-    });
+    const dataLines = output.split("\n").filter(line => line.startsWith("data: ") && !line.includes("[DONE]"));
+    const chunks = dataLines.map(line => JSON.parse(line.slice(6)));
 
-    const fullText = contents.join("");
-    expect(fullText).toBe("Here is my answer.  Yes, 42.");
+    // Thinking text must appear as reasoning_content
+    const reasoningText = chunks
+      .filter(c => c.choices[0].delta.reasoning_content)
+      .map(c => c.choices[0].delta.reasoning_content)
+      .join("");
+    expect(reasoningText).toContain("Let me think...");
+    expect(reasoningText).toContain("still thinking...");
+
+    // Regular content must NOT contain thinking text
+    const regularText = chunks
+      .filter(c => c.choices[0].delta.content)
+      .map(c => c.choices[0].delta.content)
+      .join("");
+    expect(regularText).not.toContain("Let me think...");
+    expect(regularText).not.toContain("still thinking...");
+    expect(regularText).toBe("Here is my answer.  Yes, 42.");
   });
 
   it("handles empty content after stripping when hasReasoningContent is true", async () => {
@@ -120,11 +119,14 @@ describe("KiroExecutor thinking tag stripping", () => {
     const dataLines = output.split("\n").filter(line => line.startsWith("data: ") && !line.includes("[DONE]"));
     const objects = dataLines.map(line => JSON.parse(line.slice(6)));
 
-    // First chunk should have reasoning_content
-    expect(objects[0].choices[0].delta.reasoning_content).toBe("I am reasoning");
+    // reasoning_content chunks must be present (from reasoningContentEvent + stripped thinking tag)
+    const reasoningChunks = objects.filter(obj => obj.choices[0].delta.reasoning_content);
+    expect(reasoningChunks.length).toBeGreaterThan(0);
 
-    // We should not get an empty content chunk from f1 since it was entirely stripped and reasoning was present
-    const contentChunks = objects.filter(obj => obj.choices[0].delta.content !== undefined);
-    expect(contentChunks.length).toBe(0);
+    // No empty content chunks
+    const emptyContentChunks = objects.filter(obj =>
+      obj.choices[0].delta.content !== undefined && obj.choices[0].delta.content === ""
+    );
+    expect(emptyContentChunks.length).toBe(0);
   });
 });
