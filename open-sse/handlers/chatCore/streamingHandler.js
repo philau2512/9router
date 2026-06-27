@@ -39,6 +39,7 @@ function buildTransformStream({
   onStreamComplete,
   apiKey,
   streamStateTracker,
+  targetModelAlias = null,
 }) {
   const isDroidCLI =
     userAgent?.toLowerCase().includes("droid") ||
@@ -100,6 +101,7 @@ function buildTransformStream({
     onStreamComplete,
     apiKey,
     streamStateTracker,
+    targetModelAlias,
   );
 }
 
@@ -160,6 +162,7 @@ export function handleStreamingResponse({
   const wrappedOnStreamComplete = (contentObj, usage, ttftAt) =>
     onStreamComplete?.(contentObj, usage, ttftAt, streamDetailId);
 
+  const targetModelAlias = typeof body?.model === "string" && body.model !== model ? body.model : null;
   const transformStream = buildTransformStream({
     provider,
     sourceFormat,
@@ -173,6 +176,7 @@ export function handleStreamingResponse({
     onStreamComplete: wrappedOnStreamComplete,
     apiKey,
     streamStateTracker,
+    targetModelAlias,
   });
 
   const resumeCtx = midStreamResumeEnabled

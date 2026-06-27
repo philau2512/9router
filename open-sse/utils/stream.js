@@ -20,6 +20,9 @@ import {
   getOpenAIResponsesEventName,
   isOpenAIResponsesTerminalEvent,
   formatIncompleteOpenAIResponsesStreamFailure,
+  createOutputItemCollector,
+  collectOutputItemDone,
+  patchCompletedOutput,
 } from "./responsesStreamHelpers.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 import * as log from "../../src/sse/utils/logger.js";
@@ -65,6 +68,7 @@ export function createSSEStream(options = {}) {
     onStreamComplete = null,
     apiKey = null,
     streamStateTracker = null,
+    targetModelAlias = null,
   } = options;
 
   let buffer = "";
@@ -116,6 +120,7 @@ export function createSSEStream(options = {}) {
   let openAIResponsesTerminalSeen = false;
   let openAIResponsesDoneSent = false;
   let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
+  const outputItemCollector = createOutputItemCollector(); // Phase 4: Codex output reconstruction
 
   return new TransformStream({
     transform(chunk, controller) {
@@ -239,6 +244,16 @@ export function createSSEStream(options = {}) {
                     fieldsInjected = true;
                   }
                 }
+              }
+
+              // Rewrite model alias so client receives the alias they requested (Phase 2)
+              if (targetModelAlias && parsed.model && parsed.model !== targetModelAlias) {
+                parsed.model = targetModelAlias;
+                fieldsInjected = true;
+              }
+              if (targetModelAlias && parsed.response?.model && parsed.response.model !== targetModelAlias) {
+                parsed.response = { ...parsed.response, model: targetModelAlias };
+                fieldsInjected = true;
               }
 
               if (!hasValuableContent(parsed, FORMATS.OPENAI)) {
@@ -396,6 +411,22 @@ export function createSSEStream(options = {}) {
         // Extract usage
         const extracted = extractUsage(parsed);
         if (extracted) state.usage = extracted; // Keep original usage for logging
+
+        // Codex output_item.done reconstruction (Phase 4)
+        if (keepsOpenAIResponsesFormat && parsed.type === "response.output_item.done") {
+          collectOutputItemDone(outputItemCollector, parsed);
+        }
+        if (keepsOpenAIResponsesFormat && parsed.type === "response.completed") {
+          const patched = patchCompletedOutput(parsed, outputItemCollector);
+          if (patched !== parsed) {
+            const output = formatSSE({ event: openAIResponsesEventName || "response.completed", data: patched }, sourceFormat);
+            reqLogger?.appendConvertedChunk?.(output);
+            controller.enqueue(sharedEncoder.encode(output));
+            currentOpenAIResponsesEvent = null;
+            sseEmittedCount++;
+            continue;
+          }
+        }
 
         // Responses same-format passthrough: re-emit with original event framing
         if (keepsOpenAIResponsesFormat && openAIResponsesEventName) {
@@ -702,6 +733,7 @@ export function createPassthroughStreamWithLogger(
   onStreamComplete = null,
   apiKey = null,
   streamStateTracker = null,
+  targetModelAlias = null,
 ) {
   return createSSEStream({
     mode: STREAM_MODE.PASSTHROUGH,
@@ -713,5 +745,6 @@ export function createPassthroughStreamWithLogger(
     onStreamComplete,
     apiKey,
     streamStateTracker,
+    targetModelAlias,
   });
 }

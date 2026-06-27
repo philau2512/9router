@@ -43,6 +43,12 @@ import { dedupeTools } from "../utils/toolDeduper.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings } from "../rtk/headroom.js";
+import {
+  getAntigravitySessionKey,
+  getCachedThinking,
+  setCachedThinking,
+  injectThinkingReplay,
+} from "../utils/antigravityReasoningReplay.js";
 
 function maskLoggedUrl(rawUrl) {
   try {
@@ -120,6 +126,13 @@ export async function handleChatCore({
     } else if (!body.reasoning_effort) {
       body = { ...body, reasoning_effort: mode };
     }
+  }
+
+  // Antigravity reasoning replay: inject cached thinking into last assistant turn (Phase 5)
+  if (provider === "antigravity" && body?.request?.contents) {
+    const _replayKey = getAntigravitySessionKey(model, body);
+    const _cachedThinking = _replayKey ? getCachedThinking(_replayKey) : null;
+    if (_cachedThinking) body = injectThinkingReplay(body, _cachedThinking);
   }
 
   const clientRequestedStreaming =
@@ -556,7 +569,14 @@ export async function handleChatCore({
   }
 
   // Streaming response
-  const { onStreamComplete } = buildOnStreamComplete({ ...sharedCtx, timing });
+  const { onStreamComplete: _baseOnStreamComplete } = buildOnStreamComplete({ ...sharedCtx, timing });
+  const _agReplayKey = provider === "antigravity" ? getAntigravitySessionKey(model, body) : null;
+  const onStreamComplete = _agReplayKey
+    ? (contentObj, usage, ttftAt, streamDetailId) => {
+        if (contentObj?.thinking) setCachedThinking(_agReplayKey, contentObj.thinking);
+        return _baseOnStreamComplete?.(contentObj, usage, ttftAt, streamDetailId);
+      }
+    : _baseOnStreamComplete;
   return handleStreamingResponse({
     ...sharedCtx,
     providerResponse,

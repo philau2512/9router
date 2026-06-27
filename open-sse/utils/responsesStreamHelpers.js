@@ -52,3 +52,38 @@ export function formatIncompleteOpenAIResponsesStreamFailure() {
     FORMATS.OPENAI_RESPONSES,
   );
 }
+
+
+// Codex output_item.done reconstruction (Phase 4)
+// Codex streams may emit response.output_item.done events while leaving
+// response.completed.response.output empty. Collect and patch on completion.
+
+export function createOutputItemCollector() {
+  return { byIndex: new Map(), fallback: [] };
+}
+
+export function collectOutputItemDone(collector, eventData) {
+  const item = eventData?.item;
+  if (!item) return;
+  const idx = eventData?.output_index;
+  if (typeof idx === "number") {
+    collector.byIndex.set(idx, item);
+  } else {
+    collector.fallback.push(item);
+  }
+}
+
+export function patchCompletedOutput(completedData, collector) {
+  if (!collector) return completedData;
+  const output = completedData?.response?.output;
+  if (Array.isArray(output) && output.length > 0) return completedData;
+  if (collector.byIndex.size === 0 && collector.fallback.length === 0) return completedData;
+  const sorted = [...collector.byIndex.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([, item]) => item);
+  const items = [...sorted, ...collector.fallback];
+  return {
+    ...completedData,
+    response: { ...completedData.response, output: items },
+  };
+}

@@ -15,6 +15,7 @@ import {
   resolveRetryEntry,
 } from "../config/runtimeConfig.js";
 import { dbg } from "../utils/debugLog.js";
+import { tryCodexWSRequest, CODEX_WS_ENABLED } from "./codex-ws.js";
 
 // SSE error patterns inside 200-OK body that should trigger retry as if 503
 const CODEX_SSE_OVERLOADED_PATTERNS = [
@@ -357,6 +358,14 @@ export class CodexExecutor extends BaseExecutor {
     const { attempts, delayMs } = resolveRetryEntry(retryConfig[503]);
     let attempt = 0;
     while (true) {
+      // Phase 6: Try WebSocket executor first when enabled (falls back to HTTP SSE)
+      if (CODEX_WS_ENABLED && args.credentials?.accessToken) {
+        const wsResp = await tryCodexWSRequest(
+          { baseUrl: args.credentials.baseUrl || this.config.baseUrl, apiKey: args.credentials.accessToken },
+          args.body, args.signal
+        ).catch(() => null);
+        if (wsResp) return { response: wsResp };
+      }
       const result = await super.execute(args);
       const peek = await this._peekSseOverloaded(result.response);
       if (!peek.matched) {
