@@ -1,12 +1,14 @@
 // Ensure better-sqlite3 is installed in USER_DATA_DIR/runtime/node_modules
 // (user-writable, avoids Windows EBUSY locks during npm i -g updates).
-// sql.js is bundled in bin/app already; node:sqlite / bun:sqlite are built-in.
+// sql.js may be bundled in bin/app, but npm publish strips .wasm from nested
+// node_modules — verify and reinstall if missing. node:sqlite / bun:sqlite are built-in.
 const { execSync, spawnSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
 const BETTER_SQLITE3_VERSION = "12.6.2";
+const SQL_JS_VERSION = "1.14.1";
 
 function getDataDir() {
   if (process.env.DATA_DIR) return process.env.DATA_DIR;
@@ -142,16 +144,31 @@ function npmInstall(pkgs, opts = {}) {
 }
 
 // Public: ensure better-sqlite3 native module is installed in user-writable
-// runtime dir. sql.js is bundled in bin/app already; node:sqlite is built-in.
-// This is purely a *speed optimization* — app works without it via fallbacks.
+// runtime dir. sql.js may be bundled in bin/app, but npm publish strips .wasm
+// from nested node_modules — verify and reinstall if missing. node:sqlite is
+// built-in. This is purely a *speed optimization* — app works without
+// better-sqlite3 via fallbacks.
+function isSqlJsWasmValid() {
+  const bundledWasm = path.join(__dirname, "..", "app", "node_modules", "sql.js", "dist", "sql-wasm.wasm");
+  if (fs.existsSync(bundledWasm)) return true;
+  const runtimeWasm = path.join(getRuntimeNodeModules(), "sql.js", "dist", "sql-wasm.wasm");
+  return fs.existsSync(runtimeWasm);
+}
+
 function ensureSqliteRuntime({ silent = false } = {}) {
   ensureRuntimeDir();
+
+  let sqlJsOk = isSqlJsWasmValid();
+  if (!sqlJsOk) {
+    sqlJsOk = npmInstall([`sql.js@${SQL_JS_VERSION}`], { silent });
+    if (sqlJsOk) sqlJsOk = isSqlJsWasmValid();
+  }
 
   const needBetterSqlite =
     !hasModule("better-sqlite3") || !isBetterSqliteBinaryValid();
   if (!needBetterSqlite) {
     if (!silent) console.log("✅ SQLite engine ready");
-    return { betterSqlite: true };
+    return { betterSqlite: true, sqlJs: sqlJsOk };
   }
 
   const ok = npmInstall([`better-sqlite3@${BETTER_SQLITE3_VERSION}`], {
@@ -161,6 +178,7 @@ function ensureSqliteRuntime({ silent = false } = {}) {
   return {
     betterSqlite:
       ok && hasModule("better-sqlite3") && isBetterSqliteBinaryValid(),
+    sqlJs: sqlJsOk,
   };
 }
 

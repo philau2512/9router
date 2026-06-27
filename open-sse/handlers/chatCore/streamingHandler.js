@@ -39,6 +39,10 @@ function buildTransformStream({
   onStreamComplete,
   apiKey,
   streamStateTracker,
+  targetModelAlias = null,
+  armStall = null,
+  onUpstreamFirstByte = null,
+  onClearStall = null,
 }) {
   const isDroidCLI =
     userAgent?.toLowerCase().includes("droid") ||
@@ -100,6 +104,10 @@ function buildTransformStream({
     onStreamComplete,
     apiKey,
     streamStateTracker,
+    targetModelAlias,
+    armStall,
+    onUpstreamFirstByte,
+    onClearStall,
   );
 }
 
@@ -130,7 +138,13 @@ export function handleStreamingResponse({
   midStreamResumeEnabled,
   timing,
 }) {
-  if (onRequestSuccess) onRequestSuccess();
+  if (onRequestSuccess) {
+    Promise.resolve()
+      .then(onRequestSuccess)
+      .catch(err => {
+        console.error("[ChatCore] onRequestSuccess failed:", err?.message || err);
+      });
+  }
 
   // Responses passthrough: synthesize response.failed + [DONE] if the stream aborts/stalls before a terminal event
   const isResponsesPassthrough =
@@ -154,6 +168,7 @@ export function handleStreamingResponse({
   const wrappedOnStreamComplete = (contentObj, usage, ttftAt) =>
     onStreamComplete?.(contentObj, usage, ttftAt, streamDetailId);
 
+  const targetModelAlias = typeof body?.model === "string" && body.model !== model ? body.model : null;
   const transformStream = buildTransformStream({
     provider,
     sourceFormat,
@@ -167,7 +182,25 @@ export function handleStreamingResponse({
     onStreamComplete: wrappedOnStreamComplete,
     apiKey,
     streamStateTracker,
+    targetModelAlias,
   });
+
+  const resumeCtx = midStreamResumeEnabled
+    ? {
+        body,
+        provider,
+        model,
+        credentials,
+        sourceFormat,
+        targetFormat,
+        userAgent,
+        apiKey,
+        connectionId,
+        toolNameMap,
+        reqLogger,
+        clientRawRequest,
+      }
+    : null;
 
   const transformedBody = pipeWithDisconnect(
     providerResponse,
@@ -177,6 +210,9 @@ export function handleStreamingResponse({
     streamStateTracker,
     timing,
     stallTimeoutMs,
+    model,
+    provider,
+    resumeCtx,
   );
 
   setImmediate(() => {
@@ -236,7 +272,9 @@ export function buildOnStreamComplete({
       ttft: ttftAt ? ttftAt - requestStartTime : total,
       total,
     };
-    const safeContent = contentObj?.content || "[Empty streaming response]";
+    // R2-F6: distinguish fast-path PASSTHROUGH (no accumulatedContent) from truly empty
+    const safeContent = contentObj?.content ||
+      "[Empty streaming response]";
     const safeThinking = contentObj?.thinking || null;
 
     if (timing) {

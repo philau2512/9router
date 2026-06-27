@@ -7,8 +7,47 @@ import {
 } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
 
+// Helper & Manager Modules (extracted for modularity and testing)
+import { resolveRealIP, shouldBypassMitmDns } from "./dns-resolver.js";
+import { getDirectAgent } from "./connection-pool.js";
+import {
+  normalizeString,
+  getEnvProxyUrl,
+  normalizeProxyUrl,
+  resolveConnectionProxyUrl,
+  maskProxyUrl,
+  sanitizeProxyError,
+  resolveProxyHeadersTimeoutMs,
+} from "./proxy-helper.js";
+
 const originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
+
+// TLS fingerprinting via got-scraping for api.anthropic.com
+let _gotScraping = null;
+let _gotScrapingChecked = false;
+async function getGotScraping() {
+  if (_gotScrapingChecked) return _gotScraping;
+  _gotScrapingChecked = true;
+  try {
+    const mod = await import("got-scraping");
+    _gotScraping = typeof mod.gotScraping === "function" ? mod.gotScraping : null;
+  } catch { _gotScraping = null; }
+  return _gotScraping;
+}
+
+async function gotScrapingFetch(url, options) {
+  const gs = await getGotScraping();
+  if (!gs) return null;
+  const method = (options.method || "GET").toUpperCase();
+  const headersInit = options.headers || {};
+  const headers = headersInit instanceof Headers ? Object.fromEntries(headersInit.entries()) : { ...headersInit };
+  const result = await gs({ url, method, headers, body: (method === "GET" || method === "HEAD") ? undefined : options.body, throwHttpErrors: false, retry: { limit: 0 }, followRedirect: false, decompress: true });
+  if (!result) return null;
+  const { statusCode, statusMessage, headers: resHeaders, rawBody } = result;
+  const headerObj = new Headers(resHeaders || {});
+  return new Response(rawBody || null, { status: statusCode || 200, statusText: statusMessage || "OK", headers: headerObj });
+}
 
 // ─── TLS fingerprinting via got-scraping (browser-like JA3) ───────────────
 // Disabled: not in use. Kept commented for future re-enable.
@@ -102,9 +141,6 @@ async function tryGotScrapingFetch(url, options) {
 }
 */
 
-// DNS cache — use Map to avoid prototype pollution via malformed hostnames
-const DNS_CACHE = new Map();
-
 const bypassKeepAliveAgent = new https.Agent({
   keepAlive: true,
   keepAliveMsecs: 1000,
@@ -125,186 +161,10 @@ const bypassKeepAliveAgent = new https.Agent({
       });
   },
 });
-const MITM_BYPASS_HOSTS = [
-  "cloudcode-pa.googleapis.com",
-  "daily-cloudcode-pa.googleapis.com",
-  "api.individual.githubcopilot.com",
-  "q.us-east-1.amazonaws.com",
-  "codewhisperer.us-east-1.amazonaws.com",
-  "api2.cursor.sh",
-];
-const GOOGLE_DNS_SERVERS = ["8.8.8.8", "8.8.4.4"];
+
 const HTTPS_PORT = 443;
 const HTTP_SUCCESS_MIN = 200;
 const HTTP_SUCCESS_MAX = 300;
-
-function normalizeString(value) {
-  if (value === undefined || value === null) return "";
-  return String(value).trim();
-}
-
-/**
- * Resolve real IP using Google DNS (bypass system DNS)
- */
-async function resolveRealIP(hostname) {
-  const cached = DNS_CACHE.get(hostname);
-  if (cached && Date.now() < cached.expiry) return cached.ip;
-
-  try {
-    const dns = await import("dns");
-    const { promisify } = await import("util");
-    const resolver = new dns.Resolver();
-    resolver.setServers(GOOGLE_DNS_SERVERS);
-    const resolve4 = promisify(resolver.resolve4.bind(resolver));
-    const addresses = await resolve4(hostname);
-    DNS_CACHE.set(hostname, {
-      ip: addresses[0],
-      expiry: Date.now() + MEMORY_CONFIG.dnsCacheTtlMs,
-    });
-    return addresses[0];
-  } catch (error) {
-    console.warn(
-      `[ProxyFetch] DNS resolve failed for ${hostname}:`,
-      error.message,
-    );
-    return null;
-  }
-}
-
-/**
- * Check if request should bypass MITM DNS redirect
- */
-function shouldBypassMitmDns(url) {
-  try {
-    const hostname = new URL(url).hostname;
-    return MITM_BYPASS_HOSTS.some((host) => hostname.includes(host));
-  } catch {
-    return false;
-  }
-}
-
-function shouldBypassByNoProxy(targetUrl, noProxyValue) {
-  const noProxy = normalizeString(noProxyValue);
-  if (!noProxy) return false;
-
-  let hostname;
-  try {
-    hostname = new URL(targetUrl).hostname.toLowerCase();
-  } catch {
-    return false;
-  }
-  const patterns = noProxy
-    .split(",")
-    .map((p) => p.trim().toLowerCase())
-    .filter(Boolean);
-
-  return patterns.some((pattern) => {
-    if (pattern === "*") return true;
-    if (pattern.startsWith("."))
-      return hostname.endsWith(pattern) || hostname === pattern.slice(1);
-    return hostname === pattern || hostname.endsWith(`.${pattern}`);
-  });
-}
-
-/**
- * Get proxy URL from environment
- */
-function getEnvProxyUrl(targetUrl) {
-  const noProxy = process.env.NO_PROXY || process.env.no_proxy;
-  if (shouldBypassByNoProxy(targetUrl, noProxy)) return null;
-
-  let protocol;
-  try {
-    protocol = new URL(targetUrl).protocol;
-  } catch {
-    return null;
-  }
-
-  if (protocol === "https:") {
-    return (
-      process.env.HTTPS_PROXY ||
-      process.env.https_proxy ||
-      process.env.ALL_PROXY ||
-      process.env.all_proxy
-    );
-  }
-
-  return (
-    process.env.HTTP_PROXY ||
-    process.env.http_proxy ||
-    process.env.ALL_PROXY ||
-    process.env.all_proxy
-  );
-}
-
-/**
- * Normalize proxy URL (allow host:port)
- */
-function normalizeProxyUrl(proxyUrl) {
-  const normalizedInput = normalizeString(proxyUrl);
-  if (!normalizedInput) return null;
-
-  try {
-    new URL(normalizedInput);
-    return normalizedInput;
-  } catch {
-    // Allow "127.0.0.1:7890" style values
-    return `http://${normalizedInput}`;
-  }
-}
-
-function resolveConnectionProxyUrl(targetUrl, proxyOptions) {
-  const enabled =
-    proxyOptions?.enabled === true ||
-    proxyOptions?.connectionProxyEnabled === true;
-  if (!enabled) return null;
-
-  const proxyUrlRaw = normalizeString(
-    proxyOptions?.url ?? proxyOptions?.connectionProxyUrl,
-  );
-  if (!proxyUrlRaw) return null;
-
-  const noProxy = normalizeString(
-    proxyOptions?.noProxy ?? proxyOptions?.connectionNoProxy,
-  );
-  if (noProxy && shouldBypassByNoProxy(targetUrl, noProxy)) return null;
-
-  return normalizeProxyUrl(proxyUrlRaw);
-}
-
-function maskProxyUrl(proxyUrl) {
-  try {
-    const parsed = new URL(proxyUrl);
-    if (parsed.username) parsed.username = "***";
-    if (parsed.password) parsed.password = "***";
-    return parsed.toString();
-  } catch {
-    return "<invalid-proxy-url>";
-  }
-}
-
-function sanitizeProxyError(error) {
-  const name = normalizeString(error?.name) || "Error";
-  const code = normalizeString(error?.code);
-  const message = normalizeString(error?.message)
-    .replace(/\b(?:https?|socks5?|socks4):\/\/[^\s]+/gi, "<redacted-url>")
-    .replace(
-      /(proxy-authorization|authorization)\s*[:=]\s*[^\s,;]+/gi,
-      "$1=<redacted>",
-    )
-    .slice(0, 240);
-
-  return `${name}${code ? `/${code}` : ""}${message ? `: ${message}` : ""}`;
-}
-
-function resolveProxyHeadersTimeoutMs(proxyOptions) {
-  const configured = Number(
-    proxyOptions?.connectionProxyHeadersTimeoutMs ??
-      proxyOptions?.headersTimeoutMs,
-  );
-  if (Number.isFinite(configured) && configured > 0) return configured;
-  return CONNECTION_PROXY_HEADERS_TIMEOUT_MS;
-}
 
 async function fetchViaProxyWithHeadersTimeout(
   url,
@@ -478,6 +338,16 @@ async function createBypassRequest(parsedUrl, realIP, options, timing = null) {
 }
 
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
+  // Route api.anthropic.com non-streaming through got-scraping for TLS fingerprinting
+  try {
+    const urlObj = new URL(url);
+    const isAnthropic = urlObj.hostname === "api.anthropic.com";
+    const isStreaming = String(options.headers?.Accept || options.headers?.accept || "").includes("text/event-stream");
+    if (isAnthropic && !isStreaming) {
+      const gsResp = await gotScrapingFetch(url, options).catch(() => null);
+      if (gsResp) return gsResp;
+    }
+  } catch { /* ignore URL parse errors */ }
   const targetUrl = typeof url === "string" ? url : url.toString();
   const timing = {
     startedAt: Date.now(),
@@ -613,8 +483,20 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
     }
   }
 
-  // got-scraping disabled — use native fetch directly
-  // (Re-enable per-host by wrapping with tryGotScrapingFetch when needed)
+  // Use pooled undici Agent for direct requests (connection reuse, HTTP/2)
+  const directAgent = await getDirectAgent(targetUrl);
+  if (directAgent) {
+    timing.mode = "pooled";
+    const response = await originalFetch(url, {
+      ...options,
+      dispatcher: directAgent,
+    });
+    timing.headersAt = Date.now();
+    response.__timing = timing;
+    return response;
+  }
+
+  // Fallback to native fetch if Agent creation failed
   const response = await originalFetch(url, options);
   timing.headersAt = Date.now();
   response.__timing = timing;

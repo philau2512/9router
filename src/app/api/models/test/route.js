@@ -92,6 +92,52 @@ export async function POST(request) {
       });
     }
 
+    // Image generation
+    if (kind === "image") {
+      const res = await fetch(`${baseUrl}/api/v1/images/generations`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ model, prompt: "test" }),
+        signal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),
+      });
+      const latencyMs = Date.now() - start;
+      const rawText = await res.text().catch(() => "");
+      let parsed = null;
+      try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+      if (!res.ok) {
+        const detail = parsed?.error?.message || parsed?.error || rawText;
+        return NextResponse.json({ ok: false, latencyMs, error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`, status: res.status });
+      }
+      const hasData = Array.isArray(parsed?.data) && parsed.data.length > 0;
+      if (!hasData) return NextResponse.json({ ok: false, latencyMs, status: res.status, error: "Provider returned no image data" });
+      return NextResponse.json({ ok: true, latencyMs, error: null, status: res.status });
+    }
+
+    // STT / audio transcription
+    if (kind === "stt") {
+      const sttForm = new FormData();
+      sttForm.append("model", model);
+      sttForm.append("file", new Blob(["test"], { type: "audio/mpeg" }), "test.mp3");
+      const sttHeaders = { ...headers };
+      delete sttHeaders["Content-Type"]; // let fetch set multipart boundary
+      const res = await fetch(`${baseUrl}/api/v1/audio/transcriptions`, {
+        method: "POST",
+        headers: sttHeaders,
+        body: sttForm,
+        signal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),
+      });
+      const latencyMs = Date.now() - start;
+      const rawText = await res.text().catch(() => "");
+      let parsed = null;
+      try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+      if (!res.ok) {
+        const detail = parsed?.error?.message || parsed?.error || rawText;
+        return NextResponse.json({ ok: false, latencyMs, error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`, status: res.status });
+      }
+      if (!parsed?.text) return NextResponse.json({ ok: false, latencyMs, status: res.status, error: "Provider returned no transcription" });
+      return NextResponse.json({ ok: true, latencyMs, error: null, status: res.status });
+    }
+
     // Default: chat completions
     const res = await fetch(`${baseUrl}/api/v1/chat/completions`, {
       method: "POST",

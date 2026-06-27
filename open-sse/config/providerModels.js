@@ -160,6 +160,8 @@ export const PROVIDER_MODELS = {
     { id: "claude-opus-4-6-thinking", name: "Claude Opus 4.6 (Thinking)" },
     { id: "gpt-oss-120b-medium", name: "GPT-OSS 120B (Medium)" },
     { id: "gemini-3-flash", name: "Gemini 3 Flash", thinking: false }, // command model; AG strips thinking
+    // Image generation models
+    { id: "gemini-3.1-flash-image", name: "Gemini 3.1 Flash (Image)", type: "image", imageGen: true, capabilities: ["textToImage"] },
   ],
   gh: [
     // GitHub Copilot - OpenAI models
@@ -1008,6 +1010,17 @@ export const PROVIDER_MODELS = {
       name: "Qwen3 Next 80B Instruct (Vertex)",
     },
     { id: "zai-org/glm-5-maas", name: "GLM-5 (Vertex)" },
+  ],
+  venice: [
+    { id: "venice-uncensored-1-2", name: "Venice Uncensored 1.2" },
+    { id: "zai-org-glm-5", name: "GLM-5 (Venice)" },
+    { id: "qwen3-235b-a22b-instruct-2507", name: "Qwen3 235B A22B Instruct" },
+    { id: "qwen3-coder-480b-a35b-instruct-turbo", name: "Qwen3 Coder 480B A35B Turbo" },
+    { id: "qwen3-vl-235b-a22b", name: "Qwen3 VL 235B A22B" },
+    { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro" },
+    { id: "llama-3.3-70b", name: "Llama 3.3 70B" },
+    { id: "hermes-3-llama-3.1-405b", name: "Hermes 3 Llama 3.1 405B" },
+    { id: "mistral-small-3-2-24b-instruct", name: "Mistral Small 3.2 24B" },
   ],
   "grok-web": [
     { id: "grok-3", name: "Grok 3" },

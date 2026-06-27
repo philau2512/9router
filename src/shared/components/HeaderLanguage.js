@@ -17,7 +17,7 @@ function getLocaleFromCookie() {
 export default function HeaderLanguage() {
   const [open, setOpen] = useState(false);
   // Read locale from cookie on each render (SSR-safe via lazy initializer)
-  const [locale] = useState(getLocaleFromCookie);
+  const [locale, setLocale] = useState(getLocaleFromCookie);
 
   return (
     <>

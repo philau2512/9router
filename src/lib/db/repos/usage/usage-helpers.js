@@ -9,6 +9,15 @@ import { getAdapter } from "../../driver.js";
 import { parseJson } from "../../helpers/jsonCol.js";
 import { PERIOD_MS } from "./usage-state.js";
 
+// --- API key masking ---
+
+/** Mask an API key — show first 8 chars only. Returns null for empty keys. */
+export function maskApiKey(key) {
+  if (!key || typeof key !== "string") return null;
+  if (key.length <= 8) return key.charAt(0) + "***";
+  return key.slice(0, 8) + "***";
+}
+
 // --- Date & period helpers ---
 
 export function getLocalDateKey(timestamp) {

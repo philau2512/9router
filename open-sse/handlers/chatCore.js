@@ -42,6 +42,13 @@ import {
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
+import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings } from "../rtk/headroom.js";
+import {
+  getAntigravitySessionKey,
+  getCachedThinking,
+  setCachedThinking,
+  injectThinkingReplay,
+} from "../utils/antigravityReasoningReplay.js";
 
 function maskLoggedUrl(rawUrl) {
   try {
@@ -77,6 +84,9 @@ export async function handleChatCore({
   apiKey,
   ccFilterNaming,
   rtkEnabled,
+  headroomEnabled,
+  headroomUrl,
+  headroomCompressUserMessages,
   cavemanEnabled,
   cavemanLevel,
   midStreamResumeEnabled,
@@ -118,6 +128,13 @@ export async function handleChatCore({
     }
   }
 
+  // Antigravity reasoning replay: inject cached thinking into last assistant turn (Phase 5)
+  if (provider === "antigravity" && body?.request?.contents) {
+    const _replayKey = getAntigravitySessionKey(model, body);
+    const _cachedThinking = _replayKey ? getCachedThinking(_replayKey) : null;
+    if (_cachedThinking) body = injectThinkingReplay(body, _cachedThinking);
+  }
+
   const clientRequestedStreaming =
     body.stream === true ||
     sourceFormat === FORMATS.ANTIGRAVITY ||
@@ -126,6 +143,13 @@ export async function handleChatCore({
   const providerRequiresStreaming =
     provider === "openai" || provider === "codex" || provider === "commandcode";
   let stream = providerRequiresStreaming ? true : body.stream !== false;
+
+  // Image generation models require non-streaming (Google v1internal:generateContent)
+  const modelType = getModelType(alias, model);
+  const isImageGenModel = modelType === "image" || /image|imagen|image-generation/i.test(model);
+  if (isImageGenModel && (provider === "antigravity" || provider === "gemini-cli")) {
+    stream = false;
+  }
 
   // DeepSeek-TUI: interactive TUI panel sends stream:true and needs SSE.
   // Non-interactive mode (-p flag) sends without stream and can't parse SSE.
@@ -138,7 +162,7 @@ export async function handleChatCore({
   const acceptHeader = clientRawRequest?.headers?.accept || "";
   const clientPrefersJson = acceptHeader.includes("application/json");
   const clientPrefersSSE = acceptHeader.includes("text/event-stream");
-  if (clientPrefersJson && !clientPrefersSSE && body.stream !== true) {
+  if (clientPrefersJson && !clientPrefersSSE && body.stream !== true && !providerRequiresStreaming) {
     stream = false;
   }
 
@@ -213,6 +237,27 @@ export async function handleChatCore({
   // Token savers: applied at the final body just before dispatch
   // Covers both passthrough (source shape) and translated (target shape) flows
   const finalFormat = passthrough ? sourceFormat : targetFormat;
+
+  // Headroom: compress messages via external proxy when configured (fail-open)
+  const headroomDiagnostics = {};
+  const headroomStats = await compressWithHeadroom(translatedBody, {
+    enabled: headroomEnabled,
+    url: headroomUrl,
+    model,
+    format: finalFormat,
+    compressUserMessages: headroomCompressUserMessages,
+    diagnostics: headroomDiagnostics,
+  });
+  const headroomLine = formatHeadroomLog(headroomStats);
+  const headroomSizeLine = formatHeadroomSizeLog(headroomDiagnostics);
+  if (headroomLine) {
+    log?.info?.("HEADROOM", `${headroomLine}${headroomSizeLine ? ` | ${headroomSizeLine}` : ""}`);
+    if (isHeadroomPhantomSavings(headroomStats, headroomDiagnostics)) {
+      log?.warn?.("HEADROOM", `reported token delta, but outbound JSON shrank <5%; provider may bill near-original payload | ${headroomSizeLine}`);
+    }
+  } else if (headroomEnabled) {
+    log?.warn?.("HEADROOM", `skipped: ${headroomDiagnostics.reason || "compression unavailable"}${headroomDiagnostics.endpoint ? ` (${headroomDiagnostics.endpoint})` : ""}`);
+  }
 
   // TTS models don't support tool messages/function calling
   if (getModelType(alias, model) === "tts" && translatedBody.messages) {
@@ -524,7 +569,14 @@ export async function handleChatCore({
   }
 
   // Streaming response
-  const { onStreamComplete } = buildOnStreamComplete({ ...sharedCtx, timing });
+  const { onStreamComplete: _baseOnStreamComplete } = buildOnStreamComplete({ ...sharedCtx, timing });
+  const _agReplayKey = provider === "antigravity" ? getAntigravitySessionKey(model, body) : null;
+  const onStreamComplete = _agReplayKey
+    ? (contentObj, usage, ttftAt, streamDetailId) => {
+        if (contentObj?.thinking) setCachedThinking(_agReplayKey, contentObj.thinking);
+        return _baseOnStreamComplete?.(contentObj, usage, ttftAt, streamDetailId);
+      }
+    : _baseOnStreamComplete;
   return handleStreamingResponse({
     ...sharedCtx,
     providerResponse,

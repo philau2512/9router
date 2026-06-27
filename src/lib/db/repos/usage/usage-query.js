@@ -7,7 +7,7 @@
 
 import { getAdapter } from "../../driver.js";
 import { parseJson } from "../../helpers/jsonCol.js";
-import { normalizeApiKeyValue } from "./usage-helpers.js";
+import { normalizeApiKeyValue, maskApiKey } from "./usage-helpers.js";
 
 export async function getUsageHistory(filter = {}) {
   const db = await getAdapter();
@@ -64,7 +64,7 @@ export async function getUsageHistory(filter = {}) {
       provider: r.provider,
       model: r.model,
       connectionId: r.connectionId,
-      apiKey: r.apiKey,
+      apiKeyMasked: maskApiKey(r.apiKey),
       endpoint: r.endpoint,
       cost: r.cost,
       status: r.status,

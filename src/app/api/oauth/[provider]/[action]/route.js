@@ -186,7 +186,7 @@ export async function GET(request, { params }) {
         "kiro",
         "kimi-coding",
         "kilocode",
-        "codebuddy",
+        "codebuddy-cn",
       ];
       let deviceData;
       if (noPkceDeviceProviders.includes(provider)) {
@@ -340,7 +340,7 @@ export async function POST(request, { params }) {
         "github",
         "kimi-coding",
         "kilocode",
-        "codebuddy",
+        "codebuddy-cn",
       ];
       let result;
       if (noPkceProviders.includes(provider)) {

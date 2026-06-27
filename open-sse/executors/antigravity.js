@@ -22,10 +22,67 @@ function sanitizeFunctionName(name) {
 }
 
 const MAX_RETRY_AFTER_MS = 10000;
+const ANTIGRAVITY_TRANSIENT_RETRY_MAX_MS = 15000;
 const MAX_ANTIGRAVITY_OUTPUT_TOKENS = 16384;
+
+const ANTIGRAVITY_TRANSIENT_ERROR_PATTERNS = [
+  /high\s+traffic/i,
+  /agent\s+(execution\s+)?terminated\s+due\s+to\s+error/i,
+  /capacity/i,
+  /temporarily\s+unavailable/i,
+  /timeout/i,
+  /stream\s+(ended|closed|terminated|interrupted)/i,
+  /empty\s+response/i,
+];
+
+const ANTIGRAVITY_TRANSIENT_STATUSES = new Set([
+  HTTP_STATUS.SERVER_ERROR,
+  HTTP_STATUS.BAD_GATEWAY,
+  HTTP_STATUS.SERVICE_UNAVAILABLE,
+  HTTP_STATUS.GATEWAY_TIMEOUT,
+]);
 
 // Fields Google generateContent rejects (e.g. Claude adaptive output_config) — stripped from antigravity request envelope
 const ANTIGRAVITY_REQUEST_BLACKLIST = ["output_config"];
+
+// Strip blacklisted fields from an object (used for both body.request and top-level body)
+const stripBlacklisted = obj => {
+  for (const key of ANTIGRAVITY_REQUEST_BLACKLIST) delete obj[key];
+};
+
+// Image generation model name patterns
+const IMAGE_MODEL_PATTERNS = [
+  /image/i,
+  /imagen/i,
+  /image-generation/i,
+];
+
+// Detect if a model is an image generation model
+function isImageModel(model) {
+  if (!model) return false;
+  return IMAGE_MODEL_PATTERNS.some(p => p.test(model));
+}
+
+// Parse aspect ratio / resolution from model name suffixes
+// e.g. "gemini-3.1-flash-image-16x9" -> { aspectRatio: "16:9" }
+// e.g. "gemini-3.1-flash-image-1024x768" -> { aspectRatio: "4:3" }
+function parseImageConfig(model) {
+  const config = { aspectRatio: "1:1" };
+  const resMatch = model.match(/(\d+)x(\d+)$/);
+  if (resMatch) {
+    const w = parseInt(resMatch[1]);
+    const h = parseInt(resMatch[2]);
+    if (w <= 16 && h <= 16) {
+      config.aspectRatio = `${w}:${h}`;
+    } else {
+      // Resolution like 1024x768 — derive aspect ratio
+      const gcd = (a, b) => b ? gcd(b, a % b) : a;
+      const d = gcd(w, h);
+      config.aspectRatio = `${w/d}:${h/d}`;
+    }
+  }
+  return config;
+}
 
 export class AntigravityExecutor extends BaseExecutor {
   constructor() {
@@ -35,7 +92,9 @@ export class AntigravityExecutor extends BaseExecutor {
   buildUrl(model, stream, urlIndex = 0) {
     const baseUrls = this.getBaseUrls();
     const baseUrl = baseUrls[urlIndex] || baseUrls[0];
-    const action = stream ? "streamGenerateContent?alt=sse" : "generateContent";
+    // Image generation MUST use non-streaming generateContent
+    const forceNonStream = isImageModel(model);
+    const action = (stream && !forceNonStream) ? "streamGenerateContent?alt=sse" : "generateContent";
     return `${baseUrl}/v1internal:${action}`;
   }
 
@@ -55,6 +114,47 @@ export class AntigravityExecutor extends BaseExecutor {
   transformRequest(model, body, stream, credentials) {
     const projectId = credentials?.projectId || this.generateProjectId();
 
+    // ─── Image generation: completely different request structure ───
+    if (isImageModel(model)) {
+      const imageConfig = parseImageConfig(model);
+      // Strip model name suffixes for the actual API model name
+      const cleanModel = model.replace(/-(\d+)x(\d+)$/, "");
+
+      // Build simplified contents — text-only, merge all user messages
+      const contents = [];
+      const srcContents = body.request?.contents || body.contents || [];
+      for (const c of srcContents) {
+        const textParts = (c.parts || []).filter(p => p.text !== undefined).map(p => ({ text: p.text }));
+        if (textParts.length > 0) {
+          contents.push({ role: c.role || "user", parts: textParts });
+        }
+      }
+
+      const sessionId = body.request?.sessionId ||
+        deriveSessionId(credentials?.email || credentials?.connectionId);
+
+      return {
+        project: projectId,
+        model: cleanModel,
+        userAgent: "antigravity",
+        requestType: "image_gen",
+        requestId: `agent-${crypto.randomUUID()}`,
+        request: {
+          contents,
+          generationConfig: {
+            temperature: 1.0,
+            topP: 0.95,
+            topK: 40,
+            maxOutputTokens: 8192,
+            imageConfig,
+          },
+          sessionId,
+          // No tools, no systemInstruction, no safetySettings for image gen
+        },
+      };
+    }
+
+    // ─── Standard (non-image) request ───
     // Fix contents for Claude models via Antigravity
     const contents = body.request?.contents?.map((c) => {
       let role = c.role;
@@ -79,21 +179,29 @@ export class AntigravityExecutor extends BaseExecutor {
 
     if (tools && tools.length > 0) {
       // Merge all groups into a single functionDeclarations group (Gemini expects 1 group)
-      const allDeclarations = tools.flatMap((group) =>
-        (group.functionDeclarations || []).map((fn) => ({
-          ...fn,
-          name: sanitizeFunctionName(fn.name),
-          parameters: fn.parameters
-            ? cleanJSONSchemaForAntigravity(structuredClone(fn.parameters))
-            : {
-                type: "object",
-                properties: {
-                  reason: { type: "string", description: "Brief explanation" },
+      // Deduplicate by sanitized name to avoid "Tool names must be unique" rejections.
+      const seenToolNames = new Set();
+      const allDeclarations = [];
+      for (const group of tools) {
+        for (const fn of group.functionDeclarations || []) {
+          const name = sanitizeFunctionName(fn.name);
+          if (seenToolNames.has(name)) continue;
+          seenToolNames.add(name);
+          allDeclarations.push({
+            ...fn,
+            name,
+            parameters: fn.parameters
+              ? cleanJSONSchemaForAntigravity(structuredClone(fn.parameters))
+              : {
+                  type: "object",
+                  properties: {
+                    reason: { type: "string", description: "Brief explanation" },
+                  },
+                  required: ["reason"],
                 },
-                required: ["reason"],
-              },
-        })),
-      );
+          });
+        }
+      }
       tools =
         allDeclarations.length > 0
           ? [{ functionDeclarations: allDeclarations }]
@@ -106,7 +214,7 @@ export class AntigravityExecutor extends BaseExecutor {
       toolConfig: _originalToolConfig,
       ...requestWithoutTools
     } = body.request || {};
-    for (const key of ANTIGRAVITY_REQUEST_BLACKLIST) delete requestWithoutTools[key];
+    stripBlacklisted(requestWithoutTools);
     const generationConfig = {
       ...(requestWithoutTools.generationConfig || {}),
     };
@@ -127,6 +235,9 @@ export class AntigravityExecutor extends BaseExecutor {
         toolConfig: { functionCallingConfig: { mode: "VALIDATED" } },
       }),
     };
+
+    // Strip blacklisted thinking fields from top-level body (set by thinkingUnified.js at root, not body.request)
+    stripBlacklisted(body);
 
     return {
       ...body,
@@ -239,6 +350,21 @@ export class AntigravityExecutor extends BaseExecutor {
     return totalMs > 0 ? totalMs : null;
   }
 
+  extractErrorMessage(errorJson, bodyText = "") {
+    return [
+      errorJson?.error?.message,
+      errorJson?.message,
+      errorJson?.error,
+      bodyText,
+    ].filter(Boolean).map(v => typeof v === "string" ? v : JSON.stringify(v)).join("\n");
+  }
+
+  isTransientAntigravityError(status, message) {
+    if (status === HTTP_STATUS.RATE_LIMITED) return true;
+    if (ANTIGRAVITY_TRANSIENT_STATUSES.has(status)) return true;
+    return ANTIGRAVITY_TRANSIENT_ERROR_PATTERNS.some(pattern => pattern.test(message || ""));
+  }
+
   async execute({
     model,
     body,
@@ -289,22 +415,22 @@ export class AntigravityExecutor extends BaseExecutor {
 
         if (
           response.status === HTTP_STATUS.RATE_LIMITED ||
-          response.status === HTTP_STATUS.SERVICE_UNAVAILABLE
+          ANTIGRAVITY_TRANSIENT_STATUSES.has(response.status)
         ) {
-          // Try to get retry time from headers first
+          // Read error body once for Retry-After parsing + transient error detection
           let retryMs = this.parseRetryHeaders(response.headers);
+          let retryBodyText = "";
+          let retryErrorJson = null;
+          try {
+            retryBodyText = await response.clone().text();
+            retryErrorJson = retryBodyText ? JSON.parse(retryBodyText) : null;
+          } catch {
+            // ignore parse errors — fall through to status/message based retry
+          }
+          const retryErrorMessage = this.extractErrorMessage(retryErrorJson, retryBodyText);
 
-          // If no retry time in headers, try to parse from error message body
           if (!retryMs) {
-            try {
-              const errorBody = await response.clone().text();
-              const errorJson = JSON.parse(errorBody);
-              const errorMessage =
-                errorJson?.error?.message || errorJson?.message || "";
-              retryMs = this.parseRetryFromErrorMessage(errorMessage);
-            } catch (e) {
-              // Ignore parse errors, will fall back to exponential backoff
-            }
+            retryMs = this.parseRetryFromErrorMessage(retryErrorMessage);
           }
 
           if (
@@ -322,21 +448,24 @@ export class AntigravityExecutor extends BaseExecutor {
             continue;
           }
 
-          // Auto retry only for 429 when retryMs is 0 or undefined
+          // Auto retry transient errors (429 + 5xx capacity patterns) with bounded backoff
           if (
-            response.status === HTTP_STATUS.RATE_LIMITED &&
+            this.isTransientAntigravityError(response.status, retryErrorMessage) &&
             (!retryMs || retryMs === 0) &&
             retryAttemptsByUrl[urlIndex] < MAX_AUTO_RETRIES
           ) {
             retryAttemptsByUrl[urlIndex]++;
-            // Exponential backoff: 2s, 4s, 8s...
+            const cap = response.status === HTTP_STATUS.RATE_LIMITED
+              ? MAX_RETRY_AFTER_MS
+              : ANTIGRAVITY_TRANSIENT_RETRY_MAX_MS;
             const backoffMs = Math.min(
               1000 * 2 ** retryAttemptsByUrl[urlIndex],
-              MAX_RETRY_AFTER_MS,
+              cap,
             );
+            const label = response.status === HTTP_STATUS.RATE_LIMITED ? "429" : `${response.status} transient`;
             log?.debug?.(
               "RETRY",
-              `429 auto retry ${retryAttemptsByUrl[urlIndex]}/${MAX_AUTO_RETRIES} after ${backoffMs / 1000}s`,
+              `${label} auto retry ${retryAttemptsByUrl[urlIndex]}/${MAX_AUTO_RETRIES} after ${backoffMs / 1000}s`,
             );
             await new Promise((resolve) => setTimeout(resolve, backoffMs));
             urlIndex--;

@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { NextResponse } from "next/server";
 import fs from "fs/promises";
@@ -136,10 +136,13 @@ const get1pConfigPath = () =>
 
 const read1pConfig = async () => {
   try {
-    return JSON.parse(await fs.readFile(get1pConfigPath(), "utf-8")) || {};
+    const content = await fs.readFile(get1pConfigPath(), "utf-8");
+    // Tolerate JSONC (trailing commas) and treat unparseable files as empty config
+    // rather than throwing a 500 that the UI misreads as "tool not installed".
+    const stripped = content.replace(/,(\s*[}\]])/g, "$1");
+    return JSON.parse(stripped) || {};
   } catch (error) {
-    if (error.code === "ENOENT") return {};
-    throw error;
+    return {};
   }
 };
 
@@ -233,10 +236,13 @@ const checkInstalled = async () => {
 
 const readJson = async (filePath) => {
   try {
-    return JSON.parse(await fs.readFile(filePath, "utf-8"));
+    const content = await fs.readFile(filePath, "utf-8");
+    // Tolerate JSONC (trailing commas) and treat unparseable files as "no config"
+    // rather than throwing a 500 that the UI misreads as "tool not installed".
+    const stripped = content.replace(/,(\s*[}\]])/g, "$1");
+    return JSON.parse(stripped);
   } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw error;
+    return null;
   }
 };
 

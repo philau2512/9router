@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
+import { isLocalRequest } from "@/dashboardGuard";
 
 // Fetch with timeout wrapper that aborts the underlying request.
 const fetchWithTimeout = async (url, options = {}, timeout = 10000) => {
@@ -84,6 +86,15 @@ export async function POST(request) {
         { error: "Invalid URL format" },
         { status: 400 },
       );
+    }
+
+    // SSRF guard for remote callers; local host keeps self-hosted nodes (e.g. ollama-local)
+    if (!isLocalRequest(request)) {
+      try {
+        assertPublicUrl(baseUrl);
+      } catch {
+        return NextResponse.json({ error: "URL not allowed" }, { status: 400 });
+      }
     }
 
     // Custom Embedding Validation - test POST /embeddings directly

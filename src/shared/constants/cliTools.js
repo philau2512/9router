@@ -24,6 +24,7 @@ export const MITM_TOOLS = {
         id: "gemini-3.5-flash-low",
         name: "Gemini 3.5 Flash (Medium) / Default",
         alias: "gemini-3.5-flash-low",
+        mandatory: true,
       },
       {
         id: "gemini-3-flash-agent",

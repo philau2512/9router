@@ -10,6 +10,7 @@ import {
   refreshGitHubToken,
   refreshCopilotToken,
   refreshXaiToken,
+  refreshCodebuddyToken,
 } from "./refresh-providers.js";
 import { parseVertexSaJson, refreshVertexToken } from "./refresh-vertex.js";
 
@@ -71,6 +72,9 @@ async function _getAccessTokenInternal(provider, credentials, log) {
     case "xai":
       return await refreshXaiToken(credentials.refreshToken, log);
 
+    case "codebuddy-cn":
+      return await refreshCodebuddyToken(credentials.refreshToken, log);
+
     case "vertex":
     case "vertex-partner": {
       const saJson = parseVertexSaJson(credentials.apiKey);
@@ -120,6 +124,8 @@ export async function refreshTokenByProvider(provider, credentials, log) {
       );
     case "xai":
       return refreshXaiToken(credentials.refreshToken, log);
+    case "codebuddy-cn":
+      return refreshCodebuddyToken(credentials.refreshToken, log);
     case "vertex":
     case "vertex-partner": {
       const saJson = parseVertexSaJson(credentials.apiKey);

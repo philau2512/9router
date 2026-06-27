@@ -298,5 +298,5 @@ export const PROVIDERS = {
   KILOCODE: "kilocode",
   CLINE: "cline",
   GITLAB: "gitlab",
-  CODEBUDDY: "codebuddy",
+  CODEBUDDY: "codebuddy-cn",
 };

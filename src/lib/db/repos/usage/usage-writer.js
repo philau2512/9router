@@ -53,7 +53,34 @@ export async function saveRequestUsage(entry) {
           const completionTokens =
             tokens.completion_tokens || tokens.output_tokens || 0;
 
+          let inserted = false;
+
           db.transaction(() => {
+            // Deduplicate: skip if an identical record already exists (prevents double-count
+            // when streaming usage is logged at source AND via onStreamComplete).
+            const existing = db.get(
+              `SELECT id, endpoint FROM usageHistory
+               WHERE timestamp = ?
+                 AND COALESCE(provider, '') = COALESCE(?, '')
+                 AND COALESCE(model, '') = COALESCE(?, '')
+                 AND COALESCE(connectionId, '') = COALESCE(?, '')
+                 AND COALESCE(apiKey, '') = COALESCE(?, '')
+                 AND promptTokens = ?
+                 AND completionTokens = ?
+               ORDER BY id DESC LIMIT 1`,
+              [
+                _entry.timestamp, _entry.provider || null, _entry.model || null,
+                _entry.connectionId || null, _entry.apiKey || null,
+                promptTokens, completionTokens,
+              ]
+            );
+            if (existing) {
+              if (!existing.endpoint && _entry.endpoint) {
+                db.run(`UPDATE usageHistory SET endpoint = ? WHERE id = ?`, [_entry.endpoint, existing.id]);
+              }
+              return;
+            }
+
             db.run(
               `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
@@ -105,6 +132,7 @@ export async function saveRequestUsage(entry) {
               `INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
               [String(next)],
             );
+            inserted = true;
           });
         } catch (e) {
           console.error("Failed to save usage stats (deferred):", e);

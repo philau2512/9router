@@ -51,11 +51,24 @@ export function kiroToClaudeResponse(chunk, state) {
   // by attempting a parse (defensive — the direct path is always objects).
   let data = chunk;
   if (typeof chunk === "string") {
-    const trimmed = chunk.trim();
+    let trimmed = chunk.trim();
     if (!trimmed || trimmed === "[DONE]") return null;
+
+    if (state && state.parseBuffer) {
+      trimmed = state.parseBuffer + trimmed;
+    }
+
     try {
       data = JSON.parse(trimmed.startsWith("data:") ? trimmed.slice(5).trim() : trimmed);
+      if (state) state.parseBuffer = ""; // Reset buffer on success
     } catch {
+      if (state) {
+        if (trimmed.length < 50000) {
+          state.parseBuffer = trimmed; // Buffering for next chunk
+        } else {
+          state.parseBuffer = ""; // Prevent memory bloat
+        }
+      }
       return null;
     }
   }

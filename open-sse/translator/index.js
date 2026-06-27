@@ -228,6 +228,7 @@ export function initState(sourceFormat) {
     finishReasonSent: false,
     usage: null,
     contentBlockIndex: -1,
+    parseBuffer: "",
   };
 
   // Add openai-responses specific fields

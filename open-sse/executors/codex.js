@@ -15,6 +15,7 @@ import {
   resolveRetryEntry,
 } from "../config/runtimeConfig.js";
 import { dbg } from "../utils/debugLog.js";
+import { tryCodexWSRequest, CODEX_WS_ENABLED } from "./codex-ws.js";
 
 // SSE error patterns inside 200-OK body that should trigger retry as if 503
 const CODEX_SSE_OVERLOADED_PATTERNS = [
@@ -43,6 +44,9 @@ const CODEX_HOSTED_TOOL_TYPES = new Set([
   "local_shell",
 ]);
 
+// Responses-native freeform tools carry a name plus format payload and must pass through intact.
+const CODEX_PASSTHROUGH_TOOL_TYPES = new Set(["custom"]);
+
 // Allowlist of fields accepted by Codex Responses API — anything else is stripped
 const RESPONSES_API_ALLOWLIST = new Set([
   "model",
@@ -57,6 +61,7 @@ const RESPONSES_API_ALLOWLIST = new Set([
   "include",
   "prompt_cache_key",
   "client_metadata",
+  "text",
 ]);
 
 // Convert role=system → role=developer in body.input (keeps content in cacheable prefix)
@@ -102,6 +107,7 @@ function normalizeCodexTools(body) {
       return true;
     }
     if (type !== "function") {
+      if (CODEX_PASSTHROUGH_TOOL_TYPES.has(type)) return true;
       if (!type || tool.function || typeof tool.name === "string") return false;
       return CODEX_HOSTED_TOOL_TYPES.has(type);
     }
@@ -352,6 +358,14 @@ export class CodexExecutor extends BaseExecutor {
     const { attempts, delayMs } = resolveRetryEntry(retryConfig[503]);
     let attempt = 0;
     while (true) {
+      // Phase 6: Try WebSocket executor first when enabled (falls back to HTTP SSE)
+      if (CODEX_WS_ENABLED && args.credentials?.accessToken) {
+        const wsResp = await tryCodexWSRequest(
+          { baseUrl: args.credentials.baseUrl || this.config.baseUrl, apiKey: args.credentials.accessToken },
+          args.body, args.signal
+        ).catch(() => null);
+        if (wsResp) return { response: wsResp };
+      }
       const result = await super.execute(args);
       const peek = await this._peekSseOverloaded(result.response);
       if (!peek.matched) {

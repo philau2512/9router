@@ -78,6 +78,16 @@ export function claudeToOpenAIRequest(model, body, stream) {
     result.tool_choice = convertToolChoice(body.tool_choice);
   }
 
+  if (body.reasoning_effort !== undefined) {
+    result.reasoning_effort = body.reasoning_effort;
+  } else if (body.reasoning?.effort !== undefined) {
+    result.reasoning_effort = body.reasoning.effort;
+  }
+
+  if (body.reasoning !== undefined) {
+    result.reasoning = body.reasoning;
+  }
+
   return result;
 }
 
@@ -215,13 +225,14 @@ function convertClaudeMessage(msg) {
 
     // Return content
     if (parts.length > 0) {
-      return {
-        role,
-        content:
-          parts.length === 1 && parts[0].type === "text"
-            ? parts[0].text
-            : parts,
-      };
+      // Flatten text-only arrays to string (OpenAI providers reject content arrays for text-only)
+      const allText = parts.every((p) => p.type === "text");
+      const flatContent = allText
+        ? parts.map((p) => p.text).join("\n")
+        : parts.length === 1 && parts[0].type === "text"
+          ? parts[0].text
+          : parts;
+      return { role, content: flatContent };
     }
 
     // Empty content array

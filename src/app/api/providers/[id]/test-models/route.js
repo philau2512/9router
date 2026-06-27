@@ -3,6 +3,7 @@ import { getProviderConnectionById, getApiKeys } from "@/lib/localDb";
 import {
   getProviderModels,
   PROVIDER_ID_TO_ALIAS,
+  getModelType,
 } from "open-sse/config/providerModels.js";
 import {
   isOpenAICompatibleProvider,
@@ -25,25 +26,41 @@ async function getInternalApiKey() {
  * Ping a single model via internal completions endpoint (OpenAI format).
  * open-sse handles all provider translation automatically.
  */
-async function pingModel(modelId, baseUrl, apiKey, cliToken) {
+async function pingModel(modelId, baseUrl, apiKey, cliToken, kind) {
   const start = Date.now();
   try {
     const headers = { "Content-Type": "application/json" };
     if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
     if (cliToken) headers["x-9r-cli-token"] = cliToken;
-    const res = await fetch(`${baseUrl}/api/v1/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: modelId,
-        max_tokens: 1,
-        stream: false,
-        messages: [{ role: "user", content: "hi" }],
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
+    let res;
+    if (kind === "image") {
+      res = await fetch(`${baseUrl}/api/v1/images/generations`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ model: modelId, prompt: "test" }),
+        signal: AbortSignal.timeout(15000),
+      });
+    } else if (kind === "stt") {
+      res = await fetch(`${baseUrl}/api/v1/audio/transcriptions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ model: modelId, file: "test" }),
+        signal: AbortSignal.timeout(15000),
+      });
+    } else {
+      res = await fetch(`${baseUrl}/api/v1/chat/completions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: modelId,
+          max_tokens: 1,
+          stream: false,
+          messages: [{ role: "user", content: "hi" }],
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+    }
     const latencyMs = Date.now() - start;
-    // 200 = working; 400 = bad request but auth passed (model reachable)
     const ok = res.status === 200 || res.status === 400;
     let error = null;
     if (!ok) {
@@ -112,11 +129,13 @@ export async function POST(request, { params }) {
     // Warm up with first model to trigger token refresh (if needed) before parallel calls.
     // This prevents race condition where multiple requests concurrently refresh the same token.
     const [first, ...rest] = models;
+    const firstKind = getModelType(alias, first.id) || null;
     const firstResult = await pingModel(
       `${alias}/${first.id}`,
       baseUrl,
       apiKey,
       cliToken,
+      firstKind,
     );
     const results = [
       { modelId: first.id, name: first.name || first.id, ...firstResult },
@@ -125,11 +144,13 @@ export async function POST(request, { params }) {
     if (rest.length > 0) {
       const restResults = await Promise.all(
         rest.map(async (model) => {
+          const kind = getModelType(alias, model.id) || null;
           const result = await pingModel(
             `${alias}/${model.id}`,
             baseUrl,
             apiKey,
             cliToken,
+            kind,
           );
           return { modelId: model.id, name: model.name || model.id, ...result };
         }),

@@ -1,7 +1,7 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { createHash, randomUUID } from "crypto";
+import { createHash } from "crypto";
 import os from "os";
 import { makeKv } from "../../src/lib/db/helpers/kvStore.js";
 import { getProxyPools } from "../../src/lib/db/repos/proxyPoolsRepo.js";
@@ -13,6 +13,13 @@ const SESSION_ID_LENGTH = 24;
 const JWT_FALLBACK_TTL_SEC = 3000;
 const JWT_EXPIRY_BUFFER_MS = 300000;
 const SESSION_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
+
+// Anti-abuse gate: upstream rejects requests without a Chrome-like User-Agent with 403 "Illegal access"
+const USER_AGENTS = [
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+];
 
 // Anti-abuse gate marker: the free chat endpoint returns 403 "Illegal access"
 // unless a system message contains this exact MiMoCode signature substring.
@@ -76,24 +83,20 @@ function injectSystemMarker(body) {
 async function resetJwtCache() {
   await kv.remove("jwt");
   await kv.remove("jwtExpiresAt");
+  await kv.remove("fingerprint");
 }
 
-async function bootstrapJwt(proxyOptions = null, forceNewFingerprint = false, log = null) {
+async function bootstrapJwt(proxyOptions = null, log = null) {
   let fingerprint = await kv.get("fingerprint");
-  if (!fingerprint || forceNewFingerprint) {
-    if (forceNewFingerprint) {
-      fingerprint = createHash("sha256").update(randomUUID()).digest("hex");
-      log?.warn?.("AUTH", `MiMo: Rotating fingerprint to: ${fingerprint}`);
-    } else {
-      fingerprint = generateFingerprint();
-    }
+  if (!fingerprint) {
+    fingerprint = generateFingerprint();
     await kv.set("fingerprint", fingerprint);
   }
 
   const cachedJwt = await kv.get("jwt");
   const jwtExpiresAt = await kv.get("jwtExpiresAt", 0);
 
-  if (!forceNewFingerprint && cachedJwt && Date.now() < jwtExpiresAt - JWT_EXPIRY_BUFFER_MS) {
+  if (cachedJwt && Date.now() < jwtExpiresAt - JWT_EXPIRY_BUFFER_MS) {
     return cachedJwt;
   }
 
@@ -109,20 +112,22 @@ async function bootstrapJwt(proxyOptions = null, forceNewFingerprint = false, lo
     candidateProxyUrls.push(...urls);
   }
 
-  // Check all active proxy pools in the system as candidates/fallbacks
-  try {
-    const activePools = await getProxyPools({ isActive: true });
-    for (const pool of activePools) {
-      if (pool?.proxyUrl && (pool.type === "http" || pool.type === "socks" || !pool.type)) {
-        const urls = pool.proxyUrl
-          .split(/[\n,;]+/)
-          .map((u) => u.trim())
-          .filter(Boolean);
-        candidateProxyUrls.push(...urls);
+  // Check all active proxy pools in the system as candidates/fallbacks (only if proxy is enabled)
+  if (proxyOptions?.connectionProxyEnabled) {
+    try {
+      const activePools = await getProxyPools({ isActive: true });
+      for (const pool of activePools) {
+        if (pool?.proxyUrl && (pool.type === "http" || pool.type === "socks" || !pool.type)) {
+          const urls = pool.proxyUrl
+            .split(/[\n,;]+/)
+            .map((u) => u.trim())
+            .filter(Boolean);
+          candidateProxyUrls.push(...urls);
+        }
       }
+    } catch (err) {
+      log?.warn?.("AUTH", `MiMo: Failed to read active proxy pools: ${err.message}`);
     }
-  } catch (err) {
-    log?.warn?.("AUTH", `MiMo: Failed to read active proxy pools: ${err.message}`);
   }
 
   // Deduplicate candidate URLs
@@ -149,7 +154,10 @@ async function bootstrapJwt(proxyOptions = null, forceNewFingerprint = false, lo
         BOOTSTRAP_URL,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "User-Agent": USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
+          },
           body: JSON.stringify({ client: fingerprint }),
         },
         activeProxyOptions,
@@ -158,9 +166,7 @@ async function bootstrapJwt(proxyOptions = null, forceNewFingerprint = false, lo
       if (response.status === 429) {
         attempt++;
         if (attempt < maxAttempts) {
-          fingerprint = createHash("sha256").update(randomUUID()).digest("hex");
-          await kv.set("fingerprint", fingerprint);
-          log?.warn?.("AUTH", `MiMo bootstrap got 429, rotating fingerprint (attempt ${attempt}/${maxAttempts}): ${fingerprint}`);
+          log?.warn?.("AUTH", `MiMo bootstrap got 429, retrying (attempt ${attempt}/${maxAttempts})`);
           continue;
         }
         throw new Error("MiMo bootstrap failed: 429");
@@ -202,6 +208,7 @@ export class MimoFreeExecutor extends BaseExecutor {
     return {
       "Content-Type": "application/json",
       "X-Mimo-Source": "mimocode-cli-free",
+      "User-Agent": USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
       "x-session-affinity": this.sessionId,
       Accept: stream ? "text/event-stream" : "application/json",
     };
@@ -222,7 +229,7 @@ export class MimoFreeExecutor extends BaseExecutor {
   }) {
     let jwt;
     try {
-      jwt = await bootstrapJwt(proxyOptions, false, log);
+      jwt = await bootstrapJwt(proxyOptions, log);
     } catch (error) {
       log?.error?.("AUTH", `MiMo bootstrap failed: ${error.message}`);
       throw error;
@@ -243,20 +250,25 @@ export class MimoFreeExecutor extends BaseExecutor {
       proxyOptions,
     );
 
-    // On auth failure, invalidate cache, rotate fingerprint, and retry once with a fresh JWT
+    // On auth failure, invalidate cache and retry once with a fresh JWT (no fingerprint rotation)
     if (response.status === 401 || response.status === 403) {
-      log?.debug?.(
+      log?.warn?.(
         "AUTH",
-        `MiMo auth failed (${response.status}), rotating fingerprint and re-bootstrapping...`,
+        `MiMo auth failed (${response.status}), resetting JWT cache and retrying...`,
       );
       await resetJwtCache();
-      jwt = await bootstrapJwt(proxyOptions, true, log);
-      headers["Authorization"] = `Bearer ${jwt}`;
-      response = await proxyAwareFetch(
-        url,
-        { method: "POST", headers, body: bodyStr, signal },
-        proxyOptions,
-      );
+      try {
+        jwt = await bootstrapJwt(proxyOptions, log);
+        headers["Authorization"] = `Bearer ${jwt}`;
+        log?.debug?.("FETCH", `MIMO-FREE retry → ${url} with new JWT`);
+        response = await proxyAwareFetch(
+          url,
+          { method: "POST", headers, body: bodyStr, signal },
+          proxyOptions,
+        );
+      } catch (retryError) {
+        log?.error?.("AUTH", `MiMo bootstrap retry failed: ${retryError.message}`);
+      }
     }
 
     return { response, url, headers, transformedBody };

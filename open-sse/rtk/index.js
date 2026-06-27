@@ -4,9 +4,15 @@ import { RAW_CAP, MIN_COMPRESS_SIZE } from "./constants.js";
 import { autoDetectFilter } from "./autodetect.js";
 import { safeApply } from "./applyFilter.js";
 
+let _rtkEnabled = false;
+export function setRtkEnabled(v) { _rtkEnabled = !!v; }
+export function isRtkEnabled() { return _rtkEnabled; }
+
 // Compress tool_result content in-place. Returns stats or null if disabled/failed.
 export function compressMessages(body, enabled) {
-  if (!enabled) return null;
+  const _enabled = enabled !== undefined ? enabled : _rtkEnabled;
+  if (!_enabled) return null;
+  enabled = _enabled;
   if (!body) return null;
 
   // Kiro format: conversationState.history + conversationState.currentMessage

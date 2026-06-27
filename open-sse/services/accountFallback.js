@@ -3,6 +3,7 @@ import {
   BACKOFF_CONFIG,
   TRANSIENT_COOLDOWN_MS,
 } from "../config/errorConfig.js";
+import { upsertCooldown, clearCooldown } from "@/lib/db/repos/usage/cooldown.js";
 
 /**
  * Calculate exponential backoff cooldown for rate limits (429)
@@ -233,7 +234,7 @@ export function applyErrorState(account, status, errorText) {
     backoffLevel,
   );
 
-  return {
+  const nextAccount = {
     ...account,
     rateLimitedUntil: cooldownMs > 0 ? getUnavailableUntil(cooldownMs) : null,
     backoffLevel: newBackoffLevel ?? backoffLevel,
@@ -244,4 +245,17 @@ export function applyErrorState(account, status, errorText) {
     },
     status: "error",
   };
+  // Persist cooldown state so it survives server restart
+  if (cooldownMs > 0 && account.provider && (account.id || account.email)) {
+    const authId = account.id || account.email || account.accessToken?.slice(-12) || "unknown";
+    setImmediate(() => upsertCooldown({
+      provider: account.provider,
+      authId,
+      model: "",
+      nextRetryAfter: Date.now() + cooldownMs,
+      reason: errorText?.toString?.()?.slice(0, 200),
+      status: String(status),
+    }).catch(() => {}));
+  }
+  return nextAccount;
 }

@@ -1,9 +1,11 @@
 // Gemini TTS — generateContent with AUDIO modality returns PCM L16, wrap as WAV
 import { Buffer } from "node:buffer";
+import { GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 
-const DEFAULT_MODEL = "gemini-2.5-flash-preview-tts";
+const DEFAULT_MODEL = "gemini-3.1-flash-tts-preview";
 const DEFAULT_VOICE = "Kore";
 const KNOWN_MODELS = [
+  "gemini-3.1-flash-tts-preview",
   "gemini-2.5-flash-preview-tts",
   "gemini-2.5-pro-preview-tts",
 ];
@@ -59,6 +61,7 @@ const provider = {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS),
       body: JSON.stringify({
         contents: [{ parts: [{ text: buildPrompt(text, opts.language) }] }],
         generationConfig: {

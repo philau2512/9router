@@ -32,8 +32,9 @@ export const CACHE_TTL = {
 export const MEMORY_CONFIG = {
   sessionTtlMs: 2 * 60 * 60 * 1000,
   sessionCleanupIntervalMs: 30 * 60 * 1000,
-  dnsCacheTtlMs: 5 * 60 * 1000,
+  dnsCacheTtlMs: 30 * 60 * 1000, // Extended: AI provider IPs are stable (was 5min)
   proxyDispatchersMaxSize: 20,
+  directAgentsMaxSize: 30,
 };
 
 // Stream stall timeout: abort if no chunk received within this duration
@@ -45,6 +46,9 @@ export const STREAM_SEMANTIC_STALL_TIMEOUT_MS =
 
 // Fetch connect timeout: abort if upstream doesn't return response headers within this duration
 export const FETCH_CONNECT_TIMEOUT_MS = 60 * 1000;
+
+// Gemini native TTS fetch timeout: abort if Google does not return response headers in time.
+export const GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS = parseInt(process.env.GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS, 10) || 45 * 1000;
 
 // Proxy headers timeout: abort if proxy doesn't return response headers within this duration
 export const CONNECTION_PROXY_HEADERS_TIMEOUT_MS =

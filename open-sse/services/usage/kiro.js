@@ -56,6 +56,8 @@ export async function getKiroUsage(
     "arn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX";
   const profileArn = providerSpecificData?.profileArn || DEFAULT_PROFILE_ARN;
   const authMethod = providerSpecificData?.authMethod || "builder-id";
+  const isExternalIdp = authMethod === "external_idp";
+  const externalIdpHeaders = isExternalIdp ? { TokenType: "EXTERNAL_IDP" } : {};
 
   const getUsageParams = new URLSearchParams({
     isEmailRequired: "true",
@@ -77,6 +79,7 @@ export async function getKiroUsage(
               Accept: "application/json",
               "x-amz-user-agent": "aws-sdk-js/1.0.0 KiroIDE",
               "user-agent": "aws-sdk-js/1.0.0 KiroIDE",
+              ...externalIdpHeaders,
             },
           },
           proxyOptions,
@@ -94,6 +97,7 @@ export async function getKiroUsage(
               "Content-Type": "application/x-amz-json-1.0",
               "x-amz-target": "AmazonCodeWhispererService.GetUsageLimits",
               Accept: "application/json",
+              ...externalIdpHeaders,
             },
             body: JSON.stringify({
               origin: "AI_EDITOR",
@@ -119,6 +123,7 @@ export async function getKiroUsage(
             headers: {
               Authorization: `Bearer ${accessToken}`,
               Accept: "application/json",
+              ...externalIdpHeaders,
             },
           },
           proxyOptions,

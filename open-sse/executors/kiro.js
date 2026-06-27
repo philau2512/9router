@@ -2,6 +2,7 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { randomUUID } from "crypto";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
+import { resolveDefaultProfileArn } from "../config/kiroConstants.js";
 
 /**
  * KiroExecutor - Executor for Kiro AI (AWS CodeWhisperer)
@@ -19,8 +20,24 @@ export class KiroExecutor extends BaseExecutor {
       "Amz-Sdk-Invocation-Id": randomUUID(),
     };
 
+    const authMethod = credentials?.providerSpecificData?.authMethod;
+
     if (credentials.accessToken) {
       headers["Authorization"] = `Bearer ${credentials.accessToken}`;
+      // Enterprise / Microsoft Entra (external_idp) tokens require TokenType header
+      // so CodeWhisperer binds the request to the correct profile.
+      if (authMethod === "external_idp") {
+        headers["TokenType"] = "EXTERNAL_IDP";
+      }
+    }
+
+    // Inject profileArn header — required by Kiro/CodeWhisperer gateway for all auth methods.
+    // Without this header, the API returns 403 "User is not authorized to make this call."
+    // Fallback to public default ARN when not stored (e.g. old connections pre-fix).
+    const profileArn = credentials?.providerSpecificData?.profileArn ||
+      resolveDefaultProfileArn(authMethod);
+    if (profileArn) {
+      headers["x-amzn-codewhisperer-profile-arn"] = profileArn;
     }
 
     return headers;
@@ -456,30 +473,15 @@ export class KiroExecutor extends BaseExecutor {
       },
 
       flush(controller) {
-        // Emit finish chunk if not already sent
+        // If upstream disconnects before sending messageStopEvent, it's a premature close.
+        // Throw an error so streamHandler's transparent mid-stream resume can kick in.
         if (!state.finishEmitted) {
-          state.finishEmitted = true;
-          const finishChunk = {
-            id: responseId,
-            object: "chat.completion.chunk",
-            created,
-            model,
-            choices: [
-              {
-                index: 0,
-                delta: {},
-                finish_reason: state.hasToolCalls ? "tool_calls" : "stop",
-              },
-            ],
-          };
-          if (state.usage) {
-            finishChunk.usage = state.usage;
-          }
-          controller.enqueue(
-            new TextEncoder().encode(
-              `data: ${JSON.stringify(finishChunk)}\n\n`,
+          controller.error(
+            new Error(
+              "Upstream connection closed unexpectedly without messageStopEvent",
             ),
           );
+          return;
         }
 
         // Send final done message

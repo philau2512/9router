@@ -133,6 +133,8 @@ export async function getAntigravityUsage(
         "claude-opus-4-6-thinking",
         "gpt-oss-120b-medium",
         "gemini-3-flash",
+        // Image generation models
+        "gemini-3.1-flash-image",
       ];
 
       for (const [modelKey, info] of Object.entries(data.models)) {

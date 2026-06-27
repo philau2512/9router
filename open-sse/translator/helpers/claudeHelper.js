@@ -3,6 +3,7 @@ import { DEFAULT_THINKING_CLAUDE_SIGNATURE } from "../../config/defaultThinkingS
 import { adjustMaxTokens } from "./maxTokensHelper.js";
 import { applyCloaking } from "../../utils/claudeCloaking.js";
 import { deriveSessionId } from "../../utils/sessionManager.js";
+import { isValidClaudeSignature } from "../../utils/claudeSignature.js";
 
 // Check if message has valid non-empty content
 export function hasValidContent(msg) {
@@ -191,17 +192,32 @@ export function prepareClaudeRequest(
           let hasToolUse = false;
           let hasThinking = false;
 
-          // Always replace signature for all thinking blocks
+          // Claude native: preserve valid signatures, drop invalid blocks.
+          // anthropic-compatible: replace with default (safe fallback for lenient upstreams).
+          const isClaudeNative = provider === "claude";
+          const kept = [];
           for (const block of msg.content) {
-            if (
-              block.type === "thinking" ||
-              block.type === "redacted_thinking"
-            ) {
-              block.signature = DEFAULT_THINKING_CLAUDE_SIGNATURE;
-              hasThinking = true;
+            const isThinking =
+              block.type === "thinking" || block.type === "redacted_thinking";
+            if (isThinking) {
+              if (isClaudeNative) {
+                // Only keep thinking blocks with a valid signature — drop invalid
+                // ones without setting hasThinking so the fallback inject fires.
+                if (isValidClaudeSignature(block.signature)) {
+                  hasThinking = true;
+                  kept.push(block);
+                }
+              } else {
+                block.signature = DEFAULT_THINKING_CLAUDE_SIGNATURE;
+                hasThinking = true;
+                kept.push(block);
+              }
+              continue;
             }
             if (block.type === "tool_use") hasToolUse = true;
+            kept.push(block);
           }
+          msg.content = kept;
 
           // Add thinking block if thinking enabled + has tool_use but no thinking
           if (thinkingEnabled && !hasThinking && hasToolUse) {
@@ -218,11 +234,23 @@ export function prepareClaudeRequest(
 
   // 3. Tools: filter built-in tools for non-Anthropic providers, then handle cache_control
   if (body.tools && Array.isArray(body.tools)) {
-    // Strip built-in tools (e.g. web_search_20250305) for providers that don't support them
+    // Strip built-in tools (e.g. web_search_20250305) and normalize to Anthropic-native shape
+    // (drop `type` field, fold `function.{name,description,parameters}`) for non-Anthropic providers.
+    // MiniMax and other Anthropic-compatible providers reject tools carrying a `type` field (error 2013).
     if (provider !== "claude") {
-      body.tools = body.tools.filter(
-        (tool) => !tool.type || tool.type === "function",
-      );
+      body.tools = body.tools
+        .filter((tool) => !tool.type || tool.type === "function")
+        .map((tool) => {
+          if (tool.function) {
+            return {
+              name: tool.function.name,
+              description: tool.function.description,
+              input_schema: tool.function.parameters ?? { type: "object", properties: {} },
+            };
+          }
+          const { type, ...rest } = tool;
+          return rest;
+        });
     }
 
     body.tools = body.tools.map((tool, i) => {
