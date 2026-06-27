@@ -262,7 +262,9 @@ export function buildOnStreamComplete({
       ttft: ttftAt ? ttftAt - requestStartTime : total,
       total,
     };
-    const safeContent = contentObj?.content || "[Empty streaming response]";
+    // R2-F6: distinguish fast-path PASSTHROUGH (no accumulatedContent) from truly empty
+    const safeContent = contentObj?.content ||
+      "[Empty streaming response]";
     const safeThinking = contentObj?.thinking || null;
 
     if (timing) {

@@ -4,6 +4,12 @@ import {
   STREAM_SEMANTIC_STALL_TIMEOUT_MS,
 } from "../config/runtimeConfig.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
+import { executeResumeRequest } from "./streamResumer.js";
+import {
+  createSSETransformStreamWithLogger,
+  createPassthroughStreamWithLogger,
+} from "./stream.js";
+import { needsTranslation } from "../translator/index.js";
 
 // Get HH:MM:SS timestamp
 function getTimeString() {
@@ -144,9 +150,10 @@ export function createDisconnectAwareStream(
   onAbortTerminal = null,
   streamStateTracker = null,
   resumeCtx = null,
+  onClientFirstChunk = null,
 ) {
-  const reader = transformStream.readable.getReader();
-  const writer = transformStream.writable.getWriter();
+  let reader = transformStream.readable.getReader();
+  let writer = transformStream.writable.getWriter();
   let terminalEmitted = false;
   let chunksReceived = 0;
   let resumeAttempts = 0;
@@ -214,6 +221,7 @@ export function createDisconnectAwareStream(
         }
 
         chunksReceived++;
+        onClientFirstChunk?.();
         controller.enqueue(value);
       } catch (error) {
         const wasConnected = streamController.isConnected();
@@ -268,9 +276,6 @@ export function createDisconnectAwareStream(
           );
 
           try {
-            // Dynamic import to prevent circular dependencies
-            const { executeResumeRequest } = await import("./streamResumer.js");
-
             const newResponse = await executeResumeRequest({
               originalBody: resumeCtx.body,
               textBuffer,
@@ -298,12 +303,7 @@ export function createDisconnectAwareStream(
                 await writer.abort().catch(() => {});
               }
 
-              const {
-                createSSETransformStreamWithLogger,
-                createPassthroughStreamWithLogger,
-              } = await import("./stream.js");
-              const { needsTranslation } =
-                await import("../translator/index.js");
+              // Static imports used (converted from dynamic — F11)
 
               let newTransformStream;
               if (
@@ -335,18 +335,21 @@ export function createDisconnectAwareStream(
                 );
               }
 
-              const upstreamTap = new TransformStream({
+              // resumeStallTap resets outer stall timer for each resumed chunk (R2-F5)
+              const resumeStallTap = new TransformStream({
                 transform(chunk, controller) {
+                  resumeCtx.onResumeStall?.();
                   controller.enqueue(chunk);
                 },
               });
 
               const newTransformedBody = newResponse.body
-                .pipeThrough(upstreamTap)
+                .pipeThrough(resumeStallTap)
                 .pipeThrough(newTransformStream);
 
               reader = newTransformedBody.getReader();
               writer = { abort: () => Promise.resolve() };
+              resumeCtx.onResumeStall?.(); // immediate reset on resume start (R2-F5)
 
               // Read next chunks from the resumed stream!
               return this.pull(controller);
@@ -576,7 +579,7 @@ export function pipeWithDisconnect(
     `pipe start | stallTimeout=${stallTimeoutMs}ms | semanticStallTimeout=${STREAM_SEMANTIC_STALL_TIMEOUT_MS}ms`,
   );
 
-  const upstreamTap = new TransformStream({
+  const upstreamStallTap = new TransformStream({
     transform(chunk, controller) {
       chunkCount++;
       if (!upstreamFirstByteAt) {
@@ -614,28 +617,26 @@ export function pipeWithDisconnect(
   });
 
   const transformedBody = providerResponse.body
-    .pipeThrough(upstreamTap)
+    .pipeThrough(upstreamStallTap)
     .pipeThrough(transformStream);
 
-  const clientTap = new TransformStream({
-    transform(chunk, controller) {
-      if (!clientFirstChunkAt) {
-        clientFirstChunkAt = Date.now();
-        if (timing && !timing.clientFirstChunkAt)
-          timing.clientFirstChunkAt = clientFirstChunkAt;
-      }
-      controller.enqueue(chunk);
-    },
-  });
+  const onClientFirstChunk = () => {
+    if (!clientFirstChunkAt) {
+      clientFirstChunkAt = Date.now();
+      if (timing && !timing.clientFirstChunkAt)
+        timing.clientFirstChunkAt = clientFirstChunkAt;
+    }
+  };
 
   return createDisconnectAwareStream(
     {
-      readable: transformedBody.pipeThrough(clientTap),
+      readable: transformedBody,
       writable: { getWriter: () => ({ abort: () => Promise.resolve() }) },
     },
     wrappedController,
     onAbortTerminal,
     streamStateTracker,
-    resumeCtx,
+    { ...resumeCtx, onResumeStall: armStall },
+    onClientFirstChunk,
   );
 }

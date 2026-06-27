@@ -158,6 +158,53 @@ export function createSSEStream(options = {}) {
           let output;
           let injectedUsage = false;
 
+          // Fast-path: forward raw SSE without JSON.parse for pure delta chunks
+          // Conservative heuristics — false positive = falls through to full parse
+          if (
+            trimmed.startsWith("data:") &&
+            trimmed.slice(5).trim() !== "[DONE]"
+          ) {
+            const dataStr = trimmed.slice(5).trim();
+            // ORDERING MATTERS: Azure fields must be checked before hasContent (R2-F8)
+            const needsFullParse =
+              dataStr.includes('"finish_reason"') ||
+              dataStr.includes('"prompt_filter_results"') ||
+              dataStr.includes('"content_filter_results"') || // Azure — before hasContent (R2-F8)
+              dataStr.includes('"usage"') ||
+              dataStr.includes('"id":"'); // tighter than '"id":' to avoid content false positives (R2-F7)
+
+            if (!needsFullParse) {
+              const hasContent =
+                dataStr.includes('"content":') ||
+                dataStr.includes('"reasoning_content":');
+
+              if (!hasContent) {
+                updateTracker();
+                continue; // empty delta — skip (F7)
+              }
+
+              // Track reasoning for semantic stall watchdog (F3)
+              if (dataStr.includes('"reasoning_content":') && streamStateTracker) {
+                streamStateTracker.inThinking = true;
+              }
+
+              // Rough token estimate only — no regex content extraction (F6)
+              // accumulatedContent not populated from fast-path (R2-F6 trade-off)
+              totalContentLength += Math.ceil(dataStr.length / 4);
+              updateTracker(); // F10 + R2-F2
+
+              const fastOutput = line.startsWith("data:") && !line.startsWith("data: ")
+                ? "data: " + line.slice(5) + "\n"
+                : line + "\n";
+
+              emitFirstChunkLog(fastOutput, { kind: "passthrough-fast" }); // R2-F1
+              reqLogger?.appendConvertedChunk?.(fastOutput);
+              controller.enqueue(sharedEncoder.encode(fastOutput));
+              sseEmittedCount++;
+              continue;
+            }
+          }
+
           if (
             trimmed.startsWith("data:") &&
             trimmed.slice(5).trim() !== "[DONE]"
@@ -251,8 +298,10 @@ export function createSSEStream(options = {}) {
             }
           }
 
+          emitFirstChunkLog(output, { kind: "passthrough-full" }); // R2-F1
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
+          updateTracker(); // R2-F2
           continue;
         }
 
