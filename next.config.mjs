@@ -20,6 +20,7 @@ const nextConfig = {
     "sql.js",
     "node:sqlite",
     "bun:sqlite",
+    "got-scraping",
   ],
   turbopack: {
     root: tracingRoot,
