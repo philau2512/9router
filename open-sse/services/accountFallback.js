@@ -35,6 +35,8 @@ export function checkFallbackError(status, errorText, backoffLevel = 0) {
 
   if (
     lowerError.includes("model is not supported") ||
+    lowerError.includes("invalid model id") ||
+    lowerError.includes("invalid_model_id") ||
     lowerError.includes(
       "encountered an unexpected error when processing the request",
     )
