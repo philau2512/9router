@@ -620,8 +620,43 @@ export const MODEL_PRICING = {
     cache_creation: 0.6,
   },
 
-  // === Grok ===
+  // === Grok (xAI) - https://docs.x.ai/developers/models ===
+  "composer-2.5": {
+    input: 0.3,
+    output: 1.2,
+    cached: 0.15,
+    reasoning: 1.8,
+    cache_creation: 0.3,
+  },
+  "grok-4.3": {
+    input: 1.25,
+    output: 2.5,
+    cached: 0.2,
+    reasoning: 3.75,
+    cache_creation: 1.25,
+  },
+  "grok-4": {
+    input: 3.0,
+    output: 15.0,
+    cached: 1.5,
+    reasoning: 22.5,
+    cache_creation: 3.0,
+  },
+  "grok-4-fast-reasoning": {
+    input: 0.6,
+    output: 2.4,
+    cached: 0.3,
+    reasoning: 3.6,
+    cache_creation: 0.6,
+  },
   "grok-code-fast-1": {
+    input: 0.2,
+    output: 0.8,
+    cached: 0.1,
+    reasoning: 1.2,
+    cache_creation: 0.2,
+  },
+  "grok-3": {
     input: 0.5,
     output: 2.0,
     cached: 0.25,
