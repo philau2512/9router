@@ -98,7 +98,16 @@ export async function handleChat(request, clientRawRequest = null) {
   // Count messages (support both messages[] and input[] formats)
   const msgCount = body.messages?.length || body.input?.length || 0;
   const toolCount = body.tools?.length || 0;
-  const effort = body.reasoning_effort || body.reasoning?.effort || null;
+  const effort =
+    body.reasoning_effort ||
+    body.reasoning?.effort ||
+    body.output_config?.effort ||
+    (body.thinking?.type === "enabled"
+      ? body.thinking.budget_tokens
+        ? `budget:${body.thinking.budget_tokens}`
+        : "on"
+      : null) ||
+    null;
   log.request(
     "POST",
     `${url.pathname} | ${modelStr} | ${msgCount} msgs${toolCount ? ` | ${toolCount} tools` : ""}${effort ? ` | effort=${effort}` : ""}`,
