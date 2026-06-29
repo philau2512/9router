@@ -38,6 +38,20 @@ function sanitizeGeminiFunctionName(name) {
   return sanitized.substring(0, 64);
 }
 
+// Upstream fix from open-sse commit 8d1db46be
+// Merge adjacent same-role blocks and strip empty parts before sending to
+// Gemini, avoiding 400 INVALID_ARGUMENT on consecutive same-role messages.
+function normalizeGeminiContents(contents) {
+  const out = [];
+  for (const c of contents || []) {
+    if (!c?.role || !Array.isArray(c.parts) || c.parts.length === 0) continue;
+    const last = out.at(-1);
+    if (last?.role === c.role) last.parts.push(...c.parts);
+    else out.push({ ...c, parts: [...c.parts] });
+  }
+  return out;
+}
+
 // Core: Convert OpenAI request to Gemini format (base for all variants)
 function openaiToGeminiBase(
   model,
@@ -241,6 +255,10 @@ function openaiToGeminiBase(
       result.tools = [{ functionDeclarations }];
     }
   }
+
+  // Upstream fix from open-sse commit 8d1db46be
+  // Normalize contents to prevent 400 invalid_argument on consecutive same-role messages
+  result.contents = normalizeGeminiContents(result.contents);
 
   return result;
 }
@@ -491,6 +509,10 @@ function wrapInCloudCodeEnvelopeForClaude(
   } else {
     envelope.request.systemInstruction = { role: "user", parts: systemParts };
   }
+
+  // Upstream fix from open-sse commit 8d1db46be
+  // Normalize contents to prevent 400 invalid_argument on consecutive same-role messages
+  envelope.request.contents = normalizeGeminiContents(envelope.request.contents);
 
   return envelope;
 }

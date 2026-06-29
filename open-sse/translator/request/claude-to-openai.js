@@ -133,8 +133,15 @@ function fixMissingToolResponses(messages) {
 
 // Convert single Claude message - returns single message or array of messages
 function convertClaudeMessage(msg) {
-  const role =
-    msg.role === "user" || msg.role === "tool" ? "user" : "assistant";
+  // Upstream fix from open-sse commit 749c2e3f9
+  // Map mid-conversation system message to user role to prevent 400 errors with LiteLLM
+  // Claude Code inserts role:system at end of messages[], previously mapped to assistant
+  // causing conversation not ending with user → OpenAI-compat provider (LiteLLM) translates
+  // back to Anthropic returning 400 "assistant message prefill"
+  let role = msg.role === "user" || msg.role === "tool" ? "user" : "assistant";
+  if (msg.role === "system") {
+    role = "user"; // Map system → user and wrap in <system-reminder> to preserve instruction semantics
+  }
 
   // Simple string content
   if (typeof msg.content === "string") {
