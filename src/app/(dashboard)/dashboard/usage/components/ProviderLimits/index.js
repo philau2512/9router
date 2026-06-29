@@ -47,7 +47,17 @@ function sortVisibleConnections(
     });
   }
 
-  if (!expiringFirst) return connections;
+  if (!expiringFirst) {
+    return [...connections].sort((a, b) => {
+      const priorityA = a.priority ?? Number.MAX_SAFE_INTEGER;
+      const priorityB = b.priority ?? Number.MAX_SAFE_INTEGER;
+      if (priorityA !== priorityB) return priorityA - priorityB;
+      return (
+        (a.provider || "").localeCompare(b.provider || "") ||
+        (getConnectionLabel(a) || "").localeCompare(getConnectionLabel(b) || "")
+      );
+    });
+  }
 
   const getEarliestResetTime = (connection) => {
     const resetTimes = (quotaData[connection.id]?.quotas || [])
@@ -301,7 +311,7 @@ export default function ProviderLimits() {
         return [];
       }
     },
-    [accountFilter, expiringFirst, page, pageSize, providerFilter],
+    [accountFilter, page, pageSize, providerFilter],
   );
 
   // Fetch quota for a specific connection
@@ -766,24 +776,6 @@ export default function ProviderLimits() {
     );
   }
 
-  if (!connectionsLoading && !hasVisibleConnections) {
-    return (
-      <Card padding="lg">
-        <div className="text-center py-12">
-          <span className="material-symbols-outlined text-[64px] text-text-muted opacity-20">
-            {emptyState.icon}
-          </span>
-          <h3 className="mt-4 text-lg font-semibold text-text-primary">
-            {emptyState.title}
-          </h3>
-          <p className="mt-2 text-sm text-text-muted max-w-md mx-auto">
-            {emptyState.description}
-          </p>
-        </div>
-      </Card>
-    );
-  }
-
   return (
     <div className="space-y-6">
       {/* Header Controls */}
@@ -1009,269 +1001,306 @@ export default function ProviderLimits() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {sortedConnections.map((conn) => {
-          const quota = quotaData[conn.id];
-          const isLoading = loading[conn.id];
-          const error = errors[conn.id];
+      {hasVisibleConnections ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {sortedConnections.map((conn) => {
+            const quota = quotaData[conn.id];
+            const isLoading = loading[conn.id];
+            const error = errors[conn.id];
 
-          // Use table layout for all providers
-          const isInactive = conn.isActive === false;
-          const rowBusy = deletingId === conn.id || togglingId === conn.id;
+            // Use table layout for all providers
+            const isInactive = conn.isActive === false;
+            const rowBusy = deletingId === conn.id || togglingId === conn.id;
 
-          return (
-            <Card
-              key={conn.id}
-              padding="none"
-              className={`min-w-0 ${isInactive ? "opacity-60" : ""}`}
-            >
-              <div className="px-3 py-2 border-b border-black/10 dark:border-white/10">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-8 h-8 shrink-0 rounded-md flex items-center justify-center overflow-hidden">
-                      <ProviderIcon
-                        src={`/providers/${conn.provider}.png`}
-                        alt={conn.provider}
-                        size={32}
-                        className="object-contain"
-                        fallbackText={
-                          conn.provider?.slice(0, 2).toUpperCase() || "PR"
-                        }
-                      />
+            return (
+              <Card
+                key={conn.id}
+                padding="none"
+                className={`min-w-0 ${isInactive ? "opacity-60" : ""}`}
+              >
+                <div className="px-3 py-2 border-b border-black/10 dark:border-white/10">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-8 h-8 shrink-0 rounded-md flex items-center justify-center overflow-hidden">
+                        <ProviderIcon
+                          src={`/providers/${conn.provider}.png`}
+                          alt={conn.provider}
+                          size={32}
+                          className="object-contain"
+                          fallbackText={
+                            conn.provider?.slice(0, 2).toUpperCase() || "PR"
+                          }
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <h3 className="text-sm font-semibold text-text-primary capitalize truncate">
+                            {conn.provider}
+                          </h3>
+                          {conn.priority !== undefined &&
+                            conn.priority !== null && (
+                              <span
+                                className="shrink-0 rounded bg-black/5 px-1.5 py-0.5 text-[10px] font-medium text-text-muted dark:bg-white/5"
+                                title={`Priority: ${conn.priority}`}
+                              >
+                                #{conn.priority}
+                              </span>
+                            )}
+                        </div>
+                        {getConnectionLabel(conn) ? (
+                          <p className="text-xs text-text-muted truncate">
+                            {getConnectionLabel(conn)}
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <h3 className="text-sm font-semibold text-text-primary capitalize truncate">
-                        {conn.provider}
-                      </h3>
-                      {getConnectionLabel(conn) ? (
-                        <p className="text-xs text-text-muted truncate">
-                          {getConnectionLabel(conn)}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
 
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => refreshProvider(conn.id, conn.provider)}
-                      disabled={isLoading || rowBusy}
-                      aria-label="Refresh quota"
-                      className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors disabled:opacity-50"
-                      title="Refresh quota"
-                    >
-                      <span
-                        className={`material-symbols-outlined text-[18px] text-text-muted ${isLoading ? "animate-spin" : ""}`}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => refreshProvider(conn.id, conn.provider)}
+                        disabled={isLoading || rowBusy}
+                        aria-label="Refresh quota"
+                        className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors disabled:opacity-50"
+                        title="Refresh quota"
                       >
-                        refresh
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedConnection(conn);
-                        setShowEditModal(true);
-                      }}
-                      disabled={rowBusy}
-                      aria-label="Edit connection"
-                      className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-text-muted hover:text-primary transition-colors disabled:opacity-50"
-                      title="Edit connection"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">
-                        edit
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteConnection(conn.id)}
-                      disabled={rowBusy}
-                      aria-label="Delete connection"
-                      className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500 transition-colors disabled:opacity-50"
-                      title="Delete connection"
-                    >
-                      <span
-                        className={`material-symbols-outlined text-[18px] ${deletingId === conn.id ? "animate-pulse" : ""}`}
-                      >
-                        delete
-                      </span>
-                    </button>
-                    <div
-                      className="inline-flex items-center pl-0.5"
-                      title={
-                        (conn.isActive ?? true)
-                          ? "Disable connection"
-                          : "Enable connection"
-                      }
-                    >
-                      <Toggle
-                        size="sm"
-                        checked={conn.isActive ?? true}
+                        <span
+                          className={`material-symbols-outlined text-[18px] text-text-muted ${isLoading ? "animate-spin" : ""}`}
+                        >
+                          refresh
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedConnection(conn);
+                          setShowEditModal(true);
+                        }}
                         disabled={rowBusy}
-                        onChange={(nextActive) =>
-                          handleToggleConnectionActive(conn.id, nextActive)
+                        aria-label="Edit connection"
+                        className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-text-muted hover:text-primary transition-colors disabled:opacity-50"
+                        title="Edit connection"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">
+                          edit
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteConnection(conn.id)}
+                        disabled={rowBusy}
+                        aria-label="Delete connection"
+                        className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500 transition-colors disabled:opacity-50"
+                        title="Delete connection"
+                      >
+                        <span
+                          className={`material-symbols-outlined text-[18px] ${deletingId === conn.id ? "animate-pulse" : ""}`}
+                        >
+                          delete
+                        </span>
+                      </button>
+                      <div
+                        className="inline-flex items-center pl-0.5"
+                        title={
+                          (conn.isActive ?? true)
+                            ? "Disable connection"
+                            : "Enable connection"
                         }
-                      />
+                      >
+                        <Toggle
+                          size="sm"
+                          checked={conn.isActive ?? true}
+                          disabled={rowBusy}
+                          onChange={(nextActive) =>
+                            handleToggleConnectionActive(conn.id, nextActive)
+                          }
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="px-2 py-1.5">
-                {isLoading ? (
-                  <div className="text-center py-5 text-text-muted">
-                    <span className="material-symbols-outlined text-[28px] animate-spin">
-                      progress_activity
-                    </span>
-                  </div>
-                ) : error ? (
-                  <div className="text-center py-5">
-                    <span className="material-symbols-outlined text-[28px] text-red-500">
-                      error
-                    </span>
-                    <p className="mt-1.5 text-xs text-text-muted">{error}</p>
-                  </div>
-                ) : quota?.message ? (
-                  <div className="text-center py-5">
-                    <p className="text-xs text-text-muted">{quota.message}</p>
-                  </div>
-                ) : (
-                  <QuotaTable
-                    quotas={quota?.quotas}
-                    compact
-                    sortMode="default"
-                    showSortLabel={
-                      conn.provider === "codex" && quotaSortMode !== "default"
-                    }
-                  />
-                )}
-              </div>
-            </Card>
-          );
-        })}
-      </div>
+                <div className="px-2 py-1.5">
+                  {isLoading ? (
+                    <div className="text-center py-5 text-text-muted">
+                      <span className="material-symbols-outlined text-[28px] animate-spin">
+                        progress_activity
+                      </span>
+                    </div>
+                  ) : error ? (
+                    <div className="text-center py-5">
+                      <span className="material-symbols-outlined text-[28px] text-red-500">
+                        error
+                      </span>
+                      <p className="mt-1.5 text-xs text-text-muted">{error}</p>
+                    </div>
+                  ) : quota?.message ? (
+                    <div className="text-center py-5">
+                      <p className="text-xs text-text-muted">{quota.message}</p>
+                    </div>
+                  ) : (
+                    <QuotaTable
+                      quotas={quota?.quotas}
+                      compact
+                      sortMode="default"
+                      showSortLabel={
+                        conn.provider === "codex" && quotaSortMode !== "default"
+                      }
+                    />
+                  )}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      ) : (
+        <Card padding="lg">
+          <div className="text-center py-12">
+            <span className="material-symbols-outlined text-[64px] text-text-muted opacity-20">
+              {emptyState.icon}
+            </span>
+            <h3 className="mt-4 text-lg font-semibold text-text-primary">
+              {emptyState.title}
+            </h3>
+            <p className="mt-2 text-sm text-text-muted max-w-md mx-auto">
+              {emptyState.description}
+            </p>
+          </div>
+        </Card>
+      )}
 
       <div className="rounded-xl border border-black/10 bg-black/[0.02] px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs text-text-muted">{connectionsPageSummary}</span>
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={isCustomPageSize ? "custom" : String(pageSize)}
-                onChange={(event) => {
-                  const nextValue = event.target.value;
-                  if (nextValue === "custom") return;
-                  const nextPageSize = Number.parseInt(nextValue, 10);
-                  if (Number.isFinite(nextPageSize)) {
-                    setPage(1);
-                    setPageSize(nextPageSize);
-                    setCustomPageSizeInput(String(nextPageSize));
-                  }
-                }}
-                className="h-8 rounded-lg border border-black/10 bg-black/[0.02] px-2 text-xs text-text-primary outline-none transition-colors hover:bg-black/5 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/10"
-                aria-label="Accounts per page"
-              >
-                {ACCOUNT_PAGE_SIZE_OPTIONS.map((option) => (
-                  <option key={option} value={String(option)}>
-                    {option} / page
-                  </option>
-                ))}
-                <option value="custom">Custom</option>
-              </select>
-              <input
-                type="number"
-                min="1"
-                max={String(ACCOUNT_PAGE_SIZE_MAX)}
-                inputMode="numeric"
-                value={customPageSizeInput}
-                onChange={(event) => setCustomPageSizeInput(event.target.value)}
-                onBlur={() => {
-                  const parsedValue = Number.parseInt(customPageSizeInput, 10);
-                  if (!Number.isFinite(parsedValue)) {
-                    setCustomPageSizeInput(String(pageSize));
-                    return;
-                  }
-                  const nextPageSize = Math.min(ACCOUNT_PAGE_SIZE_MAX, Math.max(1, parsedValue));
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-text-muted">
+            {connectionsPageSummary}
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={isCustomPageSize ? "custom" : String(pageSize)}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                if (nextValue === "custom") return;
+                const nextPageSize = Number.parseInt(nextValue, 10);
+                if (Number.isFinite(nextPageSize)) {
                   setPage(1);
                   setPageSize(nextPageSize);
                   setCustomPageSizeInput(String(nextPageSize));
-                }}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter") return;
-                  const parsedValue = Number.parseInt(customPageSizeInput, 10);
-                  if (!Number.isFinite(parsedValue)) {
-                    setCustomPageSizeInput(String(pageSize));
-                    return;
-                  }
-                  const nextPageSize = Math.min(ACCOUNT_PAGE_SIZE_MAX, Math.max(1, parsedValue));
-                  setPage(1);
-                  setPageSize(nextPageSize);
-                  setCustomPageSizeInput(String(nextPageSize));
-                }}
-                className="h-8 w-20 rounded-lg border border-black/10 bg-black/[0.02] px-2 text-xs text-text-primary outline-none transition-colors hover:bg-black/5 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/10"
-                aria-label="Custom accounts per page"
-                placeholder="Custom"
-              />
-              <span className="text-xs text-text-muted">Page {pagination.page} / {pagination.totalPages}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setPage(1)}
-                disabled={
-                  pagination.page <= 1 || connectionsLoading || refreshingAll
                 }
-                className="flex h-8 items-center rounded-lg border border-black/10 px-3 text-xs text-text-primary transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5"
-              >
-                First Page
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setPage((currentPage) => Math.max(1, currentPage - 1))
+              }}
+              className="h-8 rounded-lg border border-black/10 bg-black/[0.02] px-2 text-xs text-text-primary outline-none transition-colors hover:bg-black/5 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/10"
+              aria-label="Accounts per page"
+            >
+              {ACCOUNT_PAGE_SIZE_OPTIONS.map((option) => (
+                <option key={option} value={String(option)}>
+                  {option} / page
+                </option>
+              ))}
+              <option value="custom">Custom</option>
+            </select>
+            <input
+              type="number"
+              min="1"
+              max={String(ACCOUNT_PAGE_SIZE_MAX)}
+              inputMode="numeric"
+              value={customPageSizeInput}
+              onChange={(event) => setCustomPageSizeInput(event.target.value)}
+              onBlur={() => {
+                const parsedValue = Number.parseInt(customPageSizeInput, 10);
+                if (!Number.isFinite(parsedValue)) {
+                  setCustomPageSizeInput(String(pageSize));
+                  return;
                 }
-                disabled={
-                  pagination.page <= 1 || connectionsLoading || refreshingAll
+                const nextPageSize = Math.min(
+                  ACCOUNT_PAGE_SIZE_MAX,
+                  Math.max(1, parsedValue),
+                );
+                setPage(1);
+                setPageSize(nextPageSize);
+                setCustomPageSizeInput(String(nextPageSize));
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                const parsedValue = Number.parseInt(customPageSizeInput, 10);
+                if (!Number.isFinite(parsedValue)) {
+                  setCustomPageSizeInput(String(pageSize));
+                  return;
                 }
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-black/10 text-text-primary transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5"
-                aria-label="Previous accounts page"
-              >
-                <span className="material-symbols-outlined text-[16px]">
-                  chevron_left
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setPage((currentPage) =>
-                    Math.min(pagination.totalPages, currentPage + 1),
-                  )
-                }
-                disabled={
-                  pagination.page >= pagination.totalPages ||
-                  connectionsLoading ||
-                  refreshingAll
-                }
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-black/10 text-text-primary transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5"
-                aria-label="Next accounts page"
-              >
-                <span className="material-symbols-outlined text-[16px]">
-                  chevron_right
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setPage(pagination.totalPages)}
-                disabled={
-                  pagination.page >= pagination.totalPages ||
-                  connectionsLoading ||
-                  refreshingAll
-                }
-                className="flex h-8 items-center rounded-lg border border-black/10 px-3 text-xs text-text-primary transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5"
-              >
-                Last Page
-              </button>
-            </div>
+                const nextPageSize = Math.min(
+                  ACCOUNT_PAGE_SIZE_MAX,
+                  Math.max(1, parsedValue),
+                );
+                setPage(1);
+                setPageSize(nextPageSize);
+                setCustomPageSizeInput(String(nextPageSize));
+              }}
+              className="h-8 w-20 rounded-lg border border-black/10 bg-black/[0.02] px-2 text-xs text-text-primary outline-none transition-colors hover:bg-black/5 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/10"
+              aria-label="Custom accounts per page"
+              placeholder="Custom"
+            />
+            <span className="text-xs text-text-muted">
+              Page {pagination.page} / {pagination.totalPages}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setPage(1)}
+              disabled={
+                pagination.page <= 1 || connectionsLoading || refreshingAll
+              }
+              className="flex h-8 items-center rounded-lg border border-black/10 px-3 text-xs text-text-primary transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5"
+            >
+              First Page
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setPage((currentPage) => Math.max(1, currentPage - 1))
+              }
+              disabled={
+                pagination.page <= 1 || connectionsLoading || refreshingAll
+              }
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-black/10 text-text-primary transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5"
+              aria-label="Previous accounts page"
+            >
+              <span className="material-symbols-outlined text-[16px]">
+                chevron_left
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setPage((currentPage) =>
+                  Math.min(pagination.totalPages, currentPage + 1),
+                )
+              }
+              disabled={
+                pagination.page >= pagination.totalPages ||
+                connectionsLoading ||
+                refreshingAll
+              }
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-black/10 text-text-primary transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5"
+              aria-label="Next accounts page"
+            >
+              <span className="material-symbols-outlined text-[16px]">
+                chevron_right
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage(pagination.totalPages)}
+              disabled={
+                pagination.page >= pagination.totalPages ||
+                connectionsLoading ||
+                refreshingAll
+              }
+              className="flex h-8 items-center rounded-lg border border-black/10 px-3 text-xs text-text-primary transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5"
+            >
+              Last Page
+            </button>
           </div>
         </div>
+      </div>
 
       <EditConnectionModal
         isOpen={showEditModal}

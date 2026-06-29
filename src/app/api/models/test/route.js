@@ -4,12 +4,33 @@ import { UPDATER_CONFIG } from "@/shared/constants/config";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 
 const CLI_TOKEN_SALT = "9r-cli-auth";
+const MODEL_TEST_TIMEOUT_MS = 15000;
+
+export function isTimeoutError(err) {
+  return (
+    err?.name === "TimeoutError" ||
+    (err?.name === "AbortError" &&
+      /timeout|timed out/i.test(String(err?.message || "")))
+  );
+}
+
+function timeoutResponse(start) {
+  return NextResponse.json({
+    ok: false,
+    latencyMs: Date.now() - start,
+    error: `Model test timed out after ${MODEL_TEST_TIMEOUT_MS / 1000}s`,
+    status: "timeout",
+  });
+}
 
 // POST /api/models/test - Ping a single model via internal completions or embeddings
 export async function POST(request) {
+  const requestStart = Date.now();
+
   try {
     const { model, kind } = await request.json();
-    if (!model) return NextResponse.json({ error: "Model required" }, { status: 400 });
+    if (!model)
+      return NextResponse.json({ error: "Model required" }, { status: 400 });
 
     const baseUrl = `http://127.0.0.1:${process.env.PORT || UPDATER_CONFIG.appPort}`;
 
@@ -33,21 +54,87 @@ export async function POST(request) {
         method: "POST",
         headers,
         body: JSON.stringify({ model, input: "test" }),
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),
+      });
+      const latencyMs = Date.now() - start;
+      const rawText = await res.text().catch(() => "");
+      let parsed = null;
+      try {
+        parsed = rawText ? JSON.parse(rawText) : null;
+      } catch {}
+
+      if (!res.ok) {
+        const detail = parsed?.error?.message || parsed?.error || rawText;
+        return NextResponse.json({
+          ok: false,
+          latencyMs,
+          error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`,
+          status: res.status,
+        });
+      }
+      const hasEmbedding =
+        Array.isArray(parsed?.data) &&
+        parsed.data.length > 0 &&
+        Array.isArray(parsed.data[0]?.embedding);
+      if (!hasEmbedding) {
+        return NextResponse.json({
+          ok: false,
+          latencyMs,
+          status: res.status,
+          error: "Provider returned no embedding data",
+        });
+      }
+      return NextResponse.json({
+        ok: true,
+        latencyMs,
+        error: null,
+        status: res.status,
+      });
+    }
+
+    // Image generation
+    if (kind === "image") {
+      const res = await fetch(`${baseUrl}/api/v1/images/generations`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ model, prompt: "test" }),
+        signal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),
       });
       const latencyMs = Date.now() - start;
       const rawText = await res.text().catch(() => "");
       let parsed = null;
       try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
-
       if (!res.ok) {
         const detail = parsed?.error?.message || parsed?.error || rawText;
         return NextResponse.json({ ok: false, latencyMs, error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`, status: res.status });
       }
-      const hasEmbedding = Array.isArray(parsed?.data) && parsed.data.length > 0 && Array.isArray(parsed.data[0]?.embedding);
-      if (!hasEmbedding) {
-        return NextResponse.json({ ok: false, latencyMs, status: res.status, error: "Provider returned no embedding data" });
+      const hasData = Array.isArray(parsed?.data) && parsed.data.length > 0;
+      if (!hasData) return NextResponse.json({ ok: false, latencyMs, status: res.status, error: "Provider returned no image data" });
+      return NextResponse.json({ ok: true, latencyMs, error: null, status: res.status });
+    }
+
+    // STT / audio transcription
+    if (kind === "stt") {
+      const sttForm = new FormData();
+      sttForm.append("model", model);
+      sttForm.append("file", new Blob(["test"], { type: "audio/mpeg" }), "test.mp3");
+      const sttHeaders = { ...headers };
+      delete sttHeaders["Content-Type"]; // let fetch set multipart boundary
+      const res = await fetch(`${baseUrl}/api/v1/audio/transcriptions`, {
+        method: "POST",
+        headers: sttHeaders,
+        body: sttForm,
+        signal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),
+      });
+      const latencyMs = Date.now() - start;
+      const rawText = await res.text().catch(() => "");
+      let parsed = null;
+      try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+      if (!res.ok) {
+        const detail = parsed?.error?.message || parsed?.error || rawText;
+        return NextResponse.json({ ok: false, latencyMs, error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`, status: res.status });
       }
+      if (!parsed?.text) return NextResponse.json({ ok: false, latencyMs, status: res.status, error: "Provider returned no transcription" });
       return NextResponse.json({ ok: true, latencyMs, error: null, status: res.status });
     }
 
@@ -61,7 +148,7 @@ export async function POST(request) {
         stream: false,
         messages: [{ role: "user", content: "hi" }],
       }),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),
     });
     const latencyMs = Date.now() - start;
 
@@ -72,18 +159,29 @@ export async function POST(request) {
     } catch {}
 
     if (!res.ok) {
-      const detail = parsed?.error?.message || parsed?.msg || parsed?.message || parsed?.error || rawText;
+      const detail =
+        parsed?.error?.message ||
+        parsed?.msg ||
+        parsed?.message ||
+        parsed?.error ||
+        rawText;
       const error = `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`;
-      return NextResponse.json({ ok: false, latencyMs, error, status: res.status });
+      return NextResponse.json({
+        ok: false,
+        latencyMs,
+        error,
+        status: res.status,
+      });
     }
 
     // Some providers may return HTTP 200 but not a real completion for invalid models.
     const providerStatus = parsed?.status;
     const providerMsg = parsed?.msg || parsed?.message;
-    const hasProviderErrorStatus = providerStatus !== undefined
-      && providerStatus !== null
-      && String(providerStatus) !== "200"
-      && String(providerStatus) !== "0";
+    const hasProviderErrorStatus =
+      providerStatus !== undefined &&
+      providerStatus !== null &&
+      String(providerStatus) !== "200" &&
+      String(providerStatus) !== "0";
     if (hasProviderErrorStatus && providerMsg) {
       return NextResponse.json({
         ok: false,
@@ -94,7 +192,8 @@ export async function POST(request) {
     }
 
     if (parsed?.error) {
-      const providerError = parsed?.error?.message || parsed?.error || "Provider returned an error";
+      const providerError =
+        parsed?.error?.message || parsed?.error || "Provider returned an error";
       return NextResponse.json({
         ok: false,
         latencyMs,
@@ -103,7 +202,8 @@ export async function POST(request) {
       });
     }
 
-    const hasChoices = Array.isArray(parsed?.choices) && parsed.choices.length > 0;
+    const hasChoices =
+      Array.isArray(parsed?.choices) && parsed.choices.length > 0;
     if (!hasChoices) {
       return NextResponse.json({
         ok: false,
@@ -113,8 +213,20 @@ export async function POST(request) {
       });
     }
 
-    return NextResponse.json({ ok: true, latencyMs, error: null, status: res.status });
+    return NextResponse.json({
+      ok: true,
+      latencyMs,
+      error: null,
+      status: res.status,
+    });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+    if (isTimeoutError(err)) {
+      return timeoutResponse(requestStart);
+    }
+
+    return NextResponse.json(
+      { ok: false, error: err.message },
+      { status: 500 },
+    );
   }
 }

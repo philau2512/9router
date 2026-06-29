@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useId, useRef } from "react";
 import { cn } from "@/shared/utils/cn";
 import Button from "./Button";
 import Tooltip from "./Tooltip";
@@ -16,6 +16,9 @@ export default function Modal({
   showTrafficLights = true,
   className,
 }) {
+  const titleId = useId();
+  const modalRef = useRef(null);
+  const previousFocusRef = useRef(null);
   const sizes = {
     sm: "max-w-sm",
     md: "max-w-md",
@@ -30,15 +33,59 @@ export default function Modal({
     } else {
       document.body.style.overflow = "";
     }
-    return () => { document.body.style.overflow = ""; };
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, [isOpen]);
 
   useEffect(() => {
-    const handleEscape = (e) => {
-      if (e.key === "Escape" && isOpen) onClose();
+    if (!isOpen) return undefined;
+
+    previousFocusRef.current = document.activeElement;
+    const focusableSelector =
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const getFocusableElements = () =>
+      Array.from(
+        modalRef.current?.querySelectorAll(focusableSelector) || [],
+      ).filter((element) => !element.hasAttribute("disabled"));
+
+    window.setTimeout(() => {
+      const firstFocusable = getFocusableElements()[0];
+      (firstFocusable || modalRef.current)?.focus();
+    }, 0);
+
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+
+      if (e.key !== "Tab") return;
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        e.preventDefault();
+        modalRef.current?.focus();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (e.shiftKey && document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement.focus();
+      } else if (!e.shiftKey && document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement.focus();
+      }
     };
-    document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      if (previousFocusRef.current instanceof HTMLElement) {
+        previousFocusRef.current.focus();
+      }
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
@@ -53,13 +100,18 @@ export default function Modal({
 
       {/* Modal content */}
       <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={title ? titleId : undefined}
+        tabIndex={-1}
         className={cn(
           "relative w-full bg-surface",
           "border border-border-subtle",
           "rounded-[14px] shadow-[var(--shadow-elev)]",
           "fade-in",
           sizes[size],
-          className
+          className,
         )}
       >
         {/* Header */}
@@ -76,7 +128,9 @@ export default function Modal({
                       title="Close"
                       className="w-4 h-4 rounded-full bg-[#FF5F56] hover:brightness-90 transition-all cursor-pointer flex items-center justify-center group/dot"
                     >
-                      <span className="text-[9px] font-bold text-white opacity-0 group-hover/dot:opacity-100 transition-opacity leading-none">✕</span>
+                      <span className="text-[9px] font-bold text-white opacity-0 group-hover/dot:opacity-100 transition-opacity leading-none">
+                        ✕
+                      </span>
                     </button>
                   </Tooltip>
                   <div className="w-4 h-4 rounded-full bg-[#3a3a3a]/20 dark:bg-white/15 cursor-not-allowed" />
@@ -84,7 +138,12 @@ export default function Modal({
                 </div>
               )}
               {title && (
-                <h2 className="text-lg font-semibold text-text-main">{title}</h2>
+                <h2
+                  id={titleId}
+                  className="text-lg font-semibold text-text-main"
+                >
+                  {title}
+                </h2>
               )}
             </div>
             {/* X button — mobile only */}
@@ -93,13 +152,17 @@ export default function Modal({
               aria-label="Close"
               className="md:hidden p-1.5 rounded-[10px] text-text-muted hover:bg-surface-2 hover:text-text-main transition-colors"
             >
-              <span className="material-symbols-outlined text-[20px]">close</span>
+              <span className="material-symbols-outlined text-[20px]">
+                close
+              </span>
             </button>
           </div>
         )}
 
         {/* Body */}
-        <div className="p-6 max-h-[calc(85vh-100px)] overflow-y-auto custom-scrollbar">{children}</div>
+        <div className="p-6 max-h-[calc(85vh-100px)] overflow-y-auto custom-scrollbar">
+          {children}
+        </div>
 
         {/* Footer */}
         {footer && (

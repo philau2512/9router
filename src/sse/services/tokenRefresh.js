@@ -1,6 +1,10 @@
 // Re-export from open-sse with local logger
 import * as log from "../utils/logger.js";
-import { updateProviderConnection } from "../../lib/localDb.js";
+import {
+  getProviderConnections,
+  getProviderConnectionById,
+  updateProviderConnection,
+} from "../../lib/localDb.js";
 import {
   getProjectIdForConnection,
   invalidateProjectId,
@@ -21,8 +25,13 @@ import {
   formatProviderCredentials as _formatProviderCredentials,
   getAllAccessTokens as _getAllAccessTokens,
   refreshKiroToken as _refreshKiroToken,
-  getRefreshLeadMs as _getRefreshLeadMs
+  getRefreshLeadMs as _getRefreshLeadMs,
+  isUnrecoverableRefreshError,
 } from "open-sse/services/tokenRefresh.js";
+import {
+  refreshProviderCredentials as _refreshProviderCredentials,
+  shouldRefreshCredentials as _shouldRefreshCredentials,
+} from "open-sse/services/oauthCredentialManager.js";
 
 export const TOKEN_EXPIRY_BUFFER_MS = BUFFER_MS;
 
@@ -66,6 +75,9 @@ export const formatProviderCredentials = (provider, credentials) =>
 
 export const getAllAccessTokens = (userInfo) =>
   _getAllAccessTokens(userInfo, log);
+
+export const shouldRefreshCredentials = (provider, credentials) =>
+  _shouldRefreshCredentials(provider, credentials);
 
 // ─── Lifecycle hook ───────────────────────────────────────────────────────────
 
@@ -135,10 +147,14 @@ function _refreshProjectId(provider, connectionId, accessToken) {
       });
     })
     .catch((err) => {
-      log.debug("TOKEN_REFRESH", "Failed to fetch projectId after token refresh", {
-        connectionId,
-        error: err?.message ?? err,
-      });
+      log.debug(
+        "TOKEN_REFRESH",
+        "Failed to fetch projectId after token refresh",
+        {
+          connectionId,
+          error: err?.message ?? err,
+        },
+      );
     });
 }
 
@@ -156,8 +172,14 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
   try {
     const updates = {};
 
-    if (newCredentials.accessToken)         updates.accessToken  = newCredentials.accessToken;
-    if (newCredentials.refreshToken)        updates.refreshToken = newCredentials.refreshToken;
+    if (newCredentials.accessToken)
+      updates.accessToken = newCredentials.accessToken;
+    if (newCredentials.refreshToken)
+      updates.refreshToken = newCredentials.refreshToken;
+    if (newCredentials.idToken) updates.idToken = newCredentials.idToken;
+    if (newCredentials.lastRefreshAt)
+      updates.lastRefreshAt = newCredentials.lastRefreshAt;
+    if (newCredentials.expiresAt) updates.expiresAt = newCredentials.expiresAt;
     if (newCredentials.expiresIn) {
       updates.expiresAt = toExpiresAt(newCredentials.expiresIn);
       updates.expiresIn = newCredentials.expiresIn;
@@ -165,7 +187,10 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
       const expiresAt = normalizeExpiresAt(newCredentials.expiresAt);
       if (expiresAt) {
         updates.expiresAt = expiresAt;
-        updates.expiresIn = Math.max(1, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
+        updates.expiresIn = Math.max(
+          1,
+          Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000),
+        );
       }
     }
     if (newCredentials.providerSpecificData) {
@@ -174,12 +199,25 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
         ...newCredentials.providerSpecificData,
       };
     }
-    if (newCredentials.projectId)            updates.projectId = newCredentials.projectId;
+    if (newCredentials.copilotToken || newCredentials.copilotTokenExpiresAt) {
+      updates.providerSpecificData = {
+        ...(updates.providerSpecificData ||
+          newCredentials.existingProviderSpecificData ||
+          {}),
+        ...(newCredentials.copilotToken
+          ? { copilotToken: newCredentials.copilotToken }
+          : {}),
+        ...(newCredentials.copilotTokenExpiresAt
+          ? { copilotTokenExpiresAt: newCredentials.copilotTokenExpiresAt }
+          : {}),
+      };
+    }
+    if (newCredentials.projectId) updates.projectId = newCredentials.projectId;
 
     const result = await updateProviderConnection(connectionId, updates);
     log.info("TOKEN_REFRESH", "Credentials updated in localDb", {
       connectionId,
-      success: !!result
+      success: !!result,
     });
     return !!result;
   } catch (error) {
@@ -205,64 +243,73 @@ export async function checkAndRefreshToken(provider, credentials) {
   let creds = { ...credentials };
 
   // ── 1. Regular access-token expiry ────────────────────────────────────────
-  if (creds.expiresAt) {
-    const expiresAt = new Date(creds.expiresAt).getTime();
-    const now       = Date.now();
-    const remaining = expiresAt - now;
-
+  if (_shouldRefreshCredentials(provider, creds)) {
+    const expiresAt = creds.expiresAt
+      ? new Date(creds.expiresAt).getTime()
+      : null;
+    const remaining = expiresAt ? expiresAt - Date.now() : null;
     const refreshLead = _getRefreshLeadMs(provider);
-    if (remaining < refreshLead) {
-      log.info("TOKEN_REFRESH", "Token expiring soon, refreshing proactively", {
-        provider,
-        expiresIn: Math.round(remaining / 1000),
-        refreshLeadMs: refreshLead,
-      });
 
-      const newCreds = await getAccessToken(provider, creds);
-      if (newCreds?.accessToken) {
-        const mergedCreds = {
-          ...newCreds,
-          existingProviderSpecificData: creds.providerSpecificData,
-        };
+    log.info("TOKEN_REFRESH", "Refreshing provider credentials proactively", {
+      provider,
+      expiresIn: remaining === null ? null : Math.round(remaining / 1000),
+      refreshLeadMs: refreshLead,
+      lastRefreshAt: creds.lastRefreshAt || null,
+    });
 
-        // Persist to DB (non-blocking path continues below)
-        await updateProviderCredentials(creds.connectionId, mergedCreds);
+    const newCreds = await _refreshProviderCredentials(provider, creds, log);
+    if (newCreds?.accessToken || newCreds?.apiKey || newCreds?.copilotToken) {
+      const mergedCreds = {
+        ...newCreds,
+        existingProviderSpecificData: creds.providerSpecificData,
+      };
 
-        creds = {
-          ...creds,
-          accessToken:  newCreds.accessToken,
-          refreshToken: newCreds.refreshToken ?? creds.refreshToken,
-          providerSpecificData: newCreds.providerSpecificData
-            ? { ...creds.providerSpecificData, ...newCreds.providerSpecificData }
-            : creds.providerSpecificData,
-          expiresAt:    newCreds.expiresIn
-            ? toExpiresAt(newCreds.expiresIn)
-            : normalizeExpiresAt(newCreds.expiresAt) || creds.expiresAt,
-        };
+      // Persist to DB (non-blocking path continues below)
+      await updateProviderCredentials(creds.connectionId, mergedCreds);
 
-        // Non-blocking: refresh projectId with the new access token
-        _refreshProjectId(provider, creds.connectionId, creds.accessToken);
-      }
+      creds = {
+        ...creds,
+        ...newCreds,
+        expiresAt: newCreds.expiresIn
+          ? toExpiresAt(newCreds.expiresIn)
+          : normalizeExpiresAt(newCreds.expiresAt) ||
+            newCreds.expiresAt ||
+            creds.expiresAt,
+        providerSpecificData: newCreds.providerSpecificData
+          ? { ...creds.providerSpecificData, ...newCreds.providerSpecificData }
+          : creds.providerSpecificData,
+      };
+
+      // Non-blocking: refresh projectId with the new access token
+      _refreshProjectId(provider, creds.connectionId, creds.accessToken);
     }
   }
 
   // ── 2. GitHub Copilot token expiry ────────────────────────────────────────
-  if (provider === "github" && creds.providerSpecificData?.copilotTokenExpiresAt) {
-    const copilotExpiresAt = creds.providerSpecificData.copilotTokenExpiresAt * 1000;
-    const now              = Date.now();
-    const remaining        = copilotExpiresAt - now;
+  if (
+    provider === "github" &&
+    creds.providerSpecificData?.copilotTokenExpiresAt
+  ) {
+    const copilotExpiresAt =
+      creds.providerSpecificData.copilotTokenExpiresAt * 1000;
+    const now = Date.now();
+    const remaining = copilotExpiresAt - now;
 
     if (remaining < TOKEN_EXPIRY_BUFFER_MS) {
-      log.info("TOKEN_REFRESH", "Copilot token expiring soon, refreshing proactively", {
-        provider,
-        expiresIn: Math.round(remaining / 1000),
-      });
+      log.info(
+        "TOKEN_REFRESH",
+        "Copilot token expiring soon, refreshing proactively",
+        {
+          provider,
+          expiresIn: Math.round(remaining / 1000),
+        },
+      );
 
       const copilotToken = await refreshCopilotToken(creds.accessToken);
       if (copilotToken) {
         const updatedSpecific = {
           ...creds.providerSpecificData,
-          copilotToken:          copilotToken.token,
+          copilotToken: copilotToken.token,
           copilotTokenExpiresAt: copilotToken.expiresAt,
         };
 
@@ -298,8 +345,178 @@ export async function refreshGitHubAndCopilotTokens(credentials) {
   return {
     ...newGitHubCreds,
     providerSpecificData: {
-      copilotToken:          copilotToken.token,
+      copilotToken: copilotToken.token,
       copilotTokenExpiresAt: copilotToken.expiresAt,
     },
   };
 }
+
+const codexConnectionRefreshLocks = new Map();
+
+export async function refreshCodexConnection(connection, options = {}) {
+  if (!connection || connection.provider !== "codex") {
+    return { ok: false, error: "Unsupported provider" };
+  }
+
+  if (!connection.id) {
+    return { ok: false, error: "Missing connection id" };
+  }
+
+  if (codexConnectionRefreshLocks.has(connection.id)) {
+    return codexConnectionRefreshLocks.get(connection.id);
+  }
+
+  const refreshPromise = (async () => {
+    const freshConnection = await getProviderConnectionById(connection.id);
+    if (!freshConnection) {
+      return { ok: false, error: "Connection not found" };
+    }
+
+    const result = await getAccessToken(
+      "codex",
+      {
+        refreshToken: freshConnection.refreshToken,
+        providerSpecificData: freshConnection.providerSpecificData,
+      },
+      log,
+    );
+
+    if (!result?.accessToken) {
+      const errorMessage = isUnrecoverableRefreshError(result)
+        ? "Refresh token invalid or already used. Re-auth required."
+        : "Failed to refresh Codex token";
+      return {
+        ok: false,
+        error: errorMessage,
+        unrecoverable: isUnrecoverableRefreshError(result),
+      };
+    }
+
+    const mergedProviderSpecificData = {
+      ...(freshConnection.providerSpecificData || {}),
+      ...(result.providerSpecificData || {}),
+    };
+
+    await updateProviderCredentials(connection.id, {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      expiresIn: result.expiresIn,
+      expiresAt: result.expiresAt,
+      providerSpecificData: mergedProviderSpecificData,
+      existingProviderSpecificData: freshConnection.providerSpecificData,
+      testStatus: "active",
+      lastError: null,
+      lastErrorAt: null,
+    });
+
+    return {
+      ok: true,
+      connectionId: connection.id,
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken || freshConnection.refreshToken,
+      expiresIn: result.expiresIn,
+      expiresAt:
+        result.expiresAt ||
+        (result.expiresIn ? toExpiresAt(result.expiresIn) : null),
+      providerSpecificData: mergedProviderSpecificData,
+    };
+  })().finally(() => {
+    codexConnectionRefreshLocks.delete(connection.id);
+  });
+
+  codexConnectionRefreshLocks.set(connection.id, refreshPromise);
+  return refreshPromise;
+}
+
+export async function refreshSelectedCodexConnections(connections) {
+  const selected = Array.isArray(connections)
+    ? connections.filter((connection) => connection?.provider === "codex")
+    : [];
+  const results = [];
+
+  for (const connection of selected) {
+    try {
+      const result = await refreshCodexConnection(connection);
+      results.push({
+        connectionId: connection.id,
+        ok: !!result?.ok,
+        error: result?.error || null,
+        expiresAt: result?.expiresAt || null,
+      });
+    } catch (error) {
+      results.push({
+        connectionId: connection.id,
+        ok: false,
+        error: error.message,
+        expiresAt: null,
+      });
+    }
+  }
+
+  return results;
+}
+
+export function isCodexAutoRefreshCandidate(
+  connection,
+  now = Date.now(),
+  leadMs = 2 * 60 * 60 * 1000,
+) {
+  if (!connection || connection.provider !== "codex") return false;
+  if (connection.providerSpecificData?.autoRefreshEnabled !== true)
+    return false;
+  if (!connection.refreshToken) return false;
+  if (!connection.expiresAt) return false;
+
+  const expiresAtMs = new Date(connection.expiresAt).getTime();
+  if (!Number.isFinite(expiresAtMs)) return false;
+  return expiresAtMs <= now + leadMs;
+}
+
+export async function runCodexProactiveRefreshCheckpoint(options = {}) {
+  const leadMs = options.leadMs ?? 2 * 60 * 60 * 1000;
+  const now = Date.now();
+  const connections = await getProviderConnections();
+  const candidates = (connections || []).filter((connection) =>
+    isCodexAutoRefreshCandidate(connection, now, leadMs),
+  );
+
+  if (candidates.length === 0) {
+    log.info("TOKEN_REFRESH", "Codex proactive checkpoint skipped", {
+      reason: "no_candidates",
+    });
+    return { total: 0, refreshed: 0, failed: 0 };
+  }
+
+  const results = await refreshSelectedCodexConnections(candidates);
+  const refreshed = results.filter((result) => result.ok).length;
+  const failed = results.filter((result) => !result.ok).length;
+
+  log.info("TOKEN_REFRESH", "Codex proactive checkpoint finished", {
+    total: results.length,
+    refreshed,
+    failed,
+  });
+
+  return { total: results.length, refreshed, failed, results };
+}
+
+export const CODEX_PROACTIVE_REFRESH_LEAD_MS = 2 * 60 * 60 * 1000;
+
+export function getCodexProactiveRefreshIntervalMs() {
+  return 15 * 60 * 1000;
+}
+
+export async function startCodexProactiveRefreshTick() {
+  try {
+    return await runCodexProactiveRefreshCheckpoint({
+      leadMs: CODEX_PROACTIVE_REFRESH_LEAD_MS,
+    });
+  } catch (error) {
+    log.error("TOKEN_REFRESH", "Codex proactive checkpoint failed", {
+      error: error.message,
+    });
+    return { total: 0, refreshed: 0, failed: 1, error: error.message };
+  }
+}
+
+export { codexConnectionRefreshLocks };

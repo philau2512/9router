@@ -79,3 +79,12 @@ plans/
 CLAUDE.md
 .repomixignore
 .codegraph/
+.agent/
+.agents/
+GEMINI.md
+*.log
+.playwright-mcp/
+OmniRoute/
+.codex/
+release-manifest.json
+CLIProxyAPI/

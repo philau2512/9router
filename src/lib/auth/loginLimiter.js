@@ -6,13 +6,19 @@ const FAIL_WINDOW_MS = 60 * 60 * 1000; // 1h since last fail → auto reset
 
 const attempts = new Map(); // ip → { fails, lockUntil, lockLevel, lastFailAt }
 
-function now() { return Date.now(); }
+function now() {
+  return Date.now();
+}
 
 function getEntry(ip) {
   const e = attempts.get(ip);
   if (!e) return null;
   // Auto reset if window expired and not currently locked
-  if (e.lastFailAt && now() - e.lastFailAt > FAIL_WINDOW_MS && (!e.lockUntil || now() >= e.lockUntil)) {
+  if (
+    e.lastFailAt &&
+    now() - e.lastFailAt > FAIL_WINDOW_MS &&
+    (!e.lockUntil || now() >= e.lockUntil)
+  ) {
     attempts.delete(ip);
     return null;
   }
@@ -28,7 +34,12 @@ export function checkLock(ip) {
 }
 
 export function recordFail(ip) {
-  const e = getEntry(ip) || { fails: 0, lockUntil: 0, lockLevel: 0, lastFailAt: 0 };
+  const e = getEntry(ip) || {
+    fails: 0,
+    lockUntil: 0,
+    lockLevel: 0,
+    lastFailAt: 0,
+  };
   e.fails += 1;
   e.lastFailAt = now();
   if (e.fails >= MAX_FAILS_BEFORE_LOCK) {
@@ -46,7 +57,15 @@ export function recordSuccess(ip) {
 }
 
 export function getClientIp(request) {
-  const xff = request.headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0].trim();
-  return request.headers.get("x-real-ip") || "unknown";
+  // Trusted: set from TCP socket by custom-server.js (client cannot spoof).
+  const realIp = request.headers.get("x-9r-real-ip");
+  if (realIp) return realIp;
+  // Behind a trusted reverse proxy that overwrites XFF with the real client IP.
+  if (process.env.TRUST_PROXY === "true") {
+    const xff = request.headers.get("x-forwarded-for");
+    if (xff) return xff.split(",")[0].trim();
+  }
+  // Direct exposure without custom-server: single bucket so spoofed XFF
+  // rotation cannot escape the limiter.
+  return "unknown";
 }

@@ -1,13 +1,21 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
+import { v4 as uuidv4 } from "uuid";
+import { extractThinking } from "../concerns/thinkingUnified.js";
+import { effortToBudget, budgetToLevel } from "../concerns/thinking.js";
 import { adjustMaxTokens } from "../helpers/maxTokensHelper.js";
+
+function stripAnthropicBillingHeader(text) {
+  if (typeof text !== "string") return "";
+  return text.replace(/^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i, "");
+}
 
 // Convert Claude request to OpenAI format
 export function claudeToOpenAIRequest(model, body, stream) {
   const result = {
     model: model,
     messages: [],
-    stream: stream
+    stream: stream,
   };
 
   // Max tokens
@@ -23,13 +31,16 @@ export function claudeToOpenAIRequest(model, body, stream) {
   // System message
   if (body.system) {
     const systemContent = Array.isArray(body.system)
-      ? body.system.map(s => s.text || "").join("\n")
-      : body.system;
-    
+      ? body.system
+          .map((s) => stripAnthropicBillingHeader(s.text || ""))
+          .filter(Boolean)
+          .join("\n")
+      : stripAnthropicBillingHeader(body.system);
+
     if (systemContent) {
       result.messages.push({
         role: "system",
-        content: systemContent
+        content: systemContent,
       });
     }
   }
@@ -55,19 +66,56 @@ export function claudeToOpenAIRequest(model, body, stream) {
 
   // Tools
   if (body.tools && Array.isArray(body.tools)) {
-    result.tools = body.tools.map(tool => ({
+    result.tools = body.tools.map((tool) => ({
       type: "function",
       function: {
         name: tool.name,
         description: String(tool.description || ""),
-        parameters: tool.input_schema || { type: "object", properties: {} }
-      }
+        parameters: tool.input_schema || { type: "object", properties: {} },
+      },
     }));
   }
 
   // Tool choice
   if (body.tool_choice) {
     result.tool_choice = convertToolChoice(body.tool_choice);
+  }
+
+  if (body.reasoning_effort !== undefined) {
+    result.reasoning_effort = body.reasoning_effort;
+  } else if (body.reasoning?.effort !== undefined) {
+    result.reasoning_effort = body.reasoning.effort;
+  }
+
+  if (body.reasoning !== undefined) {
+    result.reasoning = body.reasoning;
+  }
+
+  // Extract and map Claude thinking/effort -> OpenAI format
+  const thinkingConfig = extractThinking(body);
+  if (thinkingConfig) {
+    if (thinkingConfig.mode === "budget") {
+      result.thinking = {
+        type: "enabled",
+        budget_tokens: thinkingConfig.budget,
+      };
+      result.reasoning_effort = budgetToLevel(thinkingConfig.budget) || "medium";
+    } else if (thinkingConfig.mode === "level") {
+      result.reasoning_effort = thinkingConfig.level;
+      result.thinking = {
+        type: "enabled",
+        budget_tokens: effortToBudget(thinkingConfig.level) || 16000,
+      };
+    } else if (thinkingConfig.mode === "auto") {
+      result.reasoning_effort = "high";
+      result.thinking = {
+        type: "enabled",
+        budget_tokens: 16000,
+      };
+    } else if (thinkingConfig.mode === "none") {
+      result.thinking = { type: "disabled" };
+      result.reasoning_effort = "none";
+    }
   }
 
   return result;
@@ -77,9 +125,13 @@ export function claudeToOpenAIRequest(model, body, stream) {
 function fixMissingToolResponses(messages) {
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
-    if (msg.role === "assistant" && msg.tool_calls && msg.tool_calls.length > 0) {
-      const toolCallIds = msg.tool_calls.map(tc => tc.id);
-      
+    if (
+      msg.role === "assistant" &&
+      msg.tool_calls &&
+      msg.tool_calls.length > 0
+    ) {
+      const toolCallIds = msg.tool_calls.map((tc) => tc.id);
+
       // Collect all tool response IDs that IMMEDIATELY follow this assistant message
       const respondedIds = new Set();
       let insertPosition = i + 1;
@@ -92,15 +144,15 @@ function fixMissingToolResponses(messages) {
           break;
         }
       }
-      
+
       // Find missing responses and insert them
-      const missingIds = toolCallIds.filter(id => !respondedIds.has(id));
-      
+      const missingIds = toolCallIds.filter((id) => !respondedIds.has(id));
+
       if (missingIds.length > 0) {
-        const missingResponses = missingIds.map(id => ({
+        const missingResponses = missingIds.map((id) => ({
           role: "tool",
           tool_call_id: id,
-          content: "[No response received]"
+          content: "[No response received]",
         }));
         messages.splice(insertPosition, 0, ...missingResponses);
         i = insertPosition + missingResponses.length - 1;
@@ -111,8 +163,16 @@ function fixMissingToolResponses(messages) {
 
 // Convert single Claude message - returns single message or array of messages
 function convertClaudeMessage(msg) {
-  const role = msg.role === "user" || msg.role === "tool" ? "user" : "assistant";
-  
+  // Upstream fix from open-sse commit 749c2e3f9
+  // Map mid-conversation system message to user role to prevent 400 errors with LiteLLM
+  // Claude Code inserts role:system at end of messages[], previously mapped to assistant
+  // causing conversation not ending with user → OpenAI-compat provider (LiteLLM) translates
+  // back to Anthropic returning 400 "assistant message prefill"
+  let role = msg.role === "user" || msg.role === "tool" ? "user" : "assistant";
+  if (msg.role === "system") {
+    role = "user"; // Map system → user and wrap in <system-reminder> to preserve instruction semantics
+  }
+
   // Simple string content
   if (typeof msg.content === "string") {
     return { role, content: msg.content };
@@ -135,8 +195,8 @@ function convertClaudeMessage(msg) {
             parts.push({
               type: "image_url",
               image_url: {
-                url: `data:${block.source.media_type};base64,${block.source.data}`
-              }
+                url: `data:${block.source.media_type};base64,${block.source.data}`,
+              },
             });
           }
           break;
@@ -147,8 +207,8 @@ function convertClaudeMessage(msg) {
             type: "function",
             function: {
               name: block.name,
-              arguments: JSON.stringify(block.input || {})
-            }
+              arguments: JSON.stringify(block.input || {}),
+            },
           });
           break;
 
@@ -157,18 +217,19 @@ function convertClaudeMessage(msg) {
           if (typeof block.content === "string") {
             resultContent = block.content;
           } else if (Array.isArray(block.content)) {
-            resultContent = block.content
-              .filter(c => c.type === "text")
-              .map(c => c.text)
-              .join("\n") || JSON.stringify(block.content);
+            resultContent =
+              block.content
+                .filter((c) => c.type === "text")
+                .map((c) => c.text)
+                .join("\n") || JSON.stringify(block.content);
           } else if (block.content) {
             resultContent = JSON.stringify(block.content);
           }
-          
+
           toolResults.push({
             role: "tool",
             tool_call_id: block.tool_use_id,
-            content: resultContent
+            content: resultContent,
           });
           break;
       }
@@ -177,9 +238,10 @@ function convertClaudeMessage(msg) {
     // If has tool results, return array of tool messages
     if (toolResults.length > 0) {
       if (parts.length > 0) {
-        const textContent = parts.length === 1 && parts[0].type === "text" 
-          ? parts[0].text 
-          : parts;
+        const textContent =
+          parts.length === 1 && parts[0].type === "text"
+            ? parts[0].text
+            : parts;
         return [...toolResults, { role: "user", content: textContent }];
       }
       return toolResults;
@@ -189,9 +251,10 @@ function convertClaudeMessage(msg) {
     if (toolCalls.length > 0) {
       const result = { role: "assistant" };
       if (parts.length > 0) {
-        result.content = parts.length === 1 && parts[0].type === "text" 
-          ? parts[0].text 
-          : parts;
+        result.content =
+          parts.length === 1 && parts[0].type === "text"
+            ? parts[0].text
+            : parts;
       }
       result.tool_calls = toolCalls;
       return result;
@@ -199,12 +262,16 @@ function convertClaudeMessage(msg) {
 
     // Return content
     if (parts.length > 0) {
-      return {
-        role,
-        content: parts.length === 1 && parts[0].type === "text" ? parts[0].text : parts
-      };
+      // Flatten text-only arrays to string (OpenAI providers reject content arrays for text-only)
+      const allText = parts.every((p) => p.type === "text");
+      const flatContent = allText
+        ? parts.map((p) => p.text).join("\n")
+        : parts.length === 1 && parts[0].type === "text"
+          ? parts[0].text
+          : parts;
+      return { role, content: flatContent };
     }
-    
+
     // Empty content array
     if (msg.content.length === 0) {
       return { role, content: "" };
@@ -218,15 +285,18 @@ function convertClaudeMessage(msg) {
 function convertToolChoice(choice) {
   if (!choice) return "auto";
   if (typeof choice === "string") return choice;
-  
+
   switch (choice.type) {
-    case "auto": return "auto";
-    case "any": return "required";
-    case "tool": return { type: "function", function: { name: choice.name } };
-    default: return "auto";
+    case "auto":
+      return "auto";
+    case "any":
+      return "required";
+    case "tool":
+      return { type: "function", function: { name: choice.name } };
+    default:
+      return "auto";
   }
 }
 
 // Register
 register(FORMATS.CLAUDE, FORMATS.OPENAI, claudeToOpenAIRequest, null);
-

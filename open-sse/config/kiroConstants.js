@@ -18,7 +18,112 @@
 export const KIRO_AGENTIC_SUFFIX = "-agentic";
 export const KIRO_THINKING_SUFFIX = "-thinking";
 
+// Public default CodeWhisperer profile ARNs (us-east-1), keyed by auth method.
+// Used when an account cannot resolve its own profileArn. Builder ID and social
+// (Google/GitHub) sign-ins map to different shared profiles.
+export const KIRO_DEFAULT_PROFILE_ARNS = {
+  "builder-id":
+    "arn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX",
+  social: "arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK",
+};
+
+// Back-compat single default (Builder ID).
+export const KIRO_DEFAULT_PROFILE_ARN = KIRO_DEFAULT_PROFILE_ARNS["builder-id"];
+
+/** Resolve the shared default profileArn for a given auth method. */
+export function resolveDefaultProfileArn(authMethod) {
+  const social = authMethod === "google" || authMethod === "github";
+  return social
+    ? KIRO_DEFAULT_PROFILE_ARNS.social
+    : KIRO_DEFAULT_PROFILE_ARNS["builder-id"];
+}
+
 export const KIRO_THINKING_BUDGET_DEFAULT = 16000;
+
+// Resolve the Kiro thinking budget from client intent.
+// Reuses extractThinking (unified parser) so every client shape maps consistently.
+// Returns a numeric budget to inject, or null when thinking is explicitly disabled.
+// Import lazily to avoid circular deps with translator layer.
+let _extractThinking, _effortToBudget;
+async function getThinkingHelpers() {
+  if (!_extractThinking) {
+    ({ extractThinking: _extractThinking } = await import("../translator/concerns/thinkingUnified.js"));
+    ({ effortToBudget: _effortToBudget } = await import("../translator/concerns/thinking.js"));
+  }
+  return { extractThinking: _extractThinking, effortToBudget: _effortToBudget };
+}
+
+/**
+ * Resolve the Kiro thinking budget requested by a client.
+ * Explicit none/off/disabled wins and returns null (no prefix injected).
+ * buildThinkingSystemPrefix performs Kiro's final 1..32000 clamp.
+ *
+ * @param {object} body OpenAI/Claude-shaped request body
+ * @param {object} [headers] Original inbound HTTP headers
+ * @param {string} [model] Model id the caller asked for
+ * @returns {number|null} budget to inject, or null when thinking is disabled
+ */
+export function resolveKiroThinkingBudget(body, headers, model) {
+  // Inline extractThinking logic (sync, no registry deps needed)
+  const cfg = extractThinkingSync(body);
+  if (cfg) {
+    if (cfg.mode === "none") return null;
+    if (cfg.mode === "budget") return cfg.budget;
+    if (cfg.mode === "level") return effortToBudgetSync(cfg.level) ?? KIRO_THINKING_BUDGET_DEFAULT;
+    return KIRO_THINKING_BUDGET_DEFAULT;
+  }
+
+  if (headers) {
+    const beta = pickHeader(headers, "anthropic-beta");
+    if (typeof beta === "string" && beta.toLowerCase().includes("interleaved-thinking")) {
+      return KIRO_THINKING_BUDGET_DEFAULT;
+    }
+  }
+
+  if (containsThinkingModeTag(body)) return KIRO_THINKING_BUDGET_DEFAULT;
+
+  if (typeof model === "string" && model) {
+    const m = model.toLowerCase();
+    if (m.includes("thinking") || m.includes("-reason")) return KIRO_THINKING_BUDGET_DEFAULT;
+  }
+
+  return null;
+}
+
+// Inline sync helpers (avoid async import for sync call sites)
+const LEVEL_TO_BUDGET_INLINE = { none: 0, minimal: 512, low: 1024, medium: 8192, high: 24576, xhigh: 32768, max: 128000 };
+function effortToBudgetSync(effort) {
+  if (!effort) return undefined;
+  return LEVEL_TO_BUDGET_INLINE[String(effort).toLowerCase()];
+}
+
+function extractThinkingSync(body) {
+  if (!body || typeof body !== "object") return null;
+  const oc = body.output_config?.effort;
+  if (typeof oc === "string" && oc) {
+    const e = oc.toLowerCase();
+    if (e === "none" || e === "off") return { mode: "none" };
+    if (e === "auto") return { mode: "auto" };
+    return { mode: "level", level: e };
+  }
+  const t = body.thinking;
+  if (t && typeof t === "object") {
+    if (t.type === "disabled") return { mode: "none" };
+    if (t.type === "adaptive" || t.type === "enabled") {
+      const budget = Number(t.budget_tokens);
+      if (Number.isFinite(budget) && budget > 0) return { mode: "budget", budget };
+      return { mode: "auto" };
+    }
+  }
+  const effort = body.reasoning_effort ?? (typeof body.reasoning === "object" ? body.reasoning?.effort : null);
+  if (typeof effort === "string" && effort) {
+    const e = effort.toLowerCase();
+    if (e === "none" || e === "off") return { mode: "none" };
+    if (e === "auto") return { mode: "auto" };
+    return { mode: "level", level: e };
+  }
+  return null;
+}
 
 export const KIRO_AGENTIC_SYSTEM_PROMPT = `
 # CRITICAL: CHUNKED WRITE PROTOCOL (MANDATORY)
@@ -91,25 +196,39 @@ REMEMBER: When in doubt, write LESS per operation. Multiple small operations > o
 export function isThinkingEnabled(body, headers, model) {
   if (headers) {
     const beta = pickHeader(headers, "anthropic-beta");
-    if (typeof beta === "string" && beta.toLowerCase().includes("interleaved-thinking")) {
+    if (
+      typeof beta === "string" &&
+      beta.toLowerCase().includes("interleaved-thinking")
+    ) {
       return true;
     }
   }
 
   if (body && typeof body === "object") {
     const thinking = body.thinking;
-    if (thinking && typeof thinking === "object" && thinking.type === "enabled") {
+    if (
+      thinking &&
+      typeof thinking === "object" &&
+      thinking.type === "enabled"
+    ) {
       const budget = Number(thinking.budget_tokens);
       if (!Number.isFinite(budget) || budget > 0) {
         return true;
       }
     }
 
-    const effort = body.reasoning_effort
-      ?? (body.reasoning && typeof body.reasoning === "object" ? body.reasoning.effort : null);
+    const effort =
+      body.reasoning_effort ??
+      (body.reasoning && typeof body.reasoning === "object"
+        ? body.reasoning.effort
+        : null);
     if (typeof effort === "string") {
       const v = effort.toLowerCase();
-      if (v && v !== "none" && (v === "low" || v === "medium" || v === "high" || v === "auto")) {
+      if (
+        v &&
+        v !== "none" &&
+        (v === "low" || v === "medium" || v === "high" || v === "auto")
+      ) {
         return true;
       }
     }
@@ -216,8 +335,13 @@ export function resolveKiroModel(model) {
  *
  * @param {number} [budget=KIRO_THINKING_BUDGET_DEFAULT]
  */
-export function buildThinkingSystemPrefix(budget = KIRO_THINKING_BUDGET_DEFAULT) {
-  const safeBudget = Math.max(1, Math.min(32000, Number(budget) || KIRO_THINKING_BUDGET_DEFAULT));
+export function buildThinkingSystemPrefix(
+  budget = KIRO_THINKING_BUDGET_DEFAULT,
+) {
+  const safeBudget = Math.max(
+    1,
+    Math.min(32000, Number(budget) || KIRO_THINKING_BUDGET_DEFAULT),
+  );
   return `<thinking_mode>enabled</thinking_mode>\n<max_thinking_length>${safeBudget}</max_thinking_length>`;
 }
 
@@ -250,13 +374,16 @@ function containsThinkingModeTag(body) {
       }
     }
   }
-  if (typeof body?.system === "string" && containsTagInText(body.system)) return true;
+  if (typeof body?.system === "string" && containsTagInText(body.system))
+    return true;
   return false;
 }
 
 function containsTagInText(text) {
   if (!text) return false;
   if (!text.includes("<thinking_mode>")) return false;
-  return text.includes("<thinking_mode>enabled</thinking_mode>")
-    || text.includes("<thinking_mode>interleaved</thinking_mode>");
+  return (
+    text.includes("<thinking_mode>enabled</thinking_mode>") ||
+    text.includes("<thinking_mode>interleaved</thinking_mode>")
+  );
 }

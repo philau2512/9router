@@ -1,4 +1,4 @@
-import { KIRO_CONFIG } from "../constants/oauth.js";
+import { KIRO_CONFIG, assertValidAwsRegion } from "../constants/oauth.js";
 
 /**
  * Kiro OAuth Service
@@ -17,6 +17,7 @@ export class KiroService {
    * Returns clientId and clientSecret for device code flow
    */
   async registerClient(region = "us-east-1") {
+    assertValidAwsRegion(region);
     const endpoint = `https://oidc.${region}.amazonaws.com/client/register`;
 
     const response = await fetch(endpoint, {
@@ -49,7 +50,13 @@ export class KiroService {
   /**
    * Start device authorization for AWS Builder ID or IDC
    */
-  async startDeviceAuthorization(clientId, clientSecret, startUrl, region = "us-east-1") {
+  async startDeviceAuthorization(
+    clientId,
+    clientSecret,
+    startUrl,
+    region = "us-east-1",
+  ) {
+    assertValidAwsRegion(region);
     const endpoint = `https://oidc.${region}.amazonaws.com/device_authorization`;
 
     const response = await fetch(endpoint, {
@@ -83,7 +90,13 @@ export class KiroService {
   /**
    * Poll for token using device code (AWS Builder ID/IDC)
    */
-  async pollDeviceToken(clientId, clientSecret, deviceCode, region = "us-east-1") {
+  async pollDeviceToken(
+    clientId,
+    clientSecret,
+    deviceCode,
+    region = "us-east-1",
+  ) {
+    assertValidAwsRegion(region);
     const endpoint = `https://oidc.${region}.amazonaws.com/token`;
 
     const response = await fetch(endpoint, {
@@ -107,7 +120,8 @@ export class KiroService {
         success: false,
         error: data.error,
         errorDescription: data.error_description,
-        pending: data.error === "authorization_pending" || data.error === "slow_down",
+        pending:
+          data.error === "authorization_pending" || data.error === "slow_down",
       };
     }
 
@@ -176,7 +190,9 @@ export class KiroService {
 
     // AWS SSO OIDC refresh (Builder ID or IDC)
     if (clientId && clientSecret) {
-      const endpoint = `https://oidc.${region || "us-east-1"}.amazonaws.com/token`;
+      const safeRegion = region || "us-east-1";
+      assertValidAwsRegion(safeRegion);
+      const endpoint = `https://oidc.${safeRegion}.amazonaws.com/token`;
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -235,7 +251,9 @@ export class KiroService {
   async validateImportToken(refreshToken) {
     // Validate token format
     if (!refreshToken.startsWith("aorAAAAAG")) {
-      throw new Error("Invalid token format. Token should start with aorAAAAAG...");
+      throw new Error(
+        "Invalid token format. Token should start with aorAAAAAG...",
+      );
     }
 
     // Try to refresh to validate
@@ -254,6 +272,64 @@ export class KiroService {
   }
 
   /**
+   * List available CodeWhisperer profiles for an API key / access token.
+   * Returns the profileArn best matching the given region, or null.
+   */
+  async listAvailableProfiles(accessToken, region = "us-east-1") {
+    assertValidAwsRegion(region);
+    const endpoint = `https://codewhisperer.${region}.amazonaws.com`;
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-amz-json-1.0",
+        "x-amz-target": "AmazonCodeWhispererService.ListAvailableProfiles",
+        "Authorization": `Bearer ${accessToken}`,
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({ maxResults: 10 }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to list profiles: ${error}`);
+    }
+
+    const data = await response.json();
+    const profiles = Array.isArray(data?.profiles) ? data.profiles : [];
+    const arnOf = (p) => p?.arn || p?.profileArn || null;
+    const match = profiles.find((p) => arnOf(p)?.split(":")[3] === region) || profiles[0];
+    return arnOf(match);
+  }
+
+  /**
+   * Validate an API-key credential by listing profiles with it.
+   * API keys are long-lived bearer tokens (no refresh cycle).
+   * Returns a credential object ready to persist as authMethod="api_key".
+   */
+  async validateApiKey(apiKey, region = "us-east-1") {
+    if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
+      throw new Error("API key is required");
+    }
+    const trimmed = apiKey.trim();
+
+    let profileArn = null;
+    try {
+      profileArn = await this.listAvailableProfiles(trimmed, region);
+    } catch (error) {
+      throw new Error(`API key validation failed: ${error.message}`);
+    }
+
+    return {
+      accessToken: trimmed,
+      refreshToken: null,
+      profileArn,
+      region,
+      authMethod: "api_key",
+    };
+  }
+
+  /**
    * List available models from CodeWhisperer API
    */
   async listAvailableModels(accessToken, profileArn) {
@@ -265,8 +341,8 @@ export class KiroService {
       headers: {
         "Content-Type": "application/x-amz-json-1.0",
         "x-amz-target": target,
-        "Authorization": `Bearer ${accessToken}`,
-        "Accept": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
       },
       body: JSON.stringify({
         origin: "AI_EDITOR",
@@ -280,7 +356,7 @@ export class KiroService {
     }
 
     const data = await response.json();
-    return (data.models || []).map(m => ({
+    return (data.models || []).map((m) => ({
       id: m.modelId,
       name: m.modelName || m.modelId,
       description: m.description,
@@ -304,7 +380,9 @@ export class KiroService {
         payload += "=";
       }
 
-      const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+      const decoded = JSON.parse(
+        atob(payload.replace(/-/g, "+").replace(/_/g, "/")),
+      );
       return decoded.email || decoded.preferred_username || decoded.sub;
     } catch {
       return null;

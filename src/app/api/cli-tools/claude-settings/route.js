@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { NextResponse } from "next/server";
 import { exec } from "child_process";
@@ -15,14 +15,16 @@ const getClaudeSettingsPath = () => {
   return path.join(homeDir, ".claude", "settings.json");
 };
 
-
 // Check if claude CLI is installed (via which/where or config file exists)
 const checkClaudeInstalled = async () => {
   try {
     const isWindows = os.platform() === "win32";
     const command = isWindows ? "where claude" : "which claude";
     const env = isWindows
-      ? { ...process.env, PATH: `${process.env.APPDATA}\\npm;${process.env.PATH}` }
+      ? {
+          ...process.env,
+          PATH: `${process.env.APPDATA}\\npm;${process.env.PATH}`,
+        }
       : process.env;
     await execAsync(command, { windowsHide: true, env });
     return true;
@@ -41,12 +43,12 @@ const readSettings = async () => {
   try {
     const settingsPath = getClaudeSettingsPath();
     const content = await fs.readFile(settingsPath, "utf-8");
-    return JSON.parse(content);
+    // Tolerate JSONC (trailing commas) and treat unparseable files as "no config"
+    // rather than throwing a 500 that the UI misreads as "tool not installed".
+    const stripped = content.replace(/,(\s*[}\]])/g, "$1");
+    return JSON.parse(stripped);
   } catch (error) {
-    if (error.code === "ENOENT") {
-      return null;
-    }
-    throw error;
+    return null;
   }
 };
 
@@ -54,7 +56,7 @@ const readSettings = async () => {
 export async function GET() {
   try {
     const isInstalled = await checkClaudeInstalled();
-    
+
     if (!isInstalled) {
       return NextResponse.json({
         installed: false,
@@ -64,7 +66,7 @@ export async function GET() {
     }
 
     const settings = await readSettings();
-    const has9Router = !!(settings?.env?.ANTHROPIC_BASE_URL);
+    const has9Router = !!settings?.env?.ANTHROPIC_BASE_URL;
 
     return NextResponse.json({
       installed: true,
@@ -76,7 +78,7 @@ export async function GET() {
     console.log("Error checking claude settings:", error);
     return NextResponse.json(
       { error: "Failed to check claude settings" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -85,11 +87,11 @@ export async function GET() {
 export async function POST(request) {
   try {
     const { env } = await request.json();
-    
+
     if (!env || typeof env !== "object") {
       return NextResponse.json(
         { error: "Invalid env object" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -112,8 +114,8 @@ export async function POST(request) {
 
     // Normalize ANTHROPIC_BASE_URL to ensure /v1 suffix
     if (env.ANTHROPIC_BASE_URL) {
-      env.ANTHROPIC_BASE_URL = env.ANTHROPIC_BASE_URL.endsWith("/v1") 
-        ? env.ANTHROPIC_BASE_URL 
+      env.ANTHROPIC_BASE_URL = env.ANTHROPIC_BASE_URL.endsWith("/v1")
+        ? env.ANTHROPIC_BASE_URL
         : `${env.ANTHROPIC_BASE_URL}/v1`;
     }
 
@@ -138,7 +140,7 @@ export async function POST(request) {
     console.log("Error updating claude settings:", error);
     return NextResponse.json(
       { error: "Failed to update claude settings" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -178,7 +180,7 @@ export async function DELETE() {
       RESET_ENV_KEYS.forEach((key) => {
         delete currentSettings.env[key];
       });
-      
+
       // Clean up empty env object
       if (Object.keys(currentSettings.env).length === 0) {
         delete currentSettings.env;
@@ -196,8 +198,7 @@ export async function DELETE() {
     console.log("Error resetting claude settings:", error);
     return NextResponse.json(
       { error: "Failed to reset claude settings" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-

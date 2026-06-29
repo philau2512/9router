@@ -77,7 +77,11 @@ export function startLocalServer(onCallback, fixedPort = null) {
 
     server.on("error", (err) => {
       if (err.code === "EADDRINUSE" && fixedPort) {
-        reject(new Error(`Port ${fixedPort} is already in use. Please close other applications using this port.`));
+        reject(
+          new Error(
+            `Port ${fixedPort} is already in use. Please close other applications using this port.`,
+          ),
+        );
       } else {
         reject(err);
       }
@@ -153,14 +157,24 @@ export function clearCodexSession(state) {
   pendingExchanges.delete(state);
 }
 
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function renderCodexResultPage(success, message) {
   const color = success ? "#22c55e" : "#ef4444";
   const icon = success ? "&#10003;" : "&#10007;";
   const title = success ? "Authentication Successful" : "Authentication Failed";
+  const safeMessage = escapeHtml(message);
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>${title}</title>
 <style>body{font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f5f5f5}.c{text-align:center;padding:2rem;background:#fff;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.1)}.i{color:${color};font-size:3rem}h1{margin:1rem 0}p{color:#666}</style>
-</head><body><div class="c"><div class="i">${icon}</div><h1>${title}</h1><p>${message}</p><p>Closing in <span id="cd">3</span>s...</p>
+</head><body><div class="c"><div class="i">${icon}</div><h1>${title}</h1><p>${safeMessage}</p><p>Closing in <span id="cd">3</span>s...</p>
 <script>let n=3;const c=document.getElementById("cd");const t=setInterval(()=>{n--;c.textContent=n;if(n<=0){clearInterval(t);window.close();}},1000);</script>
 </div></body></html>`;
 }
@@ -195,7 +209,9 @@ export function startCodexProxy(appPort) {
       if (session) {
         try {
           if (errorParam) {
-            throw new Error(url.searchParams.get("error_description") || errorParam);
+            throw new Error(
+              url.searchParams.get("error_description") || errorParam,
+            );
           }
           if (!code) throw new Error("No authorization code received");
 
@@ -208,7 +224,7 @@ export function startCodexProxy(appPort) {
             code,
             session.redirectUri,
             session.codeVerifier,
-            state
+            state,
           );
           const connection = await createProviderConnection({
             provider: "codex",
@@ -246,7 +262,10 @@ export function startCodexProxy(appPort) {
 
     server.listen(CODEX_PORT, "127.0.0.1", () => {
       codexProxyServer = server;
-      codexProxyTimeout = setTimeout(() => stopCodexProxy(), CODEX_PROXY_TIMEOUT_MS);
+      codexProxyTimeout = setTimeout(
+        () => stopCodexProxy(),
+        CODEX_PROXY_TIMEOUT_MS,
+      );
       resolve({ success: true });
     });
 
@@ -338,7 +357,9 @@ export function startXaiProxy(appPort) {
       if (session) {
         try {
           if (errorParam) {
-            throw new Error(url.searchParams.get("error_description") || errorParam);
+            throw new Error(
+              url.searchParams.get("error_description") || errorParam,
+            );
           }
           if (!code) throw new Error("No authorization code received");
 
@@ -350,7 +371,7 @@ export function startXaiProxy(appPort) {
             code,
             session.redirectUri,
             session.codeVerifier,
-            state
+            state,
           );
           const connection = await createProviderConnection({
             provider: "xai",
@@ -412,4 +433,3 @@ export function stopXaiProxy() {
     xaiProxyServer = null;
   }
 }
-

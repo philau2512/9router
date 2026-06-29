@@ -1,4 +1,5 @@
 import { getProxyPoolById } from "@/models";
+import { getSettings } from "@/lib/localDb";
 
 // Safely normalize any value into a trimmed string.
 function normalizeString(value) {
@@ -14,11 +15,11 @@ function normalizeLegacyProxy(providerSpecificData = {}) {
     providerSpecificData?.connectionProxyEnabled === true;
 
   const connectionProxyUrl = normalizeString(
-    providerSpecificData?.connectionProxyUrl
+    providerSpecificData?.connectionProxyUrl,
   );
 
   const connectionNoProxy = normalizeString(
-    providerSpecificData?.connectionNoProxy
+    providerSpecificData?.connectionNoProxy,
   );
 
   return {
@@ -36,17 +37,15 @@ function normalizeLegacyProxy(providerSpecificData = {}) {
  * 2. Legacy Proxy
  * 3. No Proxy
  */
-export async function resolveConnectionProxyConfig(
-  providerSpecificData = {}
-) {
+export async function resolveConnectionProxyConfig(providerSpecificData = {}) {
   try {
-    const proxyPoolIdRaw = normalizeString(
-      providerSpecificData?.proxyPoolId
-    );
+    const settings = await getSettings();
+    const proxyHeadersTimeout =
+      Number(settings?.connectionProxyHeadersTimeoutMs) || undefined;
+    const proxyPoolIdRaw = normalizeString(providerSpecificData?.proxyPoolId);
 
     // "__none__" means explicitly disabled
-    const proxyPoolId =
-      proxyPoolIdRaw === "__none__" ? "" : proxyPoolIdRaw;
+    const proxyPoolId = proxyPoolIdRaw === "__none__" ? "" : proxyPoolIdRaw;
 
     const legacy = normalizeLegacyProxy(providerSpecificData);
 
@@ -61,19 +60,20 @@ export async function resolveConnectionProxyConfig(
       const proxyUrl = normalizeString(proxyPool?.proxyUrl);
       const noProxy = normalizeString(proxyPool?.noProxy);
 
-      const isValidPool =
-        proxyPool &&
-        proxyPool.isActive === true &&
-        proxyUrl;
+      const isValidPool = proxyPool && proxyPool.isActive === true && proxyUrl;
 
       if (isValidPool) {
         /**
-         * Vercel relay proxies use base URL rewriting
+         * Vercel/Cloudflare relay proxies use base URL rewriting
          * instead of HTTP_PROXY environment variables.
          */
-        if (proxyPool.type === "vercel") {
+        if (
+          proxyPool.type === "vercel" ||
+          proxyPool.type === "cloudflare" ||
+          proxyPool.type === "deno"
+        ) {
           return {
-            source: "vercel",
+            source: proxyPool.type,
 
             proxyPoolId,
             proxyPool,
@@ -84,7 +84,8 @@ export async function resolveConnectionProxyConfig(
 
             strictProxy: proxyPool.strictProxy === true,
 
-            vercelRelayUrl: proxyUrl,
+            vercelRelayUrl: proxyUrl, // Still mapped to vercelRelayUrl in the unified payload since they use the exact same header spec
+            connectionProxyHeadersTimeoutMs: proxyHeadersTimeout,
           };
         }
 
@@ -102,6 +103,7 @@ export async function resolveConnectionProxyConfig(
           connectionNoProxy: noProxy,
 
           strictProxy: proxyPool.strictProxy === true,
+          connectionProxyHeadersTimeoutMs: proxyHeadersTimeout,
         };
       }
     }
@@ -111,10 +113,7 @@ export async function resolveConnectionProxyConfig(
      * Legacy Proxy Fallback
      * -----------------------------
      */
-    if (
-      legacy.connectionProxyEnabled &&
-      legacy.connectionProxyUrl
-    ) {
+    if (legacy.connectionProxyEnabled && legacy.connectionProxyUrl) {
       return {
         source: "legacy",
 
@@ -122,6 +121,7 @@ export async function resolveConnectionProxyConfig(
         proxyPool: null,
 
         ...legacy,
+        connectionProxyHeadersTimeoutMs: proxyHeadersTimeout,
       };
     }
 
@@ -137,11 +137,12 @@ export async function resolveConnectionProxyConfig(
       proxyPool: null,
 
       ...legacy,
+      connectionProxyHeadersTimeoutMs: proxyHeadersTimeout,
     };
   } catch (error) {
     console.error(
       "[resolveConnectionProxyConfig] Failed to resolve proxy config:",
-      error
+      error,
     );
 
     return {
@@ -155,6 +156,7 @@ export async function resolveConnectionProxyConfig(
       connectionNoProxy: "",
 
       strictProxy: false,
+      connectionProxyHeadersTimeoutMs: undefined,
     };
   }
 }

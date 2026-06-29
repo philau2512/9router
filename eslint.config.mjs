@@ -1,16 +1,54 @@
-import { defineConfig, globalIgnores } from "eslint/config";
+import { defineConfig } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 
-const eslintConfig = defineConfig([
-  ...nextVitals,
-  // Override default ignores of eslint-config-next.
-  globalIgnores([
-    // Default ignores of eslint-config-next:
-    ".next/**",
-    "out/**",
-    "build/**",
-    "next-env.d.ts",
-  ]),
-]);
+export default defineConfig([
+  {
+    ignores: [
+      "**/.next/**",
+      "**/.next-cli-build/**",
+      "**/out/**",
+      "**/build/**",
+      "**/dist/**",
+      "**/node_modules/**",
+      "**/.agents/**",
+      "**/.claude/**",
+      "**/cli/app/**",
+      "next-env.d.ts",
+    ],
+  },
 
-export default eslintConfig;
+  {
+    files: ["open-sse/**/*.js", "src/**/*.js", "cli/**/*.js", "tests/**/*.js"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      globals: {
+        process: "readonly",
+        globalThis: "readonly",
+        console: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+        Buffer: "readonly",
+        Headers: "readonly",
+        Response: "readonly",
+        Request: "readonly",
+        DOMException: "readonly",
+        AbortController: "readonly",
+        URL: "readonly",
+        describe: "readonly",
+        it: "readonly",
+        expect: "readonly",
+        vi: "readonly",
+        beforeEach: "readonly",
+        afterEach: "readonly",
+      },
+    },
+    rules: {
+      "no-undef": "error",
+    },
+  },
+
+  ...nextVitals,
+]);

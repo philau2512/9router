@@ -4,30 +4,200 @@
  */
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
-import { v4 as uuidv4 } from "uuid";
+import { v4 as uuidv4, v5 as uuidv5 } from "uuid";
 import {
   resolveKiroModel,
-  isThinkingEnabled,
+  resolveKiroThinkingBudget,
   buildThinkingSystemPrefix,
-  KIRO_AGENTIC_SYSTEM_PROMPT
+  KIRO_AGENTIC_SYSTEM_PROMPT,
+  resolveDefaultProfileArn,
 } from "../../config/kiroConstants.js";
+
+/** Render a single tool call as a readable text line. */
+function toolCallToText(name, input) {
+  let argStr;
+  try {
+    argStr = typeof input === "string" ? input : JSON.stringify(input ?? {});
+  } catch {
+    argStr = "{}";
+  }
+  return `[Tool call: ${name || "unknown"}(${argStr})]`;
+}
+
+/** Render a tool result (string or content-block array) as a text line. */
+function toolResultToText(content) {
+  const text = Array.isArray(content)
+    ? content.map((c) => (typeof c === "string" ? c : c.text || "")).join("\n")
+    : typeof content === "string"
+      ? content
+      : "";
+  return `[Tool result: ${text}]`;
+}
+
+/**
+ * Flatten all tool calls/results in a conversation into plain text.
+ *
+ * Kiro's schema validator requires a non-empty
+ * currentMessage.userInputMessageContext.tools array whenever the history
+ * references any tool use; otherwise it returns "Improperly formed request"
+ * (HTTP 400). A client can hit this by omitting the `tools` array on a
+ * follow-up request — typically after client-side compaction (e.g. OpenCode).
+ *
+ * Rather than fabricate stub tool specs — which would advertise tool-calling
+ * capability the client never requested and may not handle, risking a phantom
+ * tool call on an otherwise plain turn — we collapse the tool interaction into
+ * text. The request stays honest, and since no structured tool content
+ * remains, the validator's "tools required" rule never fires.
+ *
+ * Only invoked when the client did NOT send tools; when tools are present the
+ * structured form is preserved.
+ */
+function flattenToolInteractions(messages) {
+  const out = [];
+
+  for (const msg of messages) {
+    // OpenAI tool-result message → user text line
+    if (msg.role === "tool") {
+      out.push({ role: "user", content: toolResultToText(msg.content) });
+      continue;
+    }
+
+    if (msg.role === "assistant") {
+      const parts = [];
+      if (Array.isArray(msg.content)) {
+        for (const c of msg.content) {
+          if (c.type === "tool_use") {
+            parts.push(toolCallToText(c.name, c.input));
+          } else if (c.type === "text" || c.text) {
+            parts.push(c.text || "");
+          }
+        }
+      } else if (typeof msg.content === "string") {
+        parts.push(msg.content);
+      }
+      for (const tc of msg.tool_calls || []) {
+        parts.push(toolCallToText(tc.function?.name, tc.function?.arguments));
+      }
+      out.push({
+        role: "assistant",
+        content: parts.filter(Boolean).join("\n"),
+      });
+      continue;
+    }
+
+    // User messages: replace tool_result blocks with text, keep text + images.
+    if (msg.role === "user" && Array.isArray(msg.content)) {
+      const newContent = msg.content.map((c) =>
+        c.type === "tool_result"
+          ? { type: "text", text: toolResultToText(c.content) }
+          : c,
+      );
+      out.push({ ...msg, content: newContent });
+      continue;
+    }
+
+    out.push(msg);
+  }
+
+  return out;
+}
+
+/**
+ * Reconcile orphaned toolResults — those whose toolUseId has no matching
+ * toolUse in any assistant message. This happens when client-side compaction
+ * truncates the conversation and removes the assistant message containing the
+ * tool_use, but keeps the user message with the corresponding tool_result.
+ *
+ * A dangling structured reference makes Kiro return 400, so it must be removed.
+ * But the client deliberately kept the result content through compaction, so
+ * rather than discard it we fold it back into the user message as text — the
+ * same shape flattenToolInteractions() produces. The 400 trigger (the
+ * structured reference) is gone; the content survives.
+ *
+ * `messages` is every carrier that can hold toolResults — both history items
+ * and the popped-out currentMessage (orphans can land on either).
+ */
+function reconcileOrphanedToolResults(history, currentMessage) {
+  // Phase 1: collect all valid toolUseIds from assistant messages in history.
+  // (currentMessage is always a user turn, so it carries no toolUses.)
+  const validIds = new Set();
+  for (const h of history) {
+    const arm = h.assistantResponseMessage;
+    if (!arm) continue;
+    for (const tu of arm.toolUses || []) {
+      if (tu.toolUseId) validIds.add(tu.toolUseId);
+    }
+  }
+
+  // Phase 2: across history + currentMessage, keep results with a matching
+  // toolUse and salvage the rest as text.
+  const carriers = currentMessage ? [...history, currentMessage] : history;
+  for (const item of carriers) {
+    const uim = item.userInputMessage;
+    const ctx = uim?.userInputMessageContext;
+    if (!ctx?.toolResults?.length) continue;
+
+    const kept = [];
+    const salvaged = [];
+    for (const tr of ctx.toolResults) {
+      if (validIds.has(tr.toolUseId)) {
+        kept.push(tr);
+      } else {
+        salvaged.push(toolResultToText(tr.content));
+      }
+    }
+
+    if (salvaged.length === 0) continue; // no orphans — leave untouched
+
+    // Fold orphaned result content into the user text so it is not lost
+    const extra = salvaged.join("\n");
+    uim.content = uim.content ? `${uim.content}\n\n${extra}` : extra;
+
+    ctx.toolResults = kept;
+    if (kept.length === 0 && !ctx.tools?.length) {
+      delete uim.userInputMessageContext;
+    }
+  }
+}
+
+/**
+ * Safely parse JSON string, returning fallback on failure.
+ */
+function safeJSONParse(str, fallback) {
+  if (typeof str !== "string") return str ?? fallback;
+  try {
+    return JSON.parse(str);
+  } catch {
+    return fallback;
+  }
+}
 
 /**
  * Convert OpenAI messages to Kiro format
- * Rules: system/tool/user -> user role, merge consecutive same roles
+ * Rules: system/tool/user -> user role, merge consecutive same roles.
+ *
+ * Returns { history, currentMessage }.
  */
 function convertMessages(messages, tools, model) {
   let history = [];
   let currentMessage = null;
-  
+
+  const clientProvidedTools = tools && tools.length > 0;
+
+  // When the client did not send tools, flatten any tool calls/results in the
+  // history into plain text (see flattenToolInteractions). This keeps the
+  // request honest and sidesteps Kiro's "tools required" 400, since no
+  // structured tool content survives to trigger it.
+  if (!clientProvidedTools) {
+    messages = flattenToolInteractions(messages);
+  }
+
   let pendingUserContent = [];
   let pendingAssistantContent = [];
   let pendingToolResults = [];
   let pendingImages = [];
   let currentRole = null;
-
-  // Image support is pre-filtered by caps in translateRequest before reaching here
-  const supportsImages = true;
+  let toolsInjectedToFirstUserMsg = false;
 
   const flushPending = () => {
     if (currentRole === "user") {
@@ -35,8 +205,8 @@ function convertMessages(messages, tools, model) {
       const userMsg = {
         userInputMessage: {
           content: content,
-          modelId: ""
-        }
+          modelId: "",
+        },
       };
 
       // Attach images if present (Kiro API supports images field)
@@ -46,39 +216,47 @@ function convertMessages(messages, tools, model) {
 
       if (pendingToolResults.length > 0) {
         userMsg.userInputMessage.userInputMessageContext = {
-          toolResults: pendingToolResults
+          toolResults: pendingToolResults,
         };
       }
-      
-      // Add tools to first user message
-      if (tools && tools.length > 0 && history.length === 0) {
+
+      // Add tools to the user message that has no preceding assistant messages,
+      // OR the first user message (whichever comes first after any opening
+      // assistant messages). We track whether any user message has already
+      // received tools via a flag on the history array.
+      if (clientProvidedTools && !toolsInjectedToFirstUserMsg) {
         if (!userMsg.userInputMessage.userInputMessageContext) {
           userMsg.userInputMessage.userInputMessageContext = {};
         }
-        userMsg.userInputMessage.userInputMessageContext.tools = tools.map(t => {
-          const name = t.function?.name || t.name;
-          let description = t.function?.description || t.description || "";
-          
-          if (!description.trim()) {
-            description = `Tool: ${name}`;
-          }
-          
-          const schema = t.function?.parameters || t.parameters || t.input_schema || {};
-          // Normalize schema: Kiro requires required[] and proper type/properties
-          const normalizedSchema = Object.keys(schema).length === 0
-            ? { type: "object", properties: {}, required: [] }
-            : { ...schema, required: schema.required ?? [] };
+        userMsg.userInputMessage.userInputMessageContext.tools = tools.map(
+          (t) => {
+            const name = t.function?.name || t.name;
+            let description = t.function?.description || t.description || "";
 
-          return {
-            toolSpecification: {
-              name,
-              description,
-              inputSchema: { json: normalizedSchema }
+            if (!description.trim()) {
+              description = `Tool: ${name}`;
             }
-          };
-        });
+
+            const schema =
+              t.function?.parameters || t.parameters || t.input_schema || {};
+            // Normalize schema: Kiro requires required[] and proper type/properties
+            const normalizedSchema =
+              Object.keys(schema).length === 0
+                ? { type: "object", properties: {}, required: [] }
+                : { ...schema, required: schema.required ?? [] };
+
+            return {
+              toolSpecification: {
+                name,
+                description,
+                inputSchema: { json: normalizedSchema },
+              },
+            };
+          },
+        );
+        toolsInjectedToFirstUserMsg = true;
       }
-      
+
       history.push(userMsg);
       currentMessage = userMsg;
       pendingUserContent = [];
@@ -88,8 +266,8 @@ function convertMessages(messages, tools, model) {
       const content = pendingAssistantContent.join("\n\n").trim() || "...";
       const assistantMsg = {
         assistantResponseMessage: {
-          content: content
-        }
+          content: content,
+        },
       };
       history.push(assistantMsg);
       pendingAssistantContent = [];
@@ -99,18 +277,18 @@ function convertMessages(messages, tools, model) {
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     let role = msg.role;
-    
+
     // Normalize: system/tool -> user
     if (role === "system" || role === "tool") {
       role = "user";
     }
-    
+
     // If role changes, flush pending
     if (role !== currentRole && currentRole !== null) {
       flushPending();
     }
     currentRole = role;
-    
+
     if (role === "user") {
       // Extract content
       let content = "";
@@ -121,7 +299,7 @@ function convertMessages(messages, tools, model) {
         for (const c of msg.content) {
           if (c.type === "text" || c.text) {
             textParts.push(c.text || "");
-          } else if (supportsImages && c.type === "image_url") {
+          } else if (c.type === "image_url") {
             // OpenAI format: image_url.url with data URI
             const url = c.image_url?.url || "";
             const base64Match = url.match(/^data:([^;]+);base64,(.+)$/);
@@ -129,11 +307,14 @@ function convertMessages(messages, tools, model) {
               const mediaType = base64Match[1];
               const format = mediaType.split("/")[1] || mediaType;
               pendingImages.push({ format, source: { bytes: base64Match[2] } });
-            } else if (url.startsWith("http://") || url.startsWith("https://")) {
+            } else if (
+              url.startsWith("http://") ||
+              url.startsWith("https://")
+            ) {
               // Kiro only supports base64 — fallback to URL text
               textParts.push(`[Image: ${url}]`);
             }
-          } else if (supportsImages && c.type === "image") {
+          } else if (c.type === "image") {
             // Claude format: source.type = "base64", source.media_type, source.data
             if (c.source?.type === "base64" && c.source?.data) {
               const mediaType = c.source.media_type || "image/png";
@@ -143,31 +324,35 @@ function convertMessages(messages, tools, model) {
           }
         }
         content = textParts.join("\n");
-        
+
         // Check for tool_result blocks
-        const toolResultBlocks = msg.content.filter(c => c.type === "tool_result");
+        const toolResultBlocks = msg.content.filter(
+          (c) => c.type === "tool_result",
+        );
         if (toolResultBlocks.length > 0) {
-          toolResultBlocks.forEach(block => {
-            const text = Array.isArray(block.content) 
-              ? block.content.map(c => c.text || "").join("\n")
-              : (typeof block.content === "string" ? block.content : "");
-            
+          toolResultBlocks.forEach((block) => {
+            const text = Array.isArray(block.content)
+              ? block.content.map((c) => c.text || "").join("\n")
+              : typeof block.content === "string"
+                ? block.content
+                : "";
+
             pendingToolResults.push({
               toolUseId: block.tool_use_id,
               status: "success",
-              content: [{ text: text }]
+              content: [{ text: text }],
             });
           });
         }
       }
-      
+
       // Handle tool role (from normalized)
       if (msg.role === "tool") {
         const toolContent = typeof msg.content === "string" ? msg.content : "";
         pendingToolResults.push({
           toolUseId: msg.tool_call_id,
           status: "success",
-          content: [{ text: toolContent }]
+          content: [{ text: toolContent }],
         });
       } else if (content) {
         pendingUserContent.push(content);
@@ -176,65 +361,62 @@ function convertMessages(messages, tools, model) {
       // Extract text content and tool uses
       let textContent = "";
       let toolUses = [];
-      
+
       if (Array.isArray(msg.content)) {
-        const textBlocks = msg.content.filter(c => c.type === "text");
-        textContent = textBlocks.map(b => b.text).join("\n").trim();
-        
-        const toolUseBlocks = msg.content.filter(c => c.type === "tool_use");
+        const textBlocks = msg.content.filter((c) => c.type === "text");
+        textContent = textBlocks
+          .map((b) => b.text)
+          .join("\n")
+          .trim();
+
+        const toolUseBlocks = msg.content.filter((c) => c.type === "tool_use");
         toolUses = toolUseBlocks;
       } else if (typeof msg.content === "string") {
         textContent = msg.content.trim();
       }
-      
+
       if (msg.tool_calls && msg.tool_calls.length > 0) {
         toolUses = msg.tool_calls;
       }
-      
+
       if (textContent) {
         pendingAssistantContent.push(textContent);
       }
-      
+
       // Store tool uses in last assistant message
       if (toolUses.length > 0) {
-        if (pendingAssistantContent.length === 0) {
-          // pendingAssistantContent.push("Call tools");
-        }
-        
         // Flush to create assistant message with toolUses
         flushPending();
-        
+
         const lastMsg = history[history.length - 1];
         if (lastMsg?.assistantResponseMessage) {
-          lastMsg.assistantResponseMessage.toolUses = toolUses.map(tc => {
+          lastMsg.assistantResponseMessage.toolUses = toolUses.map((tc) => {
             if (tc.function) {
               return {
                 toolUseId: tc.id || uuidv4(),
                 name: tc.function.name,
-                input: typeof tc.function.arguments === "string" 
-                  ? JSON.parse(tc.function.arguments) 
-                  : (tc.function.arguments || {})
+                input: safeJSONParse(tc.function.arguments, {}),
               };
             } else {
               return {
                 toolUseId: tc.id || uuidv4(),
                 name: tc.name,
-                input: tc.input || {}
+                input: tc.input || {},
               };
             }
           });
         }
-        
+
         currentRole = null;
       }
     }
   }
-  
+
   // Flush remaining
   if (currentRole !== null) {
     flushPending();
   }
-  
+
   // Pop last userInputMessage as currentMessage (search from end, skip trailing assistant messages)
   for (let i = history.length - 1; i >= 0; i--) {
     if (history[i].userInputMessage) {
@@ -244,15 +426,18 @@ function convertMessages(messages, tools, model) {
   }
 
   // Grab tools from first history item BEFORE cleanup removes them
-  const firstHistoryTools = history[0]?.userInputMessage?.userInputMessageContext?.tools;
+  const firstHistoryTools =
+    history[0]?.userInputMessage?.userInputMessageContext?.tools;
 
   // Clean up history for Kiro API compatibility
-  history.forEach(item => {
+  history.forEach((item) => {
     if (item.userInputMessage?.userInputMessageContext?.tools) {
       delete item.userInputMessage.userInputMessageContext.tools;
     }
-    if (item.userInputMessage?.userInputMessageContext &&
-        Object.keys(item.userInputMessage.userInputMessageContext).length === 0) {
+    if (
+      item.userInputMessage?.userInputMessageContext &&
+      Object.keys(item.userInputMessage.userInputMessageContext).length === 0
+    ) {
       delete item.userInputMessage.userInputMessageContext;
     }
     if (item.userInputMessage && !item.userInputMessage.modelId) {
@@ -261,26 +446,82 @@ function convertMessages(messages, tools, model) {
   });
 
   // Merge consecutive user messages (Kiro requires alternating user/assistant)
+  // When merging, also combine userInputMessageContext fields so toolResults
+  // and images from the second message are not silently dropped.
   const mergedHistory = [];
   for (let i = 0; i < history.length; i++) {
     const current = history[i];
-    if (current.userInputMessage &&
-        mergedHistory.length > 0 &&
-        mergedHistory[mergedHistory.length - 1].userInputMessage) {
+    if (
+      current.userInputMessage &&
+      mergedHistory.length > 0 &&
+      mergedHistory[mergedHistory.length - 1].userInputMessage
+    ) {
       const prev = mergedHistory[mergedHistory.length - 1];
-      prev.userInputMessage.content += "\n\n" + current.userInputMessage.content;
+      prev.userInputMessage.content +=
+        "\n\n" + current.userInputMessage.content;
+      // Merge context: combine toolResults, images, etc.
+      const prevCtx = prev.userInputMessage.userInputMessageContext;
+      const curCtx = current.userInputMessage.userInputMessageContext;
+      if (curCtx) {
+        if (!prevCtx) {
+          prev.userInputMessage.userInputMessageContext = curCtx;
+        } else {
+          if (curCtx.toolResults?.length > 0) {
+            prevCtx.toolResults = [
+              ...(prevCtx.toolResults || []),
+              ...curCtx.toolResults,
+            ];
+          }
+          if (curCtx.tools?.length > 0) {
+            prevCtx.tools = [...(prevCtx.tools || []), ...curCtx.tools];
+          }
+        }
+      }
     } else {
       mergedHistory.push(current);
     }
   }
 
-  // Inject tools into currentMessage AFTER cleanup
-  if (firstHistoryTools && currentMessage?.userInputMessage &&
-      !currentMessage.userInputMessage.userInputMessageContext?.tools) {
+  // When currentMessage is null (no user messages at all — edge case where
+  // input is only assistant messages), create a minimal currentMessage so
+  // tools and content can be injected.
+  if (!currentMessage) {
+    currentMessage = {
+      userInputMessage: {
+        content: "",
+        modelId: model,
+      },
+    };
+  }
+
+  // Reconcile orphaned toolResults across history AND currentMessage — when
+  // client-side compaction removes assistant messages containing tool_use but
+  // keeps the tool_result, the dangling reference triggers a Kiro 400. Fold the
+  // content back into the user text instead of discarding it. Run after
+  // currentMessage is finalized (an orphan can be merged into it) and before
+  // tool injection (which may re-add userInputMessageContext).
+  //
+  // Only needed on the tools-present path: when the client sent no tools,
+  // flattenToolInteractions already collapsed every toolResult to text, so
+  // there is nothing structured left to orphan.
+  if (clientProvidedTools) {
+    reconcileOrphanedToolResults(mergedHistory, currentMessage);
+  }
+
+  // Inject tools into currentMessage AFTER cleanup. Tools only exist here when
+  // the client explicitly sent them (otherwise flattenToolInteractions already
+  // collapsed all tool content to text upstream, so there is nothing to carry).
+  const resolvedTools = firstHistoryTools;
+
+  if (
+    resolvedTools?.length > 0 &&
+    !currentMessage.userInputMessage.userInputMessageContext?.tools
+  ) {
     if (!currentMessage.userInputMessage.userInputMessageContext) {
       currentMessage.userInputMessage.userInputMessageContext = {};
     }
-    currentMessage.userInputMessage.userInputMessageContext.tools = firstHistoryTools;
+    currentMessage.userInputMessage.userInputMessageContext.tools =
+      resolvedTools;
   }
 
   return { history: mergedHistory, currentMessage };
@@ -304,18 +545,83 @@ function convertMessages(messages, tools, model) {
  *    name hints.
  */
 export function buildKiroPayload(model, body, stream, credentials) {
+  // Normalize model name: Claude Code sends dashes (claude-sonnet-4-6),
+  // Kiro API expects dots (claude-sonnet-4.6). Convert trailing version segment.
+  const normalizedModel = model.replace(
+    /^(claude-(?:opus|sonnet|haiku|3-\d+)-\d+)-(\d+)$/,
+    "$1.$2",
+  );
   const messages = body.messages || [];
-  const tools = body.tools || [];
-  const maxTokens = 32000;
+  let tools = body.tools || [];
+  const maxTokens = body.max_tokens ?? body.max_completion_tokens ?? 32000;
   const temperature = body.temperature;
   const topP = body.top_p;
 
-  const { upstream: upstreamModel, agentic, thinking: modelImpliesThinking } = resolveKiroModel(model);
-  const thinkingEnabled = modelImpliesThinking || isThinkingEnabled(body, null, model);
+  // Kiro rejects history that references toolUses/toolResults without a tools
+  // schema in userInputMessageContext. When callers omit body.tools but the
+  // message history still contains assistant.tool_calls / role=tool turns,
+  // synthesize a minimal tool schema from the tool names present in history
+  // so Kiro accepts the request instead of returning `Improperly formed
+  // request`. This preserves tool-call history and is a no-op when body.tools
+  // is already populated.
+  if (tools.length === 0) {
+    const seen = new Set();
+    const synthesized = [];
+    const pushName = (name) => {
+      if (typeof name === "string" && name && !seen.has(name)) {
+        seen.add(name);
+        synthesized.push({
+          type: "function",
+          function: {
+            name,
+            description: `Tool: ${name}`,
+            parameters: { type: "object", properties: {}, required: [] },
+          },
+        });
+      }
+    };
+    for (const msg of messages) {
+      if (msg?.role !== "assistant") continue;
+      if (Array.isArray(msg.tool_calls)) {
+        for (const tc of msg.tool_calls) {
+          pushName(tc?.function?.name || tc?.name);
+        }
+      }
+      // Anthropic-style assistant blocks: content:[{type:"tool_use", name, ...}]
+      if (Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          if (block?.type === "tool_use") {
+            pushName(block.name);
+          }
+        }
+      }
+    }
+    if (synthesized.length > 0) {
+      tools = synthesized;
+    }
+  }
 
-  const { history, currentMessage } = convertMessages(messages, tools, upstreamModel);
+  const {
+    upstream: upstreamModel,
+    agentic,
+    thinking: modelImpliesThinking,
+  } = resolveKiroModel(normalizedModel);
+  // Resolve thinking budget from client intent; null means disabled
+  const thinkingBudget = resolveKiroThinkingBudget(body, null, normalizedModel)
+    ?? (modelImpliesThinking ? undefined : null);
+  const thinkingEnabled = thinkingBudget !== null;
 
-  const profileArn = credentials?.providerSpecificData?.profileArn || "";
+  const { history, currentMessage, toolsAttached } = convertMessages(
+    messages,
+    tools,
+    upstreamModel,
+  );
+
+  let profileArn = credentials?.providerSpecificData?.profileArn || "";
+  if (!profileArn) {
+    const authMethod = credentials?.providerSpecificData?.authMethod;
+    profileArn = resolveDefaultProfileArn(authMethod);
+  }
 
   let finalContent = currentMessage?.userInputMessage?.content || "";
   const timestamp = new Date().toISOString();
@@ -325,34 +631,84 @@ export function buildKiroPayload(model, body, stream, credentials) {
   // then context/timestamp marker, then optional agentic chunked-write prompt.
   const prefixParts = [];
   if (thinkingEnabled) {
-    prefixParts.push(buildThinkingSystemPrefix());
+    prefixParts.push(buildThinkingSystemPrefix(thinkingBudget));
   }
   prefixParts.push(`[Context: Current time is ${timestamp}]`);
   if (agentic) {
     prefixParts.push(KIRO_AGENTIC_SYSTEM_PROMPT);
   }
+
+  // Prepend tool documentation for tools with long descriptions (moved from toolSpecification)
+  const toolDocs = currentMessage?._toolDocs;
+  if (toolDocs) {
+    prefixParts.push(`# Tool Documentation\n\n${toolDocs}`);
+  }
+
   finalContent = `${prefixParts.join("\n\n")}\n\n${finalContent}`;
 
   const payload = {
     conversationState: {
       chatTriggerType: "MANUAL",
-      conversationId: uuidv4(),
+      conversationId: uuidv4(), // Will be overridden below
       currentMessage: {
         userInputMessage: {
           content: finalContent,
           modelId: upstreamModel,
           origin: "AI_EDITOR",
-          ...(currentMessage?.userInputMessage?.images?.length > 0 && {
-            images: currentMessage.userInputMessage.images
+          ...(currentMessage?.userInputMessage?.images?.length && {
+            images: currentMessage.userInputMessage.images,
           }),
           ...(currentMessage?.userInputMessage?.userInputMessageContext && {
-            userInputMessageContext: currentMessage.userInputMessage.userInputMessageContext
-          })
-        }
+            userInputMessageContext:
+              currentMessage.userInputMessage.userInputMessageContext,
+          }),
+        },
       },
-      history: history
-    }
+      history: history,
+    },
   };
+
+  // Deterministic session caching for Kiro.
+  // Skip synthetic placeholder turns ("(empty)" injected for assistant-first
+  // conversations or alternating-role gaps) — otherwise unrelated assistant-
+  // first chats would all hash to the same uuidv5(empty) and reuse the same
+  // upstream Kiro/AWS conversation context, leaking prior state across
+  // sessions. See conversionMessages() above for the `__synthetic` marker.
+  const NAMESPACE_KIRO = "34f7193f-561d-4050-bc84-9547d953d6bf";
+
+  // Priority 1: Extract first user message from pre-compression body (passed by chatCore before
+  // compressContext runs). This keeps conversationId stable even when compression alters content.
+  // Priority 2: Deterministic hash from first user message in translated history (fallback).
+  const preCompressionBody = credentials?._preCompressionBody;
+  const preCompressionMessages = Array.isArray(preCompressionBody?.messages)
+    ? preCompressionBody.messages
+    : null;
+  const preCompressionFirstUser = preCompressionMessages?.find(
+    (m) => m.role === "user",
+  );
+  const seedFromPreCompression = preCompressionFirstUser
+    ? typeof preCompressionFirstUser.content === "string"
+      ? preCompressionFirstUser.content
+      : Array.isArray(preCompressionFirstUser.content)
+        ? preCompressionFirstUser.content
+            .filter((b) => b.type === "text")
+            .map((b) => b.text || "")
+            .join(" ")
+        : ""
+    : "";
+  const firstRealUserTurn = history.find(
+    (h) => h?.userInputMessage?.content && !h.__synthetic,
+  );
+  const firstContent =
+    seedFromPreCompression ||
+    firstRealUserTurn?.userInputMessage?.content ||
+    finalContent;
+
+  // Use uuidv5 with the hash of the system prompt / first message to maintain AWS Builder ID context cache
+  payload.conversationState.conversationId = uuidv5(
+    (firstContent || "").substring(0, 4000),
+    NAMESPACE_KIRO,
+  );
 
   if (profileArn) {
     payload.profileArn = profileArn;
@@ -361,14 +717,15 @@ export function buildKiroPayload(model, body, stream, credentials) {
   if (maxTokens || temperature !== undefined || topP !== undefined) {
     payload.inferenceConfig = {};
     if (maxTokens) payload.inferenceConfig.maxTokens = maxTokens;
-    if (temperature !== undefined) payload.inferenceConfig.temperature = temperature;
+    if (temperature !== undefined)
+      payload.inferenceConfig.temperature = temperature;
     if (topP !== undefined) payload.inferenceConfig.topP = topP;
   }
 
   // Tag payload so the executor can route the upstream model id correctly.
   Object.defineProperty(payload, "_kiroUpstreamModel", {
     value: upstreamModel,
-    enumerable: false
+    enumerable: false,
   });
 
   return payload;

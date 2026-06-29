@@ -2,21 +2,46 @@ import os from "os";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { existsSync } from "fs";
-import { cleanupProviderConnections, getSettings, updateSettings, getApiKeys } from "@/lib/localDb";
 import {
-  enableTunnel, enableTailscale,
-  isTunnelManuallyDisabled, isTunnelReconnecting, isTailscaleReconnecting,
-  getTunnelService, getTailscaleService,
-} from "@/lib/tunnel/tunnelManager";
-import { killCloudflared, isCloudflaredRunning, ensureCloudflared } from "@/lib/tunnel/cloudflared";
-import { isTailscaleRunning } from "@/lib/tunnel/tailscale";
-import { loadState } from "@/lib/tunnel/state";
-import { checkInternet, probeUrlAlive } from "@/lib/tunnel/networkProbe";
+  cleanupProviderConnections,
+  getSettings,
+  updateSettings,
+  getApiKeys,
+} from "@/lib/localDb";
 import {
-  RESTART_COOLDOWN_MS, NETWORK_SETTLE_MS,
-  WATCHDOG_INTERVAL_MS, NETWORK_CHECK_INTERVAL_MS,
-} from "@/lib/tunnel/tunnelConfig";
-import { getMitmStatus, startMitm, loadEncryptedPassword, initDbHooks, restoreToolDNS, removeAllDNSEntriesSync } from "@/mitm/manager";
+  enableTunnel,
+  enableTailscale,
+  isTunnelManuallyDisabled,
+  isTunnelReconnecting,
+  isTailscaleReconnecting,
+  getTunnelService,
+  getTailscaleService,
+  setTunnelUnexpectedExitCallback,
+  killCloudflared,
+  isCloudflaredRunning,
+  ensureCloudflared,
+  isTailscaleRunning,
+  isTailscaleRunningStrict,
+  checkInternet,
+  RESTART_COOLDOWN_MS,
+  NETWORK_SETTLE_MS,
+  WATCHDOG_INTERVAL_MS,
+  NETWORK_CHECK_INTERVAL_MS,
+  VIRTUAL_IFACE_REGEX,
+} from "@/lib/tunnel";
+import {
+  startCodexProactiveRefreshTick,
+  getCodexProactiveRefreshIntervalMs,
+} from "@/sse/services/tokenRefresh";
+import { startClaudeAutoPing } from "@/shared/services/claudeAutoPing";
+import {
+  getMitmStatus,
+  startMitm,
+  loadEncryptedPassword,
+  initDbHooks,
+  restoreToolDNS,
+  removeAllDNSEntriesSync,
+} from "@/mitm/manager";
 import { syncToJson as syncMitmAliasCache } from "@/lib/mitmAliasCache";
 
 // Inject correct paths and DB hooks into manager.js (CJS) from ESM context
@@ -27,25 +52,32 @@ import { syncToJson as syncMitmAliasCache } from "@/lib/mitmAliasCache";
       const appSrc = dirname(dirname(thisFile));
       const candidate = join(appSrc, "mitm", "server.js");
       if (existsSync(candidate)) process.env.MITM_SERVER_PATH = candidate;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
-  try { initDbHooks(getSettings, updateSettings); } catch { /* ignore */ }
+  try {
+    initDbHooks(getSettings, updateSettings);
+  } catch {
+    /* ignore */
+  }
 })();
 
 process.setMaxListeners(20);
 
 // Survive Next.js hot reload
-const g = global.__appSingleton ??= {
+const g = (global.__appSingleton ??= {
   signalHandlersRegistered: false,
   watchdogInterval: null,
   networkMonitorInterval: null,
+  codexProactiveRefreshInterval: null,
   lastNetworkFingerprint: null,
   lastWatchdogTick: Date.now(),
   lastOnline: null,
   mitmStartInProgress: false,
   tunnelAutoResumed: false,
   tailscaleAutoResumed: false,
-};
+});
 
 export async function initializeApp() {
   try {
@@ -56,25 +88,39 @@ export async function initializeApp() {
     if (settings.tunnelEnabled && !g.tunnelAutoResumed) {
       g.tunnelAutoResumed = true;
       console.log("[InitApp] Tunnel was enabled, auto-resuming...");
-      safeRestartTunnel("startup").catch((e) => console.log("[InitApp] Tunnel resume failed:", e.message));
+      safeRestartTunnel("startup").catch((e) =>
+        console.log("[InitApp] Tunnel resume failed:", e.message),
+      );
     }
 
     // Auto-resume tailscale (once per process)
     if (settings.tailscaleEnabled && !g.tailscaleAutoResumed) {
       g.tailscaleAutoResumed = true;
       console.log("[InitApp] Tailscale was enabled, auto-resuming...");
-      safeRestartTailscale("startup").catch((e) => console.log("[InitApp] Tailscale resume failed:", e.message));
+      safeRestartTailscale("startup").catch((e) =>
+        console.log("[InitApp] Tailscale resume failed:", e.message),
+      );
     }
 
     if (!g.signalHandlersRegistered) {
       const cleanup = () => {
-        try { removeAllDNSEntriesSync(); } catch { /* best effort */ }
+        try {
+          removeAllDNSEntriesSync();
+        } catch {
+          /* best effort */
+        }
         killCloudflared();
         process.exit();
       };
       process.on("SIGINT", cleanup);
       process.on("SIGTERM", cleanup);
-      process.on("exit", () => { try { removeAllDNSEntriesSync(); } catch { /* ignore */ } });
+      process.on("exit", () => {
+        try {
+          removeAllDNSEntriesSync();
+        } catch {
+          /* ignore */
+        }
+      });
       g.signalHandlersRegistered = true;
     }
 
@@ -83,8 +129,15 @@ export async function initializeApp() {
     // Sync mitmAlias DB → JSON cache so standalone MITM server can read it
     syncMitmAliasCache().catch(() => {});
 
+    // Auto-respawn tunnel when cloudflared exits unexpectedly (e.g. network change drop)
+    setTunnelUnexpectedExitCallback(() => {
+      safeRestartTunnel("unexpected-exit").catch(() => {});
+    });
+
     startWatchdog();
     startNetworkMonitor();
+    startCodexProactiveRefreshMonitor();
+    startClaudeAutoPing();
     autoStartMitm();
   } catch (error) {
     console.error("[InitApp] Error:", error);
@@ -102,12 +155,14 @@ async function autoStartMitm() {
 
     const password = await loadEncryptedPassword();
     if (!password && process.platform !== "win32") {
-      console.log("[InitApp] MITM was enabled but no saved password found, skipping auto-start");
+      console.log(
+        "[InitApp] MITM was enabled but no saved password found, skipping auto-start",
+      );
       return;
     }
 
     const keys = await getApiKeys();
-    const activeKey = keys.find(k => k.isActive !== false);
+    const activeKey = keys.find((k) => k.isActive !== false);
 
     console.log("[InitApp] MITM was enabled, auto-starting...");
     await startMitm(activeKey?.key || "sk_9router", password);
@@ -125,6 +180,11 @@ async function autoStartMitm() {
   }
 }
 
+// Cooldown only applies to repeating watchdog ticks (anti hammer-loop).
+// Network/exit events are one-shot transitions → bypass to recover fast.
+const FORCE_RESTART_REASONS =
+  /^(startup|netchange|sleep|sleep\+netchange|online|unexpected-exit)$/;
+
 // ─── Safe restart (4 guards: spawn / cooldown / alive / internet) ────────────
 
 async function safeRestartTunnel(reason) {
@@ -133,18 +193,24 @@ async function safeRestartTunnel(reason) {
   if (!settings.tunnelEnabled) return;
   if (svc.cancelToken.cancelled) return;
   if (svc.spawnInProgress) return;
-  if (Date.now() - svc.lastRestartAt < RESTART_COOLDOWN_MS) return;
 
-  // Alive check: process up + URL responds → skip
-  if (isCloudflaredRunning()) {
-    const state = loadState();
-    const publicUrl = state?.shortId ? `https://r${state.shortId}.abc-tunnel.us` : null;
-    if (publicUrl && await probeUrlAlive(publicUrl)) return;
+  const force = FORCE_RESTART_REASONS.test(reason);
+
+  // Process alive = trust cloudflared (self-reconnects via --retries 99, keeps same URL).
+  // Killing a live process on network change drops the tunnel and rotates the quick-tunnel URL.
+  if (isCloudflaredRunning()) return;
+
+  // Degraded/dead → cooldown only prevents hammer loop after a recent restart attempt.
+  // Bypass for network transitions (one-shot events) so user recovers fast after wifi change.
+  if (!force && Date.now() - svc.lastRestartAt < RESTART_COOLDOWN_MS) {
+    console.log(`[Tunnel] degraded but cooldown active, skip (${reason})`);
+    return;
   }
+  if (!(await checkInternet())) return;
 
-  if (!await checkInternet()) return;
-
-  console.log(`[Tunnel] safeRestart (${reason})`);
+  console.log(
+    `[Tunnel] safeRestart (${reason}) — tunnel unreachable${force ? " [force]" : ""}`,
+  );
   try {
     await enableTunnel();
     svc.lastRestartAt = Date.now();
@@ -160,15 +226,23 @@ async function safeRestartTailscale(reason) {
   if (!settings.tailscaleEnabled) return;
   if (svc.cancelToken.cancelled) return;
   if (svc.spawnInProgress) return;
-  if (Date.now() - svc.lastRestartAt < RESTART_COOLDOWN_MS) return;
 
-  if (isTailscaleRunning() && settings.tailscaleUrl) {
-    if (await probeUrlAlive(settings.tailscaleUrl)) return;
+  // Tailscale daemon is OS-level with built-in reconnect; trust it when running (even on netchange).
+  // Startup uses strict probe — cached state is cold after process/dev reload.
+  const running =
+    reason === "startup" ? isTailscaleRunningStrict() : isTailscaleRunning();
+  if (running) return;
+
+  const force = FORCE_RESTART_REASONS.test(reason);
+  if (!force && Date.now() - svc.lastRestartAt < RESTART_COOLDOWN_MS) {
+    console.log(`[Tailscale] degraded but cooldown active, skip (${reason})`);
+    return;
   }
+  if (!(await checkInternet())) return;
 
-  if (!await checkInternet()) return;
-
-  console.log(`[Tailscale] safeRestart (${reason})`);
+  console.log(
+    `[Tailscale] safeRestart (${reason}) — tunnel unreachable${force ? " [force]" : ""}`,
+  );
   try {
     await enableTailscale();
     svc.lastRestartAt = Date.now();
@@ -196,6 +270,7 @@ function getNetworkFingerprint() {
   const active = [];
   for (const [name, addrs] of Object.entries(interfaces)) {
     if (!addrs) continue;
+    if (VIRTUAL_IFACE_REGEX.test(name)) continue;
     for (const addr of addrs) {
       if (!addr.internal && addr.family === "IPv4") {
         active.push(`${name}:${addr.address}`);
@@ -236,9 +311,13 @@ function startNetworkMonitor() {
       // Wait for DHCP/DNS to settle before probing
       await new Promise((r) => setTimeout(r, NETWORK_SETTLE_MS));
 
-      const reason = onlineEdge ? "online"
-        : wasSleep && networkChanged ? "sleep+netchange"
-        : wasSleep ? "sleep" : "netchange";
+      const reason = onlineEdge
+        ? "online"
+        : wasSleep && networkChanged
+          ? "sleep+netchange"
+          : wasSleep
+            ? "sleep"
+            : "netchange";
       safeRestartTunnel(reason).catch(() => {});
       safeRestartTailscale(reason).catch(() => {});
     } catch (err) {
@@ -247,6 +326,25 @@ function startNetworkMonitor() {
   }, NETWORK_CHECK_INTERVAL_MS);
 
   if (g.networkMonitorInterval.unref) g.networkMonitorInterval.unref();
+}
+
+function startCodexProactiveRefreshMonitor() {
+  if (g.codexProactiveRefreshInterval) return;
+
+  const intervalMs = getCodexProactiveRefreshIntervalMs();
+  g.codexProactiveRefreshInterval = setInterval(() => {
+    startCodexProactiveRefreshTick().catch((error) => {
+      console.log("[CodexProactiveRefresh] error:", error.message);
+    });
+  }, intervalMs);
+
+  if (g.codexProactiveRefreshInterval.unref) {
+    g.codexProactiveRefreshInterval.unref();
+  }
+
+  startCodexProactiveRefreshTick().catch((error) => {
+    console.log("[CodexProactiveRefresh] startup error:", error.message);
+  });
 }
 
 export default initializeApp;

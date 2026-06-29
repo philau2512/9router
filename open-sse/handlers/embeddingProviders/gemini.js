@@ -5,7 +5,7 @@ function modelPath(model) {
   return model.startsWith("models/") ? model : `models/${model}`;
 }
 
-export default {
+const geminiEmbeddingProvider = {
   buildUrl: (model, creds, { input } = {}) => {
     const apiKey = creds.apiKey || creds.accessToken;
     const path = modelPath(model);
@@ -13,15 +13,29 @@ export default {
     return `${BASE}/${path}:${op}?key=${encodeURIComponent(apiKey)}`;
   },
   buildHeaders: () => ({ "Content-Type": "application/json" }),
-  buildBody: (model, { input }) => {
+  buildBody: (model, { input, dimensions }) => {
     const m = modelPath(model);
+    const outputDimensionality = Number(dimensions);
+    const hasOutputDimensionality =
+      Number.isFinite(outputDimensionality) && outputDimensionality > 0;
     if (Array.isArray(input)) {
-      return { requests: input.map((text) => ({ model: m, content: { parts: [{ text: String(text) }] } })) };
+      return {
+        requests: input.map((text) => ({
+          model: m,
+          content: { parts: [{ text: String(text) }] },
+          ...(hasOutputDimensionality ? { outputDimensionality } : {}),
+        })),
+      };
     }
-    return { model: m, content: { parts: [{ text: String(input) }] } };
+    return {
+      model: m,
+      content: { parts: [{ text: String(input) }] },
+      ...(hasOutputDimensionality ? { outputDimensionality } : {}),
+    };
   },
   normalize: (responseBody, model) => {
-    if (responseBody.object === "list" && Array.isArray(responseBody.data)) return responseBody;
+    if (responseBody.object === "list" && Array.isArray(responseBody.data))
+      return responseBody;
     let items = [];
     if (Array.isArray(responseBody.embeddings)) {
       items = responseBody.embeddings.map((emb, idx) => ({
@@ -30,7 +44,13 @@ export default {
         embedding: emb.values || [],
       }));
     } else if (responseBody.embedding?.values) {
-      items = [{ object: "embedding", index: 0, embedding: responseBody.embedding.values }];
+      items = [
+        {
+          object: "embedding",
+          index: 0,
+          embedding: responseBody.embedding.values,
+        },
+      ];
     }
     return {
       object: "list",
@@ -40,3 +60,5 @@ export default {
     };
   },
 };
+
+export default geminiEmbeddingProvider;

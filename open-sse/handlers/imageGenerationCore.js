@@ -1,4 +1,9 @@
-import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
+import {
+  createErrorResult,
+  parseUpstreamError,
+  formatProviderError,
+} from "../utils/error.js";
+import { saveRequestUsage } from "@/lib/usageDb.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { refreshWithRetry } from "../services/tokenRefresh.js";
 import { getExecutor } from "../executors/index.js";
@@ -6,7 +11,8 @@ import { getImageAdapter } from "./imageProviders/index.js";
 import { urlToBase64 } from "./imageProviders/_base.js";
 
 function serializeRequestBody(requestBody) {
-  if (typeof FormData !== "undefined" && requestBody instanceof FormData) return requestBody;
+  if (typeof FormData !== "undefined" && requestBody instanceof FormData)
+    return requestBody;
   if (typeof requestBody === "string") return requestBody;
   return JSON.stringify(requestBody);
 }
@@ -30,24 +36,76 @@ export async function handleImageGenerationCore({
   body,
   modelInfo,
   credentials,
+  apiKey,
   log,
   streamToClient = false,
   binaryOutput = false,
   onCredentialsRefreshed,
   onRequestSuccess,
+  request,
 }) {
   const { provider, model } = modelInfo;
 
   if (!body.prompt) {
-    return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
+    return createErrorResult(
+      HTTP_STATUS.BAD_REQUEST,
+      "Missing required field: prompt",
+    );
   }
 
   const adapter = getImageAdapter(provider);
   if (!adapter) {
     return createErrorResult(
       HTTP_STATUS.BAD_REQUEST,
-      `Provider '${provider}' does not support image generation`
+      `Provider '${provider}' does not support image generation`,
     );
+  }
+
+  // Executor-delegating adapters: skip manual URL/headers/body, use the proven executor flow
+  if (adapter.useExecutor && adapter.executeViaExecutor) {
+    try {
+      log?.debug?.("IMAGE", `${provider.toUpperCase()} | ${model} | prompt="${body.prompt.slice(0, 50)}..." (executor)`);
+      const responseBody = await adapter.executeViaExecutor(model, body, credentials, log);
+      if (onRequestSuccess) await onRequestSuccess();
+      const normalized = adapter.normalize(responseBody, body.prompt);
+      const finalBody = (normalized.created && Array.isArray(normalized.data)) ? normalized : responseBody;
+
+      if (binaryOutput) {
+        const first = finalBody.data?.[0];
+        let b64 = first?.b64_json;
+        if (!b64 && first?.url) {
+          try { b64 = await urlToBase64(first.url); } catch {}
+        }
+        if (b64) {
+          const buf = Buffer.from(b64, "base64");
+          const fmt = (body.output_format || "png").toLowerCase();
+          const mime = fmt === "jpeg" || fmt === "jpg" ? "image/jpeg" : fmt === "webp" ? "image/webp" : "image/png";
+          return {
+            success: true,
+            response: new Response(buf, {
+              headers: { "Content-Type": mime, "Content-Disposition": `inline; filename="image.${fmt === "jpeg" ? "jpg" : fmt}"`, "Access-Control-Allow-Origin": "*" },
+            }),
+          };
+        }
+      }
+
+      // Guard: surface empty result as an error instead of a silent 200 with b64_json=""
+      const firstResult = finalBody.data?.[0];
+      if (!firstResult?.b64_json && !firstResult?.url) {
+        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Image generation returned no image data");
+      }
+
+      return {
+        success: true,
+        response: new Response(JSON.stringify(finalBody), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        }),
+      };
+    } catch (error) {
+      const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
+      log?.debug?.("IMAGE", `Executor error: ${errMsg}`);
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
+    }
   }
 
   let url;
@@ -59,10 +117,16 @@ export async function handleImageGenerationCore({
     requestBody = await adapter.buildBody(model, body);
     headers = adapter.buildHeaders(credentials, requestBody, model, body);
   } catch (error) {
-    return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message || `Invalid ${provider} image request`);
+    return createErrorResult(
+      HTTP_STATUS.BAD_REQUEST,
+      error.message || `Invalid ${provider} image request`,
+    );
   }
 
-  log?.debug?.("IMAGE", `${provider.toUpperCase()} | ${model} | prompt="${body.prompt.slice(0, 50)}..."`);
+  log?.debug?.(
+    "IMAGE",
+    `${provider.toUpperCase()} | ${model} | prompt="${body.prompt.slice(0, 50)}..."`,
+  );
 
   let providerResponse;
   try {
@@ -72,7 +136,12 @@ export async function handleImageGenerationCore({
       body: serializeRequestBody(requestBody),
     });
   } catch (error) {
-    const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
+    const errMsg = formatProviderError(
+      error,
+      provider,
+      model,
+      HTTP_STATUS.BAD_GATEWAY,
+    );
     log?.debug?.("IMAGE", `Fetch error: ${errMsg}`);
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
   }
@@ -85,20 +154,41 @@ export async function handleImageGenerationCore({
     (providerResponse.status === HTTP_STATUS.UNAUTHORIZED ||
       providerResponse.status === HTTP_STATUS.FORBIDDEN)
   ) {
+    const proxyOptions = {
+      enabled:
+        credentials?.providerSpecificData?.connectionProxyEnabled || false,
+      url: credentials?.providerSpecificData?.connectionProxyUrl || null,
+      noProxy: credentials?.providerSpecificData?.connectionNoProxy || null,
+      proxyPoolId:
+        credentials?.providerSpecificData?.connectionProxyPoolId || null,
+      vercelRelayUrl: credentials?.providerSpecificData?.vercelRelayUrl || "",
+      connectionProxyHeadersTimeoutMs:
+        credentials?.providerSpecificData?.connectionProxyHeadersTimeoutMs ||
+        null,
+    };
+
     const newCredentials = await refreshWithRetry(
-      () => executor.refreshCredentials(credentials, log),
+      () => executor.refreshCredentials(credentials, log, proxyOptions),
       3,
-      log
+      log,
     );
 
     if (newCredentials?.accessToken || newCredentials?.apiKey) {
-      log?.info?.("TOKEN", `${provider.toUpperCase()} | refreshed for image generation`);
+      log?.info?.(
+        "TOKEN",
+        `${provider.toUpperCase()} | refreshed for image generation`,
+      );
       Object.assign(credentials, newCredentials);
       if (onCredentialsRefreshed) await onCredentialsRefreshed(newCredentials);
 
       try {
         const retryBody = await adapter.buildBody(model, body);
-        const retryHeaders = adapter.buildHeaders(credentials, retryBody, model, body);
+        const retryHeaders = adapter.buildHeaders(
+          credentials,
+          retryBody,
+          model,
+          body,
+        );
         const retryUrl = adapter.buildUrl(model, credentials);
         providerResponse = await fetch(retryUrl, {
           method: "POST",
@@ -106,7 +196,10 @@ export async function handleImageGenerationCore({
           body: serializeRequestBody(retryBody),
         });
       } catch {
-        log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`);
+        log?.warn?.(
+          "TOKEN",
+          `${provider.toUpperCase()} | retry after refresh failed`,
+        );
       }
     } else {
       log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh failed`);
@@ -115,7 +208,12 @@ export async function handleImageGenerationCore({
 
   if (!providerResponse.ok) {
     const { statusCode, message } = await parseUpstreamError(providerResponse);
-    const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
+    const errMsg = formatProviderError(
+      new Error(message),
+      provider,
+      model,
+      statusCode,
+    );
     log?.debug?.("IMAGE", `Provider error: ${errMsg}`);
     return createErrorResult(statusCode, errMsg);
   }
@@ -133,6 +231,7 @@ export async function handleImageGenerationCore({
         requestBody,
         model,
         body,
+        signal: request?.signal,
       });
       // Codex streaming case: returns an SSE Response directly
       if (parsed?.sseResponse) {
@@ -142,28 +241,49 @@ export async function handleImageGenerationCore({
       parsed = await providerResponse.json();
     }
   } catch (parseError) {
-    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, parseError.message || `Invalid response from ${provider}`);
+    return createErrorResult(
+      HTTP_STATUS.BAD_GATEWAY,
+      parseError.message || `Invalid response from ${provider}`,
+    );
   }
 
   if (onRequestSuccess) await onRequestSuccess();
+
+  saveRequestUsage({
+    provider,
+    model,
+    connectionId: credentials?.connectionId || null,
+    apiKey: apiKey || undefined,
+    endpoint: "/v1/images/generations",
+    tokens: { prompt_tokens: 0, completion_tokens: 0 },
+    status: "200 OK",
+  }).catch(() => {});
 
   // Normalize → OpenAI-compatible shape
   const normalized = adapter.normalize(parsed, body.prompt);
 
   // Already in OpenAI shape? skip re-normalize
-  const finalBody = (normalized.created && Array.isArray(normalized.data)) ? normalized : parsed;
+  const finalBody =
+    normalized.created && Array.isArray(normalized.data) ? normalized : parsed;
 
   // Binary output: decode first b64_json (or fetch url) into raw bytes
   if (binaryOutput) {
     const first = finalBody.data?.[0];
     let b64 = first?.b64_json;
     if (!b64 && first?.url) {
-      try { b64 = await urlToBase64(first.url); } catch {}
+      try {
+        b64 = await urlToBase64(first.url);
+      } catch {}
     }
     if (b64) {
       const buf = Buffer.from(b64, "base64");
       const fmt = (body.output_format || "png").toLowerCase();
-      const mime = fmt === "jpeg" || fmt === "jpg" ? "image/jpeg" : fmt === "webp" ? "image/webp" : "image/png";
+      const mime =
+        fmt === "jpeg" || fmt === "jpg"
+          ? "image/jpeg"
+          : fmt === "webp"
+            ? "image/webp"
+            : "image/png";
       return {
         success: true,
         response: new Response(buf, {

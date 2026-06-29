@@ -1,4 +1,9 @@
-import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS } from "../config/errorConfig.js";
+import {
+  ERROR_RULES,
+  BACKOFF_CONFIG,
+  TRANSIENT_COOLDOWN_MS,
+} from "../config/errorConfig.js";
+import { upsertCooldown, clearCooldown } from "@/lib/db/repos/usage/cooldown.js";
 
 /**
  * Calculate exponential backoff cooldown for rate limits (429)
@@ -22,15 +27,33 @@ export function getQuotaCooldown(backoffLevel = 0) {
  */
 export function checkFallbackError(status, errorText, backoffLevel = 0) {
   const lowerError = errorText
-    ? (typeof errorText === "string" ? errorText : JSON.stringify(errorText)).toLowerCase()
+    ? (typeof errorText === "string"
+        ? errorText
+        : JSON.stringify(errorText)
+      ).toLowerCase()
     : "";
+
+  if (
+    lowerError.includes("model is not supported") ||
+    lowerError.includes("invalid model id") ||
+    lowerError.includes("invalid_model_id") ||
+    lowerError.includes(
+      "encountered an unexpected error when processing the request",
+    )
+  ) {
+    return { shouldFallback: false, cooldownMs: 0 };
+  }
 
   for (const rule of ERROR_RULES) {
     // Text-based rule: match substring in error message
     if (rule.text && lowerError && lowerError.includes(rule.text)) {
       if (rule.backoff) {
         const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
-        return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };
+        return {
+          shouldFallback: true,
+          cooldownMs: getQuotaCooldown(newLevel),
+          newBackoffLevel: newLevel,
+        };
       }
       return { shouldFallback: true, cooldownMs: rule.cooldownMs };
     }
@@ -39,7 +62,11 @@ export function checkFallbackError(status, errorText, backoffLevel = 0) {
     if (rule.status && rule.status === status) {
       if (rule.backoff) {
         const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
-        return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };
+        return {
+          shouldFallback: true,
+          cooldownMs: getQuotaCooldown(newLevel),
+          newBackoffLevel: newLevel,
+        };
       }
       return { shouldFallback: true, cooldownMs: rule.cooldownMs };
     }
@@ -165,7 +192,7 @@ export function buildClearModelLocksUpdate(connection) {
  */
 export function filterAvailableAccounts(accounts, excludeId = null) {
   const now = Date.now();
-  return accounts.filter(acc => {
+  return accounts.filter((acc) => {
     if (excludeId && acc.id === excludeId) return false;
     if (acc.rateLimitedUntil) {
       const until = new Date(acc.rateLimitedUntil).getTime();
@@ -188,7 +215,7 @@ export function resetAccountState(account) {
     rateLimitedUntil: null,
     backoffLevel: 0,
     lastError: null,
-    status: "active"
+    status: "active",
   };
 }
 
@@ -203,13 +230,34 @@ export function applyErrorState(account, status, errorText) {
   if (!account) return account;
 
   const backoffLevel = account.backoffLevel || 0;
-  const { cooldownMs, newBackoffLevel } = checkFallbackError(status, errorText, backoffLevel);
+  const { cooldownMs, newBackoffLevel } = checkFallbackError(
+    status,
+    errorText,
+    backoffLevel,
+  );
 
-  return {
+  const nextAccount = {
     ...account,
     rateLimitedUntil: cooldownMs > 0 ? getUnavailableUntil(cooldownMs) : null,
     backoffLevel: newBackoffLevel ?? backoffLevel,
-    lastError: { status, message: errorText, timestamp: new Date().toISOString() },
-    status: "error"
+    lastError: {
+      status,
+      message: errorText,
+      timestamp: new Date().toISOString(),
+    },
+    status: "error",
   };
+  // Persist cooldown state so it survives server restart
+  if (cooldownMs > 0 && account.provider && (account.id || account.email)) {
+    const authId = account.id || account.email || account.accessToken?.slice(-12) || "unknown";
+    setImmediate(() => upsertCooldown({
+      provider: account.provider,
+      authId,
+      model: "",
+      nextRetryAfter: Date.now() + cooldownMs,
+      reason: errorText?.toString?.()?.slice(0, 200),
+      status: String(status),
+    }).catch(() => {}));
+  }
+  return nextAccount;
 }
