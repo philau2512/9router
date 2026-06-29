@@ -142,31 +142,63 @@ export class KiroExecutor extends BaseExecutor {
           if (eventType === "assistantResponseEvent" && event.payload?.content) {
             let content = event.payload.content;
 
-            // Kiro Claude models can leak <thinking> blocks into the content stream.
-            // We strip these literal tags to prevent duplication, as the reasoning 
-            // is already routed correctly via reasoningContentEvent.
+            // Helper: emit thinking text extracted from <thinking> tags as reasoning_content
+            function emitReasoningChunk(text) {
+              if (!text) return;
+              state.hasReasoningContent = true;
+              state.totalContentLength += text.length;
+              const reasoningDelta =
+                state.reasoningChunkCount === 0 && chunkIndex === 0
+                  ? { role: "assistant", reasoning_content: text }
+                  : { reasoning_content: text };
+              const reasoningChunk = {
+                id: responseId,
+                object: "chat.completion.chunk",
+                created,
+                model,
+                choices: [{ index: 0, delta: reasoningDelta, finish_reason: null }],
+              };
+              chunkIndex++;
+              state.reasoningChunkCount++;
+              controller.enqueue(
+                new TextEncoder().encode(`data: ${JSON.stringify(reasoningChunk)}\n\n`),
+              );
+            }
+            // Kiro model "auto" leaks <thinking>...</thinking> blocks into the
+            // assistantResponseEvent content stream. Strip the tags and re-emit
+            // the thinking text as delta.reasoning_content so downstream
+            // openai-to-claude translator surfaces it as a Claude thinking block.
             if (state.inThinking) {
               if (content.includes("</thinking>")) {
                 state.inThinking = false;
-                const after = content.split("</thinking>").slice(1).join("</thinking>");
+                const parts = content.split("</thinking>");
+                const thinkingText = parts[0];
+                const after = parts.slice(1).join("</thinking>");
+                if (thinkingText) emitReasoningChunk(thinkingText);
                 content = after.startsWith("\n") ? after.substring(1) : after;
               } else {
-                content = ""; // Drop entirely while inside thinking block
+                emitReasoningChunk(content);
+                content = "";
               }
             } else if (content.includes("<thinking>")) {
               state.inThinking = true;
               if (content.includes("</thinking>")) {
                 state.inThinking = false;
                 const before = content.split("<thinking>")[0];
+                const inner = content.split("<thinking>")[1].split("</thinking>")[0];
                 const after = content.split("</thinking>").slice(1).join("</thinking>");
+                if (inner) emitReasoningChunk(inner);
                 content = before + (after.startsWith("\n") ? after.substring(1) : after);
               } else {
-                content = content.split("<thinking>")[0];
+                const before = content.split("<thinking>")[0];
+                const inner = content.split("<thinking>")[1];
+                if (inner) emitReasoningChunk(inner);
+                content = before;
               }
             }
 
-            if (!content && state.hasReasoningContent) {
-              // If we stripped everything, skip emitting an empty content chunk
+            if (!content) {
+              // Nothing left to emit as regular content after stripping thinking
               continue;
             }
             state.totalContentLength += content.length;

@@ -5,6 +5,7 @@ import { formatSSE } from "./streamHelpers.js";
 // Responses API events that signal the stream has reached a terminal state
 const OPENAI_RESPONSES_TERMINAL_EVENTS = new Set([
   "response.completed",
+  "response.done", // Upstream fix from open-sse commit a9785a5f7
   "response.failed",
   "error",
 ]);

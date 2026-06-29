@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { exportDb, getSettings, importDb } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
-import { verifyDashboardPassword } from "@/lib/auth/dashboardSession";
+import { verifyDashboardPassword, verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
 const PASSWORD_HEADER = "x-9r-password";
@@ -13,8 +13,12 @@ function isCliRequest(request) {
 
 export async function GET(request) {
   try {
+    const token = request.cookies.get("auth_token")?.value;
+    const hasValidSession = await verifyDashboardAuthToken(token);
+
     if (
       !isCliRequest(request) &&
+      !hasValidSession &&
       !(await verifyDashboardPassword(request.headers.get(PASSWORD_HEADER)))
     ) {
       return NextResponse.json({ error: "Invalid password" }, { status: 401 });
@@ -34,12 +38,19 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
+    const token = request.cookies.get("auth_token")?.value;
+    const hasValidSession = await verifyDashboardAuthToken(token);
+
     const {
       password,
       restoreUsageAnalytics = false,
       ...payload
     } = await request.json();
-    if (!isCliRequest(request) && !(await verifyDashboardPassword(password))) {
+    if (
+      !isCliRequest(request) &&
+      !hasValidSession &&
+      !(await verifyDashboardPassword(password))
+    ) {
       return NextResponse.json({ error: "Invalid password" }, { status: 401 });
     }
     await importDb(payload, { restoreUsageAnalytics });

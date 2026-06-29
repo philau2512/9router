@@ -1,3 +1,27 @@
+# v0.5.15 (2026-06-30)
+
+**Synced to upstream baseline:** `0b3c794075dd2f4148f01fbc9cd561c8d6bbdb4c` (v0.5.15)
+
+## Upstream Sync (open-sse 52623587 → 0b3c7940)
+
+### Features
+- Qwen: refined model patterns (Omni audio/video, Qwen3.5/3.6/3.7 native vision/video, coder/max text-only reasoning)
+
+### Fixes
+- Responses: handle `response.done` terminal event (prevents false "incomplete" errors)
+- Gemini: normalize contents to prevent 400 INVALID_ARGUMENT on consecutive same-role messages
+- Gemini: backfill `thoughtSignature` on functionCall parts (fixes 400 on client history replay)
+- Translator: map mid-conversation `system` → `user` role (fixes 400 LiteLLM "assistant message prefill")
+- Kiro: thinking tag stripping logic already present (no changes needed)
+- Antigravity: strip `deprecated/readOnly/writeOnly` from tool schemas (prevents 400 on MCP schemas)
+
+## v0.5.12 (2026-06-29) — Fork baseline before upstream sync
+
+### Fixes
+- Fallback: bypass fallback and prevent lock on invalid model id errors
+
+---
+
 # v0.4.80 (2026-06-13)
 
 ## Features

@@ -34,6 +34,11 @@ export const UNSUPPORTED_SCHEMA_CONSTRAINTS = [
   "dependencies",
   "dependentSchemas",
   "dependentRequired",
+  // Annotation keywords (rejected by Gemini/Antigravity - e.g. MCP tool schemas set these)
+  // Upstream fix from open-sse commits 319caa2d7, 3d20a4ccd
+  "deprecated",
+  "readOnly",
+  "writeOnly",
   // Other unsupported keywords
   "title",
   "optional",
