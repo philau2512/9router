@@ -1,5 +1,8 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
+import { v4 as uuidv4 } from "uuid";
+import { extractThinking } from "../concerns/thinkingUnified.js";
+import { effortToBudget, budgetToLevel } from "../concerns/thinking.js";
 import { adjustMaxTokens } from "../helpers/maxTokensHelper.js";
 
 function stripAnthropicBillingHeader(text) {
@@ -86,6 +89,33 @@ export function claudeToOpenAIRequest(model, body, stream) {
 
   if (body.reasoning !== undefined) {
     result.reasoning = body.reasoning;
+  }
+
+  // Extract and map Claude thinking/effort -> OpenAI format
+  const thinkingConfig = extractThinking(body);
+  if (thinkingConfig) {
+    if (thinkingConfig.mode === "budget") {
+      result.thinking = {
+        type: "enabled",
+        budget_tokens: thinkingConfig.budget,
+      };
+      result.reasoning_effort = budgetToLevel(thinkingConfig.budget) || "medium";
+    } else if (thinkingConfig.mode === "level") {
+      result.reasoning_effort = thinkingConfig.level;
+      result.thinking = {
+        type: "enabled",
+        budget_tokens: effortToBudget(thinkingConfig.level) || 16000,
+      };
+    } else if (thinkingConfig.mode === "auto") {
+      result.reasoning_effort = "high";
+      result.thinking = {
+        type: "enabled",
+        budget_tokens: 16000,
+      };
+    } else if (thinkingConfig.mode === "none") {
+      result.thinking = { type: "disabled" };
+      result.reasoning_effort = "none";
+    }
   }
 
   return result;
