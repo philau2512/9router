@@ -104,6 +104,20 @@ export const MODEL_PRICING = {
     reasoning: 22.5,
     cache_creation: 3.0,
   },
+  "claude-sonnet-4.5-thinking": {
+    input: 3.0,
+    output: 15.0,
+    cached: 0.3,
+    reasoning: 22.5,
+    cache_creation: 3.0,
+  },
+  "claude-sonnet-4.5-thinking-agentic": {
+    input: 3.0,
+    output: 15.0,
+    cached: 0.3,
+    reasoning: 22.5,
+    cache_creation: 3.0,
+  },
   "claude-sonnet-4.6": {
     input: 3.0,
     output: 15.0,
@@ -280,6 +294,13 @@ export const MODEL_PRICING = {
     cached: 0.3,
     reasoning: 12.0,
     cache_creation: 3.0,
+  },
+  "gpt-5.5": {
+    input: 5.0,
+    output: 30.0,
+    cached: 0.5,
+    reasoning: 48.0,
+    cache_creation: 8.0,
   },
   o1: {
     input: 15.0,
