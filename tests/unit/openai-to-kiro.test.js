@@ -34,6 +34,48 @@ describe("buildKiroPayload", () => {
       const currentMsg = result.conversationState.currentMessage;
       expect(currentMsg.userInputMessage.images).toBeUndefined();
     });
+
+    it("should fallback to 'continue' for empty message content without tool results", () => {
+      const body = {
+        messages: [{ role: "user", content: "" }],
+      };
+
+      const result = buildKiroPayload("claude-sonnet-4.6", body, true, {});
+
+      const currentMsg = result.conversationState.currentMessage;
+      expect(currentMsg.userInputMessage.content).toContain("continue");
+    });
+
+    it("should fallback to '[Tool Output]' for empty message content with tool results", () => {
+      const body = {
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "tool_1",
+                content: "some output",
+              },
+            ],
+          },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "some_tool",
+              parameters: {},
+            },
+          },
+        ],
+      };
+
+      const result = buildKiroPayload("claude-sonnet-4.6", body, true, {});
+
+      const currentMsg = result.conversationState.currentMessage;
+      expect(currentMsg.userInputMessage.content).toContain("[Tool Output]");
+    });
   });
 
   describe("image forwarding", () => {

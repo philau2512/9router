@@ -201,7 +201,7 @@ function convertMessages(messages, tools, model) {
 
   const flushPending = () => {
     if (currentRole === "user") {
-      const content = pendingUserContent.join("\n\n").trim() || "continue";
+      const content = pendingUserContent.join("\n\n").trim() || (pendingToolResults.length > 0 ? "[Tool Output]" : "continue");
       const userMsg = {
         userInputMessage: {
           content: content,
