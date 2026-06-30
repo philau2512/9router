@@ -22,6 +22,7 @@ import {
   FORMATS,
 } from "open-sse/translator/formats.js";
 import * as log from "../utils/logger.js";
+import { logContextStore } from "../utils/logger.js";
 import {
   updateProviderCredentials,
   checkAndRefreshToken,
@@ -68,108 +69,130 @@ function getCustomErrorResponse(request, statusCode, message, body = null) {
  * Format detection and translation handled by translator
  */
 export async function handleChat(request, clientRawRequest = null) {
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    log.warn("CHAT", "Invalid JSON body");
-    return getCustomErrorResponse(
-      request,
-      HTTP_STATUS.BAD_REQUEST,
-      "Invalid JSON body",
-    );
-  }
+  const reqId = Math.random().toString(36).substring(2, 8);
+  return logContextStore.run({ reqId }, async () => {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      log.warn("CHAT", "Invalid JSON body");
+      return getCustomErrorResponse(
+        request,
+        HTTP_STATUS.BAD_REQUEST,
+        "Invalid JSON body",
+      );
+    }
 
-  // Build clientRawRequest for logging (if not provided)
-  if (!clientRawRequest) {
+    // Build clientRawRequest for logging (if not provided)
+    if (!clientRawRequest) {
+      const url = new URL(request.url);
+      clientRawRequest = {
+        endpoint: url.pathname,
+        body,
+        headers: Object.fromEntries(request.headers.entries()),
+      };
+    }
+    cacheClaudeHeaders(clientRawRequest.headers);
+
+    // Log request endpoint and model
     const url = new URL(request.url);
-    clientRawRequest = {
-      endpoint: url.pathname,
-      body,
-      headers: Object.fromEntries(request.headers.entries()),
-    };
-  }
-  cacheClaudeHeaders(clientRawRequest.headers);
+    const modelStr = body.model;
 
-  // Log request endpoint and model
-  const url = new URL(request.url);
-  const modelStr = body.model;
-
-  // Count messages (support both messages[] and input[] formats)
-  const msgCount = body.messages?.length || body.input?.length || 0;
-  const toolCount = body.tools?.length || 0;
-  const effort =
-    body.reasoning_effort ||
-    body.reasoning?.effort ||
-    body.output_config?.effort ||
-    (body.thinking?.type === "enabled"
-      ? body.thinking.budget_tokens
-        ? `budget:${body.thinking.budget_tokens}`
-        : "on"
-      : null) ||
-    null;
-  log.request(
-    "POST",
-    `${url.pathname} | ${modelStr} | ${msgCount} msgs${toolCount ? ` | ${toolCount} tools` : ""}${effort ? ` | effort=${effort}` : ""}`,
-  );
-
-  // Log API key (masked)
-  const requestStartTime = Date.now();
-  const timing = { requestStartTime, requestParsedAt: Date.now() };
-
-  const settings = await getSettings();
-  timing.settingsLoadedAt = Date.now();
-
-  const authResult = await enforceApiKeyPolicy(
-    request,
-    (status, msg) => getCustomErrorResponse(request, status, msg, body),
-    settings,
-  );
-  const apiKey = getApiKeyValue(authResult.auth);
-  logApiKeyPresence(apiKey, log);
-  if (!authResult.ok) {
-    normalizeApiKeyFailureLog(authResult.auth, log);
-    timing.apiKeyValidatedAt = Date.now();
-    return authResult.response;
-  }
-  timing.apiKeyValidatedAt = Date.now();
-
-  if (!modelStr) {
-    log.warn("CHAT", "Missing model");
-    return getCustomErrorResponse(
-      request,
-      HTTP_STATUS.BAD_REQUEST,
-      "Missing model",
-      body,
+    // Count messages (support both messages[] and input[] formats)
+    const msgCount = body.messages?.length || body.input?.length || 0;
+    const toolCount = body.tools?.length || 0;
+    const effort =
+      body.reasoning_effort ||
+      body.reasoning?.effort ||
+      body.output_config?.effort ||
+      (body.thinking?.type === "enabled"
+        ? body.thinking.budget_tokens
+          ? `budget:${body.thinking.budget_tokens}`
+          : "on"
+        : null) ||
+      null;
+    log.request(
+      "POST",
+      `${url.pathname} | ${modelStr} | ${msgCount} msgs${toolCount ? ` | ${toolCount} tools` : ""}${effort ? ` | effort=${effort}` : ""}`,
     );
-  }
 
-  // Bypass naming/warmup requests before combo rotation to avoid wasting rotation slots
-  const userAgent = request?.headers?.get("user-agent") || "";
-  const bypassResponse = handleBypassRequest(
-    body,
-    modelStr,
-    userAgent,
-    !!settings.ccFilterNaming,
-  );
-  if (bypassResponse) return bypassResponse.response || bypassResponse;
+    // Log API key (masked)
+    const requestStartTime = Date.now();
+    const timing = { requestStartTime, requestParsedAt: Date.now() };
 
-  // Check if model is a combo (has multiple models with fallback)
-  const comboModels = await getComboModels(modelStr);
-  timing.comboResolvedAt = Date.now();
-  if (comboModels) {
-    // Check for combo-specific strategy first, fallback to global
-    const comboStrategies = settings.comboStrategies || {};
-    const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
-    const comboStrategy =
-      comboSpecificStrategy || settings.comboStrategy || "fallback";
+    const settings = await getSettings();
+    timing.settingsLoadedAt = Date.now();
 
-    if (comboStrategy === "fusion") {
+    const authResult = await enforceApiKeyPolicy(
+      request,
+      (status, msg) => getCustomErrorResponse(request, status, msg, body),
+      settings,
+    );
+    const apiKey = getApiKeyValue(authResult.auth);
+    logApiKeyPresence(apiKey, log);
+    if (!authResult.ok) {
+      normalizeApiKeyFailureLog(authResult.auth, log);
+      timing.apiKeyValidatedAt = Date.now();
+      return authResult.response;
+    }
+    timing.apiKeyValidatedAt = Date.now();
+
+    if (!modelStr) {
+      log.warn("CHAT", "Missing model");
+      return getCustomErrorResponse(
+        request,
+        HTTP_STATUS.BAD_REQUEST,
+        "Missing model",
+        body,
+      );
+    }
+
+    // Bypass naming/warmup requests before combo rotation to avoid wasting rotation slots
+    const userAgent = request?.headers?.get("user-agent") || "";
+    const bypassResponse = handleBypassRequest(
+      body,
+      modelStr,
+      userAgent,
+      !!settings.ccFilterNaming,
+    );
+    if (bypassResponse) return bypassResponse.response || bypassResponse;
+
+    // Check if model is a combo (has multiple models with fallback)
+    const comboModels = await getComboModels(modelStr);
+    timing.comboResolvedAt = Date.now();
+    if (comboModels) {
+      // Check for combo-specific strategy first, fallback to global
+      const comboStrategies = settings.comboStrategies || {};
+      const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
+      const comboStrategy =
+        comboSpecificStrategy || settings.comboStrategy || "fallback";
+
+      if (comboStrategy === "fusion") {
+        log.info(
+          "CHAT",
+          `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`,
+        );
+        return handleFusionChat({
+          body,
+          models: comboModels,
+          handleSingleModel: (b, m) =>
+            handleSingleModelChat(b, m, clientRawRequest, request, apiKey, {
+              settings,
+              timing: { ...timing },
+            }),
+          log,
+          comboName: modelStr,
+          judgeModel: comboStrategies[modelStr]?.judgeModel,
+          tuning: comboStrategies[modelStr]?.fusionTuning,
+        });
+      }
+
+      const comboStickyLimit = settings.comboStickyRoundRobinLimit;
       log.info(
         "CHAT",
-        `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`,
+        `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`,
       );
-      return handleFusionChat({
+      return handleComboChat({
         body,
         models: comboModels,
         handleSingleModel: (b, m) =>
@@ -179,40 +202,21 @@ export async function handleChat(request, clientRawRequest = null) {
           }),
         log,
         comboName: modelStr,
-        judgeModel: comboStrategies[modelStr]?.judgeModel,
-        tuning: comboStrategies[modelStr]?.fusionTuning,
+        comboStrategy,
+        comboStickyLimit,
       });
     }
 
-    const comboStickyLimit = settings.comboStickyRoundRobinLimit;
-    log.info(
-      "CHAT",
-      `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`,
-    );
-    return handleComboChat({
+    // Single model request
+    return handleSingleModelChat(
       body,
-      models: comboModels,
-      handleSingleModel: (b, m) =>
-        handleSingleModelChat(b, m, clientRawRequest, request, apiKey, {
-          settings,
-          timing: { ...timing },
-        }),
-      log,
-      comboName: modelStr,
-      comboStrategy,
-      comboStickyLimit,
-    });
-  }
-
-  // Single model request
-  return handleSingleModelChat(
-    body,
-    modelStr,
-    clientRawRequest,
-    request,
-    apiKey,
-    { settings, timing },
-  );
+      modelStr,
+      clientRawRequest,
+      request,
+      apiKey,
+      { settings, timing },
+    );
+  });
 }
 
 /**
@@ -318,6 +322,11 @@ async function handleSingleModelChat(
       excludeConnectionIds,
       model,
     );
+
+    const store = logContextStore.getStore();
+    if (store && credentials?.connectionId) {
+      store.connectionId = credentials.connectionId;
+    }
 
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {

@@ -101,7 +101,7 @@ export function createSSEStream(options = {}) {
     if (firstEmittedChunkAt) return;
     firstEmittedChunkAt = Date.now();
     firstEmittedChunkBytes = sharedEncoder.encode(output || "").byteLength;
-    log.info(
+    log.debug(
       "SSE-FIRST",
       `${provider || "unknown"}/${model || "unknown"} | mode=${mode} | firstEmitMs=${firstEmittedChunkAt - streamStartAt}ms | bytes=${firstEmittedChunkBytes}${meta.kind ? ` | kind=${meta.kind}` : ""}`,
     );
@@ -138,7 +138,7 @@ export function createSSEStream(options = {}) {
       const text = decoder.decode(chunk, { stream: true });
       if (!firstRawChunkLogged) {
         firstRawChunkLogged = true;
-        log.info(
+        log.debug(
           "SSE-FIRST",
           `${provider || "unknown"}/${model || "unknown"} | mode=${mode} | firstRawMs=${Date.now() - streamStartAt}ms | bytes=${sharedEncoder.encode(text).byteLength}`,
         );
@@ -352,7 +352,7 @@ export function createSSEStream(options = {}) {
         if (!parsed) continue;
         if (!firstParsedEventLogged) {
           firstParsedEventLogged = true;
-          log.info(
+          log.debug(
             "SSE-FIRST",
             `${provider || "unknown"}/${model || "unknown"} | mode=${mode} | firstEvent=${parsed.type || parsed.event || "unknown"}`,
           );

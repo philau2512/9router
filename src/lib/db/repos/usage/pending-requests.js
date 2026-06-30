@@ -5,6 +5,7 @@
  * cleanup and debounced event emission.
  */
 
+import { logContextStore } from "../../../../sse/utils/logger.js";
 import { getAdapter } from "../../driver.js";
 import { parseJson } from "../../helpers/jsonCol.js";
 import {
@@ -126,8 +127,12 @@ export function trackPendingRequest(
     minute: "2-digit",
     second: "2-digit",
   });
+  const store = logContextStore.getStore();
+  const prefix = store
+    ? `[${store.reqId}${store.connectionId ? `:${store.connectionId.slice(0, 6)}` : ""}] `
+    : "";
   console.log(
-    `[${t}] [PENDING] ${started ? "START" : "END"}${error ? " (ERROR)" : ""} | provider=${provider} | model=${model}`,
+    `[${t}] ${prefix}[PENDING] ${started ? "START" : "END"}${error ? " (ERROR)" : ""} | provider=${provider} | model=${model}`,
   );
   emitPending();
 }

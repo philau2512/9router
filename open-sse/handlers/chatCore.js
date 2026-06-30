@@ -347,7 +347,7 @@ export async function handleChatCore({
       credentials?.connectionName || credentials?.connectionId || "unknown";
     const poolId =
       credentials?.providerSpecificData?.connectionProxyPoolId || "none";
-    log?.info?.(
+    log?.debug?.(
       "PROXY",
       `${provider.toUpperCase()} | ${model} | conn=${connectionName} | pool=${poolId} | vercel-relay=${maskLoggedUrl(proxyOptions.vercelRelayUrl)}`,
     );
@@ -370,7 +370,7 @@ export async function handleChatCore({
       credentials?.providerSpecificData?.connectionProxyPoolId || "none";
     const connectionName =
       credentials?.connectionName || credentials?.connectionId || "unknown";
-    log?.info?.(
+    log?.debug?.(
       "PROXY",
       `${provider.toUpperCase()} | ${model} | conn=${connectionName} | pool=${poolId} | url=${maskedProxyUrl}`,
     );

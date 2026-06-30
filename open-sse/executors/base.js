@@ -265,7 +265,7 @@ export class BaseExecutor {
           const fallbackDetails = timingBreakdown.proxyError
             ? ` | proxyError=${timingBreakdown.proxyError}${timingBreakdown.directFallbackMs !== undefined ? ` | directFallback=${timingBreakdown.directFallbackMs}ms` : ""}`
             : "";
-          log?.info?.(
+          log?.debug?.(
             "FETCH",
             `${this.provider.toUpperCase()} | mode=${timingBreakdown.mode}${proxyDetails} | headers=${timingBreakdown.headersMs ?? "?"}ms | dns=${timingBreakdown.dnsMs ?? "-"}ms | dispatcher=${timingBreakdown.dispatcherMs ?? "-"}ms | proxyHeaders=${timingBreakdown.proxyHeadersMs ?? "-"}ms | relay=${timingBreakdown.relayMs ?? "-"}ms${fallbackDetails}`,
           );

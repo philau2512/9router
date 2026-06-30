@@ -119,9 +119,11 @@ export function saveUsageStats({
   const accountSuffix = connectionId
     ? ` | account=${connectionId.slice(0, 8)}...`
     : "";
-  console.log(
-    `${COLORS.green}[${time}] 📊 [${label}] ${provider.toUpperCase()} | in=${inTokens} | out=${outTokens}${accountSuffix}${COLORS.reset}`,
-  );
+  if (label !== "STREAM USAGE") {
+    console.log(
+      `${COLORS.green}[${time}] 📊 [${label}] ${provider.toUpperCase()} | in=${inTokens} | out=${outTokens}${accountSuffix}${COLORS.reset}`,
+    );
+  }
 
   // Normalize to OpenAI token shape for storage
   const normalized = {
