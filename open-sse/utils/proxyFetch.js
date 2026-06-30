@@ -30,7 +30,7 @@ async function getGotScraping() {
   if (_gotScrapingChecked) return _gotScraping;
   _gotScrapingChecked = true;
   try {
-    const mod = await import("got-scraping");
+    const mod = await eval('import("got-scraping")');
     _gotScraping =
       typeof mod.gotScraping === "function" ? mod.gotScraping : null;
   } catch {
@@ -80,7 +80,7 @@ async function getGotScraping() {
   if (_gotScrapingChecked) return _gotScraping;
   _gotScrapingChecked = true;
   try {
-    const mod = await import("got-scraping");
+    const mod = await eval('import("got-scraping")');
     _gotScraping = typeof mod.gotScraping === "function" ? mod.gotScraping : null;
     if (_gotScraping) dbg("TLS", "got-scraping loaded (browser-like JA3 enabled)");
   } catch (e) {
