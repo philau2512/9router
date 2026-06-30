@@ -9,14 +9,20 @@ const STRIP_RULES = [
   // GitHub Copilot gpt-5.4: temperature unsupported.
   { provider: "github", match: /gpt-5\.4/i, drop: ["temperature"] },
   // GitHub Copilot Claude (except opus/sonnet 4.6): thinking + reasoning_effort rejected. #713
-  { provider: "github", match: (m) => /claude/i.test(m) && !/claude.*(opus|sonnet).*4\.6/i.test(m), drop: ["thinking", "reasoning_effort"] },
+  {
+    provider: "github",
+    match: (m) => /claude/i.test(m) && !/claude.*(opus|sonnet).*4\.6/i.test(m),
+    drop: ["thinking", "reasoning_effort"],
+  },
   // Cloudflare Workers AI: content must be plain string, rejects OpenAI content-part array (#1926)
   { provider: "cloudflare-ai", flattenContent: true },
 ];
 
 // Test a rule's match (regex or predicate) against the model id.
 function matches(rule, model) {
-  return typeof rule.match === "function" ? rule.match(model) : rule.match.test(model);
+  return typeof rule.match === "function"
+    ? rule.match(model)
+    : rule.match.test(model);
 }
 
 // Remove unsupported params from body in place; returns body.
@@ -35,7 +41,9 @@ export function stripUnsupportedParams(provider, model, body) {
       for (const msg of body.messages) {
         if (msg && Array.isArray(msg.content)) {
           msg.content = msg.content
-            .map(b => (b?.type === "text" && typeof b.text === "string") ? b.text : "")
+            .map((b) =>
+              b?.type === "text" && typeof b.text === "string" ? b.text : "",
+            )
             .join("");
         }
       }

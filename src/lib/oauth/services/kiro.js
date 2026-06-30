@@ -284,8 +284,8 @@ export class KiroService {
       headers: {
         "Content-Type": "application/x-amz-json-1.0",
         "x-amz-target": "AmazonCodeWhispererService.ListAvailableProfiles",
-        "Authorization": `Bearer ${accessToken}`,
-        "Accept": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
       },
       body: JSON.stringify({ maxResults: 10 }),
     });
@@ -298,7 +298,8 @@ export class KiroService {
     const data = await response.json();
     const profiles = Array.isArray(data?.profiles) ? data.profiles : [];
     const arnOf = (p) => p?.arn || p?.profileArn || null;
-    const match = profiles.find((p) => arnOf(p)?.split(":")[3] === region) || profiles[0];
+    const match =
+      profiles.find((p) => arnOf(p)?.split(":")[3] === region) || profiles[0];
     return arnOf(match);
   }
 

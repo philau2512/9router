@@ -11,7 +11,8 @@ const VARIANT_CONFIG = {
     defaultBaseUrl: "https://api.openai.com/v1",
     namePlaceholder: "OpenAI Compatible (Prod)",
     prefixPlaceholder: "oc-prod",
-    baseUrlHint: "Use the base URL (ending in /v1) for your OpenAI-compatible API.",
+    baseUrlHint:
+      "Use the base URL (ending in /v1) for your OpenAI-compatible API.",
     modelIdPlaceholder: "e.g. gpt-4, claude-3-opus",
     errorLabel: "OpenAI Compatible",
     hasApiType: true,
@@ -22,7 +23,8 @@ const VARIANT_CONFIG = {
     defaultBaseUrl: "https://api.anthropic.com/v1",
     namePlaceholder: "Anthropic Compatible (Prod)",
     prefixPlaceholder: "ac-prod",
-    baseUrlHint: "Use the base URL (ending in /v1) for your Anthropic-compatible API. The system will append /messages.",
+    baseUrlHint:
+      "Use the base URL (ending in /v1) for your Anthropic-compatible API. The system will append /messages.",
     modelIdPlaceholder: "e.g. claude-3-opus",
     errorLabel: "Anthropic Compatible",
     hasApiType: false,
@@ -67,7 +69,12 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
   }
 
   const handleSubmit = async () => {
-    if (!formData.name.trim() || !formData.prefix.trim() || !formData.baseUrl.trim()) return;
+    if (
+      !formData.name.trim() ||
+      !formData.prefix.trim() ||
+      !formData.baseUrl.trim()
+    )
+      return;
     setSubmitting(true);
     try {
       const res = await fetch("/api/provider-nodes", {
@@ -125,7 +132,9 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
         <>
           <Badge variant="success">Valid</Badge>
           {method === "chat" && (
-            <span className="text-sm text-text-muted">(via inference test)</span>
+            <span className="text-sm text-text-muted">
+              (via inference test)
+            </span>
           )}
         </>
       );
@@ -172,7 +181,9 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
         <Input
           label="Base URL"
           value={formData.baseUrl}
-          onChange={(e) => setFormData({ ...formData, baseUrl: e.target.value })}
+          onChange={(e) =>
+            setFormData({ ...formData, baseUrl: e.target.value })
+          }
           placeholder={config.defaultBaseUrl}
           hint={config.baseUrlHint}
         />

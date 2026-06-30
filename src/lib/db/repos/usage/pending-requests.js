@@ -18,7 +18,10 @@ import {
   connCache,
   CONN_CACHE_TTL_MS,
 } from "./usage-state.js";
-import { deduplicateRecentRequests, extractActiveFromPending } from "./usage-helpers.js";
+import {
+  deduplicateRecentRequests,
+  extractActiveFromPending,
+} from "./usage-helpers.js";
 
 async function getConnectionMapCached() {
   if (Date.now() - connCache.ts < CONN_CACHE_TTL_MS) return connCache.map;
@@ -131,7 +134,10 @@ export function trackPendingRequest(
 
 export async function getActiveRequests() {
   const connectionMap = await getConnectionMapCached();
-  const activeRequests = extractActiveFromPending(pendingRequests, connectionMap);
+  const activeRequests = extractActiveFromPending(
+    pendingRequests,
+    connectionMap,
+  );
 
   await ensureRingInitialized();
   const recentRequests = deduplicateRecentRequests(recentRing.items);

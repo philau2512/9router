@@ -40,20 +40,23 @@ const LIVE_MODEL_RESOLVERS = {
   opencode: async (_conn) => resolveOpenCodeModels(),
   // GitHub Copilot — fetch live model catalog from Copilot /models endpoint
   github: async (conn) => {
-    const result = await resolveCopilotModels({
-      accessToken: conn.accessToken,
-      refreshToken: conn.refreshToken,
-      providerSpecificData: conn.providerSpecificData || {},
-    }, {
-      log: console,
-      onCredentialsRefreshed: async (refreshed) => {
-        await updateProviderCredentials(conn.id, {
-          copilotToken: refreshed.copilotToken,
-          copilotTokenExpiresAt: refreshed.copilotTokenExpiresAt,
-          existingProviderSpecificData: conn.providerSpecificData || {},
-        });
+    const result = await resolveCopilotModels(
+      {
+        accessToken: conn.accessToken,
+        refreshToken: conn.refreshToken,
+        providerSpecificData: conn.providerSpecificData || {},
       },
-    });
+      {
+        log: console,
+        onCredentialsRefreshed: async (refreshed) => {
+          await updateProviderCredentials(conn.id, {
+            copilotToken: refreshed.copilotToken,
+            copilotTokenExpiresAt: refreshed.copilotTokenExpiresAt,
+            existingProviderSpecificData: conn.providerSpecificData || {},
+          });
+        },
+      },
+    );
     return result?.models?.length ? { models: result.models } : null;
   },
 };

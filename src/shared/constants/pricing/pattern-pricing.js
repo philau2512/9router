@@ -340,11 +340,11 @@ export const PATTERN_PRICING = [
   {
     pattern: "mimo-v2-flash*",
     pricing: {
-      input: 0.10,
-      output: 0.30,
+      input: 0.1,
+      output: 0.3,
       cached: 0.01,
-      reasoning: 0.30,
-      cache_creation: 0.10,
+      reasoning: 0.3,
+      cache_creation: 0.1,
     },
   },
   {

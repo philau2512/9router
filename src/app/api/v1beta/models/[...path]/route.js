@@ -73,7 +73,10 @@ export async function POST(request, { params }) {
 
     // Block path traversal — only allow safe characters in model id
     if (!GEMINI_NATIVE_MODEL_PATTERN.test(model)) {
-      return Response.json({ error: { message: "Invalid model" } }, { status: 400 });
+      return Response.json(
+        { error: { message: "Invalid model" } },
+        { status: 400 },
+      );
     }
 
     const body = await request.json();

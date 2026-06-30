@@ -42,7 +42,12 @@ import {
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
-import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings } from "../rtk/headroom.js";
+import {
+  compressWithHeadroom,
+  formatHeadroomLog,
+  formatHeadroomSizeLog,
+  isHeadroomPhantomSavings,
+} from "../rtk/headroom.js";
 import {
   getAntigravitySessionKey,
   getCachedThinking,
@@ -146,8 +151,12 @@ export async function handleChatCore({
 
   // Image generation models require non-streaming (Google v1internal:generateContent)
   const modelType = getModelType(alias, model);
-  const isImageGenModel = modelType === "image" || /image|imagen|image-generation/i.test(model);
-  if (isImageGenModel && (provider === "antigravity" || provider === "gemini-cli")) {
+  const isImageGenModel =
+    modelType === "image" || /image|imagen|image-generation/i.test(model);
+  if (
+    isImageGenModel &&
+    (provider === "antigravity" || provider === "gemini-cli")
+  ) {
     stream = false;
   }
 
@@ -162,7 +171,12 @@ export async function handleChatCore({
   const acceptHeader = clientRawRequest?.headers?.accept || "";
   const clientPrefersJson = acceptHeader.includes("application/json");
   const clientPrefersSSE = acceptHeader.includes("text/event-stream");
-  if (clientPrefersJson && !clientPrefersSSE && body.stream !== true && !providerRequiresStreaming) {
+  if (
+    clientPrefersJson &&
+    !clientPrefersSSE &&
+    body.stream !== true &&
+    !providerRequiresStreaming
+  ) {
     stream = false;
   }
 
@@ -251,12 +265,21 @@ export async function handleChatCore({
   const headroomLine = formatHeadroomLog(headroomStats);
   const headroomSizeLine = formatHeadroomSizeLog(headroomDiagnostics);
   if (headroomLine) {
-    log?.info?.("HEADROOM", `${headroomLine}${headroomSizeLine ? ` | ${headroomSizeLine}` : ""}`);
+    log?.info?.(
+      "HEADROOM",
+      `${headroomLine}${headroomSizeLine ? ` | ${headroomSizeLine}` : ""}`,
+    );
     if (isHeadroomPhantomSavings(headroomStats, headroomDiagnostics)) {
-      log?.warn?.("HEADROOM", `reported token delta, but outbound JSON shrank <5%; provider may bill near-original payload | ${headroomSizeLine}`);
+      log?.warn?.(
+        "HEADROOM",
+        `reported token delta, but outbound JSON shrank <5%; provider may bill near-original payload | ${headroomSizeLine}`,
+      );
     }
   } else if (headroomEnabled) {
-    log?.warn?.("HEADROOM", `skipped: ${headroomDiagnostics.reason || "compression unavailable"}${headroomDiagnostics.endpoint ? ` (${headroomDiagnostics.endpoint})` : ""}`);
+    log?.warn?.(
+      "HEADROOM",
+      `skipped: ${headroomDiagnostics.reason || "compression unavailable"}${headroomDiagnostics.endpoint ? ` (${headroomDiagnostics.endpoint})` : ""}`,
+    );
   }
 
   // TTS models don't support tool messages/function calling
@@ -569,12 +592,22 @@ export async function handleChatCore({
   }
 
   // Streaming response
-  const { onStreamComplete: _baseOnStreamComplete } = buildOnStreamComplete({ ...sharedCtx, timing });
-  const _agReplayKey = provider === "antigravity" ? getAntigravitySessionKey(model, body) : null;
+  const { onStreamComplete: _baseOnStreamComplete } = buildOnStreamComplete({
+    ...sharedCtx,
+    timing,
+  });
+  const _agReplayKey =
+    provider === "antigravity" ? getAntigravitySessionKey(model, body) : null;
   const onStreamComplete = _agReplayKey
     ? (contentObj, usage, ttftAt, streamDetailId) => {
-        if (contentObj?.thinking) setCachedThinking(_agReplayKey, contentObj.thinking);
-        return _baseOnStreamComplete?.(contentObj, usage, ttftAt, streamDetailId);
+        if (contentObj?.thinking)
+          setCachedThinking(_agReplayKey, contentObj.thinking);
+        return _baseOnStreamComplete?.(
+          contentObj,
+          usage,
+          ttftAt,
+          streamDetailId,
+        );
       }
     : _baseOnStreamComplete;
   return handleStreamingResponse({

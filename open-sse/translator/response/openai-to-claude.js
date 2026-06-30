@@ -273,7 +273,7 @@ export function openaiToClaudeResponse(chunk, state) {
     stopThinkingBlock(state, results);
     stopTextBlock(state, results);
 
-    for (const [idx, toolInfo] of (state.toolCalls || [])) {
+    for (const [idx, toolInfo] of state.toolCalls || []) {
       let toolName = toolInfo.name;
       if (toolName.startsWith(CLAUDE_OAUTH_TOOL_PREFIX)) {
         toolName = toolName.slice(CLAUDE_OAUTH_TOOL_PREFIX.length);

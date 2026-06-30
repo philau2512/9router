@@ -4,3 +4,5 @@ dist
 build
 coverage
 cli/app/.next-cli-build
+.*
+.*/

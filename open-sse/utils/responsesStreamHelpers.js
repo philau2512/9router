@@ -54,7 +54,6 @@ export function formatIncompleteOpenAIResponsesStreamFailure() {
   );
 }
 
-
 // Codex output_item.done reconstruction (Phase 4)
 // Codex streams may emit response.output_item.done events while leaving
 // response.completed.response.output empty. Collect and patch on completion.
@@ -78,7 +77,8 @@ export function patchCompletedOutput(completedData, collector) {
   if (!collector) return completedData;
   const output = completedData?.response?.output;
   if (Array.isArray(output) && output.length > 0) return completedData;
-  if (collector.byIndex.size === 0 && collector.fallback.length === 0) return completedData;
+  if (collector.byIndex.size === 0 && collector.fallback.length === 0)
+    return completedData;
   const sorted = [...collector.byIndex.entries()]
     .sort(([a], [b]) => a - b)
     .map(([, item]) => item);

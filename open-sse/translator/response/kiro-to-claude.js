@@ -59,7 +59,9 @@ export function kiroToClaudeResponse(chunk, state) {
     }
 
     try {
-      data = JSON.parse(trimmed.startsWith("data:") ? trimmed.slice(5).trim() : trimmed);
+      data = JSON.parse(
+        trimmed.startsWith("data:") ? trimmed.slice(5).trim() : trimmed,
+      );
       if (state) state.parseBuffer = ""; // Reset buffer on success
     } catch {
       if (state) {
@@ -82,7 +84,9 @@ export function kiroToClaudeResponse(chunk, state) {
   // Track usage if present on the chunk.
   if (data.usage && typeof data.usage === "object") {
     const promptTokens =
-      typeof data.usage.prompt_tokens === "number" ? data.usage.prompt_tokens : 0;
+      typeof data.usage.prompt_tokens === "number"
+        ? data.usage.prompt_tokens
+        : 0;
     const outputTokens =
       typeof data.usage.completion_tokens === "number"
         ? data.usage.completion_tokens
@@ -184,7 +188,7 @@ export function kiroToClaudeResponse(chunk, state) {
         if (toolInfo) {
           state.toolArgBuffers.set(
             idx,
-            (state.toolArgBuffers.get(idx) || "") + tc.function.arguments
+            (state.toolArgBuffers.get(idx) || "") + tc.function.arguments,
           );
         }
       }
@@ -206,7 +210,10 @@ export function kiroToClaudeResponse(chunk, state) {
             delta: { type: "input_json_delta", partial_json: buffered },
           });
         }
-        results.push({ type: "content_block_stop", index: toolInfo.blockIndex });
+        results.push({
+          type: "content_block_stop",
+          index: toolInfo.blockIndex,
+        });
       }
     }
 

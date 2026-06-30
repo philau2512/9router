@@ -219,8 +219,15 @@ describe("buildKiroPayload", () => {
           authMethod: "builder-id",
         },
       };
-      const result = buildKiroPayload("claude-sonnet-4.6", body, true, credentials);
-      expect(result.profileArn).toBe("arn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX");
+      const result = buildKiroPayload(
+        "claude-sonnet-4.6",
+        body,
+        true,
+        credentials,
+      );
+      expect(result.profileArn).toBe(
+        "arn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX",
+      );
     });
 
     it("should fallback to social profileArn when authMethod is google/github", () => {
@@ -233,8 +240,15 @@ describe("buildKiroPayload", () => {
           authMethod: "google",
         },
       };
-      const result = buildKiroPayload("claude-sonnet-4.6", body, true, credentials);
-      expect(result.profileArn).toBe("arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK");
+      const result = buildKiroPayload(
+        "claude-sonnet-4.6",
+        body,
+        true,
+        credentials,
+      );
+      expect(result.profileArn).toBe(
+        "arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK",
+      );
     });
   });
 });

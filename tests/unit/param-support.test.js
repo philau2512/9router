@@ -10,14 +10,23 @@ describe("stripUnsupportedParams", () => {
           role: "user",
           content: [
             { type: "text", text: "hello " },
-            { type: "image_url", image_url: { url: "data:image/png;base64,xx" } },
+            {
+              type: "image_url",
+              image_url: { url: "data:image/png;base64,xx" },
+            },
             { type: "text", text: "world" },
           ],
         },
       ],
     };
 
-    expect(() => stripUnsupportedParams("cloudflare-ai", "@cf/meta/llama-3.1-8b-instruct", body)).not.toThrow();
+    expect(() =>
+      stripUnsupportedParams(
+        "cloudflare-ai",
+        "@cf/meta/llama-3.1-8b-instruct",
+        body,
+      ),
+    ).not.toThrow();
     expect(body.messages[0].content).toBe("hello world");
   });
 

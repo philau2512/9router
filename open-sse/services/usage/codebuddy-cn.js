@@ -104,7 +104,9 @@ export async function getCodeBuddyCnUsage(
       // cycleEndMs() produces ms (~1.7e12). Values < 1e11 are treated as seconds.
       const deRaw = Number(acc.DeductionEndTime);
       const de = deRaw > 0 && deRaw < 1e11 ? deRaw * 1000 : deRaw;
-      return Number.isFinite(ce) && Number.isFinite(de) && de - ce > REFILL_GAP_MS;
+      return (
+        Number.isFinite(ce) && Number.isFinite(de) && de - ce > REFILL_GAP_MS
+      );
     };
     const byExpiry = (a, b) => cycleEndMs(a) - cycleEndMs(b);
 

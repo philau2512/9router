@@ -122,7 +122,7 @@ export function createSSEStream(options = {}) {
   let currentOpenAIResponsesEvent = null;
   let openAIResponsesTerminalSeen = false;
   let openAIResponsesDoneSent = false;
-  let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
+  let streamDoneSent = false; // track duplicate [DONE] across transform + flush
   const outputItemCollector = createOutputItemCollector(); // Phase 4: Codex output reconstruction
 
   let upstreamFirstByteRecorded = false;
@@ -199,7 +199,10 @@ export function createSSEStream(options = {}) {
               }
 
               // Track reasoning for semantic stall watchdog (F3)
-              if (dataStr.includes('"reasoning_content":') && streamStateTracker) {
+              if (
+                dataStr.includes('"reasoning_content":') &&
+                streamStateTracker
+              ) {
                 streamStateTracker.inThinking = true;
               }
 
@@ -208,9 +211,10 @@ export function createSSEStream(options = {}) {
               totalContentLength += Math.ceil(dataStr.length / 4);
               updateTracker(); // F10 + R2-F2
 
-              const fastOutput = line.startsWith("data:") && !line.startsWith("data: ")
-                ? "data: " + line.slice(5) + "\n"
-                : line + "\n";
+              const fastOutput =
+                line.startsWith("data:") && !line.startsWith("data: ")
+                  ? "data: " + line.slice(5) + "\n"
+                  : line + "\n";
 
               emitFirstChunkLog(fastOutput, { kind: "passthrough-fast" }); // R2-F1
               reqLogger?.appendConvertedChunk?.(fastOutput);
@@ -257,12 +261,23 @@ export function createSSEStream(options = {}) {
               }
 
               // Rewrite model alias so client receives the alias they requested (Phase 2)
-              if (targetModelAlias && parsed.model && parsed.model !== targetModelAlias) {
+              if (
+                targetModelAlias &&
+                parsed.model &&
+                parsed.model !== targetModelAlias
+              ) {
                 parsed.model = targetModelAlias;
                 fieldsInjected = true;
               }
-              if (targetModelAlias && parsed.response?.model && parsed.response.model !== targetModelAlias) {
-                parsed.response = { ...parsed.response, model: targetModelAlias };
+              if (
+                targetModelAlias &&
+                parsed.response?.model &&
+                parsed.response.model !== targetModelAlias
+              ) {
+                parsed.response = {
+                  ...parsed.response,
+                  model: targetModelAlias,
+                };
                 fieldsInjected = true;
               }
 
@@ -423,13 +438,25 @@ export function createSSEStream(options = {}) {
         if (extracted) state.usage = extracted; // Keep original usage for logging
 
         // Codex output_item.done reconstruction (Phase 4)
-        if (keepsOpenAIResponsesFormat && parsed.type === "response.output_item.done") {
+        if (
+          keepsOpenAIResponsesFormat &&
+          parsed.type === "response.output_item.done"
+        ) {
           collectOutputItemDone(outputItemCollector, parsed);
         }
-        if (keepsOpenAIResponsesFormat && parsed.type === "response.completed") {
+        if (
+          keepsOpenAIResponsesFormat &&
+          parsed.type === "response.completed"
+        ) {
           const patched = patchCompletedOutput(parsed, outputItemCollector);
           if (patched !== parsed) {
-            const output = formatSSE({ event: openAIResponsesEventName || "response.completed", data: patched }, sourceFormat);
+            const output = formatSSE(
+              {
+                event: openAIResponsesEventName || "response.completed",
+                data: patched,
+              },
+              sourceFormat,
+            );
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));
             currentOpenAIResponsesEvent = null;

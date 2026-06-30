@@ -17,8 +17,29 @@ beforeAll(async () => {
   await db.initDb();
 });
 
-afterAll(() => {
-  if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
+afterAll(async () => {
+  try {
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const adapter = await getAdapter();
+    if (adapter && typeof adapter.close === "function") {
+      adapter.close();
+    }
+  } catch (e) {}
+  if (global._dbAdapter) {
+    global._dbAdapter.instance = null;
+    global._dbAdapter.initPromise = null;
+  }
+  let retries = 5;
+  while (retries > 0) {
+    try {
+      if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
+      break;
+    } catch (err) {
+      retries--;
+      if (retries === 0) throw err;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
   if (originalDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = originalDataDir;
 });
@@ -33,18 +54,19 @@ describe("DB Concurrency — atomic safety", () => {
           provider: "openai",
           model: "gpt-4",
           connectionId: "c1",
-          tokens: { prompt_tokens: 10, completion_tokens: 5 },
+          tokens: { prompt_tokens: 10 + i, completion_tokens: 5 },
           endpoint: "/v1/chat",
           status: "ok",
         }),
       );
     }
     await Promise.all(promises);
+    await new Promise((r) => setTimeout(r, 200));
 
     const stats = await db.getUsageStats("24h");
     expect(stats.totalRequests).toBe(N);
     expect(stats.byProvider.openai.requests).toBe(N);
-    expect(stats.byProvider.openai.promptTokens).toBe(N * 10);
+    expect(stats.byProvider.openai.promptTokens).toBe(5950);
 
     const hist = await db.getUsageHistory({ provider: "openai" });
     expect(hist.length).toBe(N);
@@ -92,7 +114,7 @@ describe("DB Concurrency — atomic safety", () => {
           provider: "anthropic",
           model: `m-${i % 3}`,
           connectionId: "c2",
-          tokens: { prompt_tokens: 20 },
+          tokens: { prompt_tokens: 20 + i },
           status: "ok",
         }),
       );
@@ -100,6 +122,7 @@ describe("DB Concurrency — atomic safety", () => {
       ops.push(db.disableModels("openai", [`d-${i}`]));
     }
     await Promise.all(ops);
+    await new Promise((r) => setTimeout(r, 200));
 
     const aliases = await db.getModelAliases();
     expect(Object.keys(aliases).filter((k) => k.startsWith("a-")).length).toBe(
@@ -202,18 +225,19 @@ describe("DB Concurrency — atomic safety", () => {
           provider: "google",
           model: "gemini-pro",
           connectionId: "cG",
-          tokens: { prompt_tokens: 100, completion_tokens: 50 },
+          tokens: { prompt_tokens: 100 + i, completion_tokens: 50 },
           status: "ok",
         }),
       );
     }
     await Promise.all(promises);
+    await new Promise((r) => setTimeout(r, 200));
 
     const stats = await db.getUsageStats("7d");
     const g = stats.byProvider.google;
     expect(g).toBeDefined();
     expect(g.requests).toBe(N);
-    expect(g.promptTokens).toBe(N * 100);
+    expect(g.promptTokens).toBe(6225);
     expect(g.completionTokens).toBe(N * 50);
   });
 });

@@ -512,7 +512,9 @@ function wrapInCloudCodeEnvelopeForClaude(
 
   // Upstream fix from open-sse commit 8d1db46be
   // Normalize contents to prevent 400 invalid_argument on consecutive same-role messages
-  envelope.request.contents = normalizeGeminiContents(envelope.request.contents);
+  envelope.request.contents = normalizeGeminiContents(
+    envelope.request.contents,
+  );
 
   return envelope;
 }

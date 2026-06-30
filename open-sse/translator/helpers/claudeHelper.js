@@ -245,7 +245,10 @@ export function prepareClaudeRequest(
             return {
               name: tool.function.name,
               description: tool.function.description,
-              input_schema: tool.function.parameters ?? { type: "object", properties: {} },
+              input_schema: tool.function.parameters ?? {
+                type: "object",
+                properties: {},
+              },
             };
           }
           const { type, ...rest } = tool;

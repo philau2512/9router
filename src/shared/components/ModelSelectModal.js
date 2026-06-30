@@ -252,7 +252,9 @@ export default function ModelSelectModal({
               value: `${alias}/${m.id}`,
             }));
           const hardcodedIds = new Set(hardcodedModels.map((m) => m.id));
-          const filteredAliases = aliasModels.filter((m) => !hardcodedIds.has(m.id));
+          const filteredAliases = aliasModels.filter(
+            (m) => !hardcodedIds.has(m.id),
+          );
           combined = [...hardcodedModels, ...filteredAliases];
         }
 
@@ -308,7 +310,10 @@ export default function ModelSelectModal({
             isCustom: true,
           }));
         const seen = new Set(nodeModels.map((m) => m.value));
-        const mergedModels = [...nodeModels, ...registeredCustom.filter((m) => !seen.has(m.value))];
+        const mergedModels = [
+          ...nodeModels,
+          ...registeredCustom.filter((m) => !seen.has(m.value)),
+        ];
 
         // Always show compatible providers that are connected, even with no aliases.
         // When no aliases exist, show a placeholder so users know it's available.

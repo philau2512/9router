@@ -1,21 +1,21 @@
 <div align="center">
   <img src="../images/9router.png?1" alt="9Router Dashboard" width="800"/>
-  
-  # 9Router - 免费 AI 路由器
-  
-  **永不停歇的编程体验。智能回退，自动路由到免费和廉价的 AI 模型。**
-  
-  **OpenClaw 的免费 AI 提供商。**
-  
+
+# 9Router - 免费 AI 路由器
+
+**永不停歇的编程体验。智能回退，自动路由到免费和廉价的 AI 模型。**
+
+**OpenClaw 的免费 AI 提供商。**
+
   <p align="center">
     <img src="../public/providers/openclaw.png" alt="OpenClaw" width="80"/>
   </p>
-  
-  [![npm](https://img.shields.io/npm/v/9router.svg)](https://www.npmjs.com/package/9router)
-  [![Downloads](https://img.shields.io/npm/dm/9router.svg)](https://www.npmjs.com/package/9router)
-  [![License](https://img.shields.io/npm/l/9router.svg)](https://github.com/decolua/9router/blob/main/LICENSE)
-  
-  [🚀 快速开始](#-quick-start) • [💡 特性](#-key-features) • [📖 设置](#-setup) • [🌐 网站](https://9router.com)
+
+[![npm](https://img.shields.io/npm/v/9router.svg)](https://www.npmjs.com/package/9router)
+[![Downloads](https://img.shields.io/npm/dm/9router.svg)](https://www.npmjs.com/package/9router)
+[![License](https://img.shields.io/npm/l/9router.svg)](https://github.com/decolua/9router/blob/main/LICENSE)
+
+[🚀 快速开始](#-quick-start) • [💡 特性](#-key-features) • [📖 设置](#-setup) • [🌐 网站](https://9router.com)
 </div>
 
 ---
@@ -118,9 +118,9 @@ PORT=20128 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run 
 ## 🎥 视频教程
 
 <div align="center">
-  
+
 ### 📺完整设置指南 - 9Router + Claude Code 免费
-  
+
 [![9Router + Claude Code Setup](https://img.youtube.com/vi/raEyZPg5xE0/maxresdefault.jpg)](https://www.youtube.com/watch?v=raEyZPg5xE0)
 
 **🎬 观看完整的分步教程：**

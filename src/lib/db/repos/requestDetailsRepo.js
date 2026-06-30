@@ -139,9 +139,12 @@ async function flushToDatabase() {
               db.transaction(() => {
                 for (const item of _items) {
                   if (!item.id) item.id = generateDetailId(item.model);
-                  if (!item.timestamp) item.timestamp = new Date().toISOString();
+                  if (!item.timestamp)
+                    item.timestamp = new Date().toISOString();
                   if (item.request?.headers)
-                    item.request.headers = sanitizeHeaders(item.request.headers);
+                    item.request.headers = sanitizeHeaders(
+                      item.request.headers,
+                    );
 
                   const record = {
                     id: item.id,

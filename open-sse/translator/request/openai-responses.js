@@ -204,7 +204,8 @@ export function openaiResponsesToOpenAIRequest(
   // Cleanup Responses API specific fields
   // Map Responses-only max_output_tokens to Chat max_tokens (avoid leaking unknown field upstream)
   if (result.max_output_tokens !== undefined) {
-    if (result.max_tokens === undefined) result.max_tokens = result.max_output_tokens;
+    if (result.max_tokens === undefined)
+      result.max_tokens = result.max_output_tokens;
     delete result.max_output_tokens;
   }
 

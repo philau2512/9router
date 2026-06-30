@@ -153,26 +153,38 @@ export async function getCodexUsage(accessToken, proxyOptions = null) {
  * Consume one Codex rate-limit reset credit (irreversible, spends 1 credit).
  * Returns result object with ok/noCredit/status/code/windowsReset fields.
  */
-export async function consumeCodexRateLimitResetCredit(accessToken, redeemRequestId, proxyOptions = null) {
+export async function consumeCodexRateLimitResetCredit(
+  accessToken,
+  redeemRequestId,
+  proxyOptions = null,
+) {
   if (!accessToken) {
-    throw new Error("No Codex access token available. Please re-authorize the connection.");
+    throw new Error(
+      "No Codex access token available. Please re-authorize the connection.",
+    );
   }
   if (!redeemRequestId || typeof redeemRequestId !== "string") {
-    throw new Error("A redeem request id is required to consume a Codex reset credit.");
+    throw new Error(
+      "A redeem request id is required to consume a Codex reset credit.",
+    );
   }
 
   let response;
   let data = null;
   try {
-    response = await proxyAwareFetch(CODEX_CONFIG.resetCreditsConsumeUrl, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${accessToken}`,
-        "Accept": "application/json",
-        "Content-Type": "application/json",
+    response = await proxyAwareFetch(
+      CODEX_CONFIG.resetCreditsConsumeUrl,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ redeem_request_id: redeemRequestId }),
       },
-      body: JSON.stringify({ redeem_request_id: redeemRequestId }),
-    }, proxyOptions);
+      proxyOptions,
+    );
 
     const text = await response.text();
     data = text ? JSON.parse(text) : null;

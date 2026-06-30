@@ -6,7 +6,10 @@
 // open-sse/config/providers.js (transport) and open-sse/config/providerModels.js (models).
 
 import { PROVIDERS } from "../../config/providers.js";
-import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS } from "../../config/providerModels.js";
+import {
+  PROVIDER_MODELS,
+  PROVIDER_ID_TO_ALIAS,
+} from "../../config/providerModels.js";
 
 // Individual registry files take precedence over auto-generated entries.
 // Add new provider files here as they are created.

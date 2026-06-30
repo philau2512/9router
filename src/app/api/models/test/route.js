@@ -103,21 +103,43 @@ export async function POST(request) {
       const latencyMs = Date.now() - start;
       const rawText = await res.text().catch(() => "");
       let parsed = null;
-      try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+      try {
+        parsed = rawText ? JSON.parse(rawText) : null;
+      } catch {}
       if (!res.ok) {
         const detail = parsed?.error?.message || parsed?.error || rawText;
-        return NextResponse.json({ ok: false, latencyMs, error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`, status: res.status });
+        return NextResponse.json({
+          ok: false,
+          latencyMs,
+          error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`,
+          status: res.status,
+        });
       }
       const hasData = Array.isArray(parsed?.data) && parsed.data.length > 0;
-      if (!hasData) return NextResponse.json({ ok: false, latencyMs, status: res.status, error: "Provider returned no image data" });
-      return NextResponse.json({ ok: true, latencyMs, error: null, status: res.status });
+      if (!hasData)
+        return NextResponse.json({
+          ok: false,
+          latencyMs,
+          status: res.status,
+          error: "Provider returned no image data",
+        });
+      return NextResponse.json({
+        ok: true,
+        latencyMs,
+        error: null,
+        status: res.status,
+      });
     }
 
     // STT / audio transcription
     if (kind === "stt") {
       const sttForm = new FormData();
       sttForm.append("model", model);
-      sttForm.append("file", new Blob(["test"], { type: "audio/mpeg" }), "test.mp3");
+      sttForm.append(
+        "file",
+        new Blob(["test"], { type: "audio/mpeg" }),
+        "test.mp3",
+      );
       const sttHeaders = { ...headers };
       delete sttHeaders["Content-Type"]; // let fetch set multipart boundary
       const res = await fetch(`${baseUrl}/api/v1/audio/transcriptions`, {
@@ -129,13 +151,31 @@ export async function POST(request) {
       const latencyMs = Date.now() - start;
       const rawText = await res.text().catch(() => "");
       let parsed = null;
-      try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+      try {
+        parsed = rawText ? JSON.parse(rawText) : null;
+      } catch {}
       if (!res.ok) {
         const detail = parsed?.error?.message || parsed?.error || rawText;
-        return NextResponse.json({ ok: false, latencyMs, error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`, status: res.status });
+        return NextResponse.json({
+          ok: false,
+          latencyMs,
+          error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`,
+          status: res.status,
+        });
       }
-      if (!parsed?.text) return NextResponse.json({ ok: false, latencyMs, status: res.status, error: "Provider returned no transcription" });
-      return NextResponse.json({ ok: true, latencyMs, error: null, status: res.status });
+      if (!parsed?.text)
+        return NextResponse.json({
+          ok: false,
+          latencyMs,
+          status: res.status,
+          error: "Provider returned no transcription",
+        });
+      return NextResponse.json({
+        ok: true,
+        latencyMs,
+        error: null,
+        status: res.status,
+      });
     }
 
     // Default: chat completions

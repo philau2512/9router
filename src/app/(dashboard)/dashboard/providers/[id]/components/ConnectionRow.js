@@ -187,15 +187,25 @@ export default function ConnectionRow({
       : "API Key";
   const isEmail = (v) =>
     typeof v === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-  const displayName = connection.name?.trim()
-    || connection.email?.trim()
-    || connection.displayName?.trim()
-    || (isOAuthConnection ? "OAuth Account" : isCookieConnection ? "Cookie Account" : "API Key");
-  const secondaryDisplayName = connection.name?.trim() && connection.email?.trim() && connection.name.trim() !== connection.email.trim()
-    ? connection.email.trim()
-    : connection.name?.trim() && connection.displayName?.trim() && connection.name.trim() !== connection.displayName.trim()
-      ? connection.displayName.trim()
-      : null;
+  const displayName =
+    connection.name?.trim() ||
+    connection.email?.trim() ||
+    connection.displayName?.trim() ||
+    (isOAuthConnection
+      ? "OAuth Account"
+      : isCookieConnection
+        ? "Cookie Account"
+        : "API Key");
+  const secondaryDisplayName =
+    connection.name?.trim() &&
+    connection.email?.trim() &&
+    connection.name.trim() !== connection.email.trim()
+      ? connection.email.trim()
+      : connection.name?.trim() &&
+          connection.displayName?.trim() &&
+          connection.name.trim() !== connection.displayName.trim()
+        ? connection.displayName.trim()
+        : null;
   const formattedExpiresAt = formatVietnameseExpiresAt(connection.expiresAt);
   const remainingExpiresAt = formatRemainingExpiresAt(connection.expiresAt);
 
@@ -341,7 +351,9 @@ export default function ConnectionRow({
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{displayName}</p>
           {secondaryDisplayName && (
-            <p className="text-xs text-text-muted truncate">{secondaryDisplayName}</p>
+            <p className="text-xs text-text-muted truncate">
+              {secondaryDisplayName}
+            </p>
           )}
           {formattedExpiresAt && (
             <div className="mt-1 text-xs text-text-muted">

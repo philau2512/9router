@@ -99,7 +99,8 @@ export function claudeToOpenAIRequest(model, body, stream) {
         type: "enabled",
         budget_tokens: thinkingConfig.budget,
       };
-      result.reasoning_effort = budgetToLevel(thinkingConfig.budget) || "medium";
+      result.reasoning_effort =
+        budgetToLevel(thinkingConfig.budget) || "medium";
     } else if (thinkingConfig.mode === "level") {
       result.reasoning_effort = thinkingConfig.level;
       result.thinking = {

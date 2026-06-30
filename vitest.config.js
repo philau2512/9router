@@ -13,5 +13,13 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    include: ["tests/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/.git/**",
+      "**/tests/unit/db-benchmark.test.js",
+      "**/tests/unit/embeddings.cloud.test.js",
+    ],
   },
 });

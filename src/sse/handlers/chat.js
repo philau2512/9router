@@ -165,12 +165,18 @@ export async function handleChat(request, clientRawRequest = null) {
       comboSpecificStrategy || settings.comboStrategy || "fallback";
 
     if (comboStrategy === "fusion") {
-      log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`);
+      log.info(
+        "CHAT",
+        `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`,
+      );
       return handleFusionChat({
         body,
         models: comboModels,
         handleSingleModel: (b, m) =>
-          handleSingleModelChat(b, m, clientRawRequest, request, apiKey, { settings, timing: { ...timing } }),
+          handleSingleModelChat(b, m, clientRawRequest, request, apiKey, {
+            settings,
+            timing: { ...timing },
+          }),
         log,
         comboName: modelStr,
         judgeModel: comboStrategies[modelStr]?.judgeModel,
@@ -237,12 +243,18 @@ async function handleSingleModelChat(
         comboSpecificStrategy || chatSettings.comboStrategy || "fallback";
 
       if (comboStrategy === "fusion") {
-        log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`);
+        log.info(
+          "CHAT",
+          `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`,
+        );
         return handleFusionChat({
           body,
           models: comboModels,
           handleSingleModel: (b, m) =>
-            handleSingleModelChat(b, m, clientRawRequest, request, apiKey, { settings, timing: { ...timing } }),
+            handleSingleModelChat(b, m, clientRawRequest, request, apiKey, {
+              settings,
+              timing: { ...timing },
+            }),
           log,
           comboName: modelStr,
           judgeModel: comboStrategies[modelStr]?.judgeModel,

@@ -30,10 +30,17 @@ export function useModelCaps() {
           if (m.fullModel) full[m.fullModel] = m.caps;
           if (m.model) id[m.model] = m.caps;
         }
-        if (alive) { setByFull(full); setById(id); }
-      } catch { /* ignore */ }
+        if (alive) {
+          setByFull(full);
+          setById(id);
+        }
+      } catch {
+        /* ignore */
+      }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
   // Resolve caps from a "provider/model" string or a bare model id.

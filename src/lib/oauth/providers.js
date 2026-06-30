@@ -132,20 +132,22 @@ function extractEmailFromAccessToken(accessToken) {
   );
 }
 
-
 // Resolve Kiro profileArn via CodeWhisperer (IDC/Builder-ID tokens omit it, causing 403)
 export async function fetchKiroProfileArn(accessToken) {
   if (!accessToken) return null;
   try {
-    const response = await fetch("https://codewhisperer.us-east-1.amazonaws.com/ListAvailableProfiles", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Authorization: `Bearer ${accessToken}`,
+    const response = await fetch(
+      "https://codewhisperer.us-east-1.amazonaws.com/ListAvailableProfiles",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ maxResults: 10 }),
       },
-      body: JSON.stringify({ maxResults: 10 }),
-    });
+    );
     if (!response.ok) return null;
     const data = await response.json();
     return data.profiles?.find((p) => p.arn?.trim())?.arn?.trim() || null;
@@ -1396,20 +1398,23 @@ const PROVIDERS = {
     pollToken: async (config, deviceCode) => {
       // CodeBuddy polls the token endpoint via GET with the state as a query
       // param (not POST/body) — matches the official CLI's /v2/plugin/auth/token?state=...
-      const response = await fetch(`${config.tokenUrl}?state=${encodeURIComponent(deviceCode)}`, {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-          "User-Agent": config.userAgent,
-          "X-Requested-With": "XMLHttpRequest",
-          "X-Domain": "copilot.tencent.com",
-          "X-No-Authorization": "true",
-          "X-No-User-Id": "true",
-          "X-Product": "SaaS",
-          "X-No-Enterprise-Id": "true",
-          "X-No-Department-Info": "true",
+      const response = await fetch(
+        `${config.tokenUrl}?state=${encodeURIComponent(deviceCode)}`,
+        {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            "User-Agent": config.userAgent,
+            "X-Requested-With": "XMLHttpRequest",
+            "X-Domain": "copilot.tencent.com",
+            "X-No-Authorization": "true",
+            "X-No-User-Id": "true",
+            "X-Product": "SaaS",
+            "X-No-Enterprise-Id": "true",
+            "X-No-Department-Info": "true",
+          },
         },
-      });
+      );
       if (!response.ok) return { ok: false, data: { error: "request_failed" } };
       const data = await response.json();
       // code 11217 = pending (RetryFetchToken), code 0 = success

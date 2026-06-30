@@ -441,11 +441,11 @@ export const MODEL_PRICING = {
     cache_creation: 0.14,
   },
   "mimo-v2-flash": {
-    input: 0.10,
-    output: 0.30,
+    input: 0.1,
+    output: 0.3,
     cached: 0.01,
-    reasoning: 0.30,
-    cache_creation: 0.10,
+    reasoning: 0.3,
+    cache_creation: 0.1,
   },
   // TTS models are currently free (limited time)
   "mimo-v2-tts": {

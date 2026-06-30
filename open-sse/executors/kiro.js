@@ -34,7 +34,8 @@ export class KiroExecutor extends BaseExecutor {
     // Inject profileArn header — required by Kiro/CodeWhisperer gateway for all auth methods.
     // Without this header, the API returns 403 "User is not authorized to make this call."
     // Fallback to public default ARN when not stored (e.g. old connections pre-fix).
-    const profileArn = credentials?.providerSpecificData?.profileArn ||
+    const profileArn =
+      credentials?.providerSpecificData?.profileArn ||
       resolveDefaultProfileArn(authMethod);
     if (profileArn) {
       headers["x-amzn-codewhisperer-profile-arn"] = profileArn;
@@ -93,7 +94,7 @@ export class KiroExecutor extends BaseExecutor {
       seenToolIds: new Map(),
       totalContentLength: 0,
       contextUsagePercentage: 0,
-      inThinking: false
+      inThinking: false,
     };
 
     const transformStream = new TransformStream({
@@ -139,7 +140,10 @@ export class KiroExecutor extends BaseExecutor {
 
           // Handle assistantResponseEvent
 
-          if (eventType === "assistantResponseEvent" && event.payload?.content) {
+          if (
+            eventType === "assistantResponseEvent" &&
+            event.payload?.content
+          ) {
             let content = event.payload.content;
 
             // Helper: emit thinking text extracted from <thinking> tags as reasoning_content
@@ -156,12 +160,16 @@ export class KiroExecutor extends BaseExecutor {
                 object: "chat.completion.chunk",
                 created,
                 model,
-                choices: [{ index: 0, delta: reasoningDelta, finish_reason: null }],
+                choices: [
+                  { index: 0, delta: reasoningDelta, finish_reason: null },
+                ],
               };
               chunkIndex++;
               state.reasoningChunkCount++;
               controller.enqueue(
-                new TextEncoder().encode(`data: ${JSON.stringify(reasoningChunk)}\n\n`),
+                new TextEncoder().encode(
+                  `data: ${JSON.stringify(reasoningChunk)}\n\n`,
+                ),
               );
             }
             // Kiro model "auto" leaks <thinking>...</thinking> blocks into the
@@ -185,10 +193,17 @@ export class KiroExecutor extends BaseExecutor {
               if (content.includes("</thinking>")) {
                 state.inThinking = false;
                 const before = content.split("<thinking>")[0];
-                const inner = content.split("<thinking>")[1].split("</thinking>")[0];
-                const after = content.split("</thinking>").slice(1).join("</thinking>");
+                const inner = content
+                  .split("<thinking>")[1]
+                  .split("</thinking>")[0];
+                const after = content
+                  .split("</thinking>")
+                  .slice(1)
+                  .join("</thinking>");
                 if (inner) emitReasoningChunk(inner);
-                content = before + (after.startsWith("\n") ? after.substring(1) : after);
+                content =
+                  before +
+                  (after.startsWith("\n") ? after.substring(1) : after);
               } else {
                 const before = content.split("<thinking>")[0];
                 const inner = content.split("<thinking>")[1];

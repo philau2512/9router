@@ -85,7 +85,9 @@ export async function getChartData(period = "7d") {
   else if (period === "60d") bucketCount = 60;
   else {
     // "all" — load all available days from usageDaily
-    const allRows = db.all(`SELECT dateKey FROM usageDaily ORDER BY dateKey ASC`);
+    const allRows = db.all(
+      `SELECT dateKey FROM usageDaily ORDER BY dateKey ASC`,
+    );
     bucketCount = allRows.length || 1;
   }
   const today = new Date();

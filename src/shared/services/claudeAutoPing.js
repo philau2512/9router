@@ -2,7 +2,11 @@
 // Per-connection opt-in via settings.claudeAutoPing.connections map.
 import "open-sse/index.js";
 
-import { getSettings, getProviderConnections, updateProviderConnection } from "@/lib/localDb";
+import {
+  getSettings,
+  getProviderConnections,
+  updateProviderConnection,
+} from "@/lib/localDb";
 import { getClaudeUsage } from "open-sse/services/usage/claude.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -29,30 +33,40 @@ function buildProxyOptions(cfg) {
 async function sendPing(accessToken, proxyOptions) {
   // Use cached Claude headers (fork-specific: includes spoofing/caching headers)
   const claudeHeaders = getCachedClaudeHeaders() || {};
-  const res = await proxyAwareFetch(PING_URL, {
-    method: "POST",
-    headers: {
-      ...claudeHeaders,
-      "Authorization": `Bearer ${accessToken}`,
-      "content-type": "application/json",
+  const res = await proxyAwareFetch(
+    PING_URL,
+    {
+      method: "POST",
+      headers: {
+        ...claudeHeaders,
+        Authorization: `Bearer ${accessToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: C.pingModel,
+        max_tokens: C.pingMaxTokens,
+        messages: [{ role: "user", content: C.pingText }],
+      }),
     },
-    body: JSON.stringify({
-      model: C.pingModel,
-      max_tokens: C.pingMaxTokens,
-      messages: [{ role: "user", content: C.pingText }],
-    }),
-  }, proxyOptions);
+    proxyOptions,
+  );
   return res.ok;
 }
 
 async function pingConnection(conn) {
-  const proxyCfg = await resolveConnectionProxyConfig(conn.providerSpecificData);
+  const proxyCfg = await resolveConnectionProxyConfig(
+    conn.providerSpecificData,
+  );
   const proxyOptions = buildProxyOptions(proxyCfg);
 
   // Refresh token if needed, then read 5h reset time
   let connection = conn;
   try {
-    const r = await refreshAndUpdateCredentials(connection, false, proxyOptions);
+    const r = await refreshAndUpdateCredentials(
+      connection,
+      false,
+      proxyOptions,
+    );
     connection = r.connection;
   } catch (e) {
     console.warn(`[AutoPing] ${conn.id}: refresh failed: ${e.message}`);
@@ -76,7 +90,9 @@ async function pingConnection(conn) {
     lastPingAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
-  console.log(`[AutoPing] ${connection.id}: ping ${ok ? "sent" : "failed"} (reset ${resetAt})`);
+  console.log(
+    `[AutoPing] ${connection.id}: ping ${ok ? "sent" : "failed"} (reset ${resetAt})`,
+  );
 }
 
 async function tick() {
@@ -87,9 +103,14 @@ async function tick() {
     const enabledMap = settings[C.settingsKey]?.connections || {};
     if (Object.keys(enabledMap).length === 0) return;
 
-    const conns = await getProviderConnections({ provider: "claude", isActive: true });
+    const conns = await getProviderConnections({
+      provider: "claude",
+      isActive: true,
+    });
     // Only ping connections the user explicitly enabled
-    const targets = conns.filter((c) => c.authType === "oauth" && enabledMap[c.id] === true);
+    const targets = conns.filter(
+      (c) => c.authType === "oauth" && enabledMap[c.id] === true,
+    );
     if (targets.length === 0) return;
 
     for (const conn of targets) {
@@ -108,6 +129,8 @@ async function tick() {
 
 export function startClaudeAutoPing() {
   if (g.interval) return;
-  g.interval = setInterval(() => { tick().catch(() => {}); }, C.tickIntervalMs);
+  g.interval = setInterval(() => {
+    tick().catch(() => {});
+  }, C.tickIntervalMs);
   if (g.interval.unref) g.interval.unref();
 }

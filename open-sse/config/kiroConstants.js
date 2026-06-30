@@ -47,8 +47,10 @@ export const KIRO_THINKING_BUDGET_DEFAULT = 16000;
 let _extractThinking, _effortToBudget;
 async function getThinkingHelpers() {
   if (!_extractThinking) {
-    ({ extractThinking: _extractThinking } = await import("../translator/concerns/thinkingUnified.js"));
-    ({ effortToBudget: _effortToBudget } = await import("../translator/concerns/thinking.js"));
+    ({ extractThinking: _extractThinking } =
+      await import("../translator/concerns/thinkingUnified.js"));
+    ({ effortToBudget: _effortToBudget } =
+      await import("../translator/concerns/thinking.js"));
   }
   return { extractThinking: _extractThinking, effortToBudget: _effortToBudget };
 }
@@ -69,13 +71,17 @@ export function resolveKiroThinkingBudget(body, headers, model) {
   if (cfg) {
     if (cfg.mode === "none") return null;
     if (cfg.mode === "budget") return cfg.budget;
-    if (cfg.mode === "level") return effortToBudgetSync(cfg.level) ?? KIRO_THINKING_BUDGET_DEFAULT;
+    if (cfg.mode === "level")
+      return effortToBudgetSync(cfg.level) ?? KIRO_THINKING_BUDGET_DEFAULT;
     return KIRO_THINKING_BUDGET_DEFAULT;
   }
 
   if (headers) {
     const beta = pickHeader(headers, "anthropic-beta");
-    if (typeof beta === "string" && beta.toLowerCase().includes("interleaved-thinking")) {
+    if (
+      typeof beta === "string" &&
+      beta.toLowerCase().includes("interleaved-thinking")
+    ) {
       return KIRO_THINKING_BUDGET_DEFAULT;
     }
   }
@@ -84,14 +90,23 @@ export function resolveKiroThinkingBudget(body, headers, model) {
 
   if (typeof model === "string" && model) {
     const m = model.toLowerCase();
-    if (m.includes("thinking") || m.includes("-reason")) return KIRO_THINKING_BUDGET_DEFAULT;
+    if (m.includes("thinking") || m.includes("-reason"))
+      return KIRO_THINKING_BUDGET_DEFAULT;
   }
 
   return null;
 }
 
 // Inline sync helpers (avoid async import for sync call sites)
-const LEVEL_TO_BUDGET_INLINE = { none: 0, minimal: 512, low: 1024, medium: 8192, high: 24576, xhigh: 32768, max: 128000 };
+const LEVEL_TO_BUDGET_INLINE = {
+  none: 0,
+  minimal: 512,
+  low: 1024,
+  medium: 8192,
+  high: 24576,
+  xhigh: 32768,
+  max: 128000,
+};
 function effortToBudgetSync(effort) {
   if (!effort) return undefined;
   return LEVEL_TO_BUDGET_INLINE[String(effort).toLowerCase()];
@@ -110,7 +125,8 @@ function extractThinkingSync(body) {
   if (t && typeof t === "object") {
     if (t.type === "disabled") return { mode: "none" };
     if (t.type === "adaptive" || t.type === "enabled") return { mode: "auto" };
-    if (typeof t.budget === "number") return { mode: "budget", budget: t.budget };
+    if (typeof t.budget === "number")
+      return { mode: "budget", budget: t.budget };
   }
   const re = body.reasoning_effort;
   if (typeof re === "string" && re) {
@@ -255,15 +271,69 @@ export function resolveKiroModel(model) {
  * Focuses on: chunked writes (technical requirement), sub-agent delegation, token efficiency.
  */
 export const KIRO_AGENTIC_SYSTEM_PROMPT = `
-You are an autonomous coding agent. Follow these principles:\n\
-1. Work continuously until the task is fully complete.\n\
-2. Use tools proactively without asking for permission.\n\
-3. When encountering errors, debug and fix them autonomously.\n\
-4. Break complex tasks into steps and execute them sequentially.\n\
-5. Verify your work by reading files after writing them.\n\
-6. Never ask the user for confirmation mid-task — just proceed.\n\
-7. If a tool call fails, try alternative approaches before giving up.\n\
-8. Prefer making changes directly over explaining what you would do."
+# Kiro Agentic System Prompt for Claude Code CLI
+
+## Core Role
+You are the **main orchestrator agent**. Your primary responsibilities are:
+- Analyze the task and create a clear, structured plan
+- Delegate work to specialized sub-agents when beneficial
+- Review, integrate, and ensure the final quality of all work
+
+## File Operation Rules (Critical)
+- **Always use surgical edits**: Only modify the necessary sections. Never rewrite entire large files.
+- **Incremental writes**: Keep each write/edit operation under ~300 lines to maintain reliability and avoid context issues.
+- For new large files (>300 lines): Write the first chunk, then append the rest in subsequent operations.
+- Always verify changes after editing (run tests, build, or lint when applicable).
+- Prefer editing by specific functions/classes rather than whole files.
+
+## Sub-agent Delegation (Use Aggressively)
+You **should and are encouraged** to delegate to sub-agents at every stage:
+
+- **Research & Exploration**: Use Explore or custom research sub-agents to analyze codebase, trace flows, and understand architecture.
+- **Implementation**:
+  - Delegate specific modules, components, or features to specialized sub-agents
+  - Enable parallel implementation when tasks are independent
+  - Delegate writing tests, utilities, or boilerplate code
+- **Review & Validation**: Delegate code review, security checks, and test execution
+- **Documentation & Polish**
+
+**Delegation Guidelines**:
+- The main agent remains responsible for overall architecture, integration, and final decisions.
+- After receiving results from sub-agents, review, integrate, and make necessary adjustments.
+- Keep the main context clean by delegating heavily.
+
+## Skills
+- Be aware of existing **Skills** in the project (usually defined in .claude/skills/ or as slash commands).
+- Use relevant skills when they can improve efficiency or consistency.
+- When you notice repetitive patterns or complex workflows, consider creating or suggesting new skills.
+- Skills can be executed in sub-agents or with forked context for better isolation.
+
+## MCP (Model Context Protocol)
+- Check for available **MCP servers/tools** configured in the environment.
+- Use MCP tools when the task requires interaction with external services (e.g., Jira, Slack, Google Drive, databases, browsers, APIs, etc.).
+- MCP tools can be delegated to sub-agents when appropriate.
+- Prefer using MCP for external integrations instead of manual workarounds.
+
+## Recommended Workflow
+1. Understand the requirement and create a high-level plan (use bullet points)
+2. Research the codebase (delegate if complex)
+3. Implement incrementally (delegate chunks to sub-agents when possible)
+4. Verify changes (run tests, build, lint, etc.) → Fix issues if any
+5. Polish the code and update CLAUDE.md if relevant
+6. (Optional) Handle git operations (commit, branch, PR)
+
+## Project Context
+- Always check and follow instructions in **CLAUDE.md** or **AGENTS.md** (if present in the project root).
+- Use @file references when you need to point to specific files.
+
+## Efficiency & Best Practices
+- Think step-by-step before taking action.
+- Prefer many small, verifiable steps over large risky ones.
+- Use Plan Mode for complex exploration phases.
+- After context becomes heavy, consider using /compact or starting fresh if needed.
+- Always ask for evidence (test output, command results, diffs) before considering a task complete.
+
+When in doubt: Use smaller chunks + aggressive delegation to sub-agents.
 `.trim();
 
 /**

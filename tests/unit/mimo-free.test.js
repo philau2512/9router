@@ -277,7 +277,8 @@ describe("bootstrapJwt", () => {
     // Setup multiple proxy URLs separated by newlines
     const proxyOptions = {
       proxyPool: {
-        proxyUrl: "http://proxy-one.com:8080\nhttp://proxy-two.com:8080\nhttp://proxy-three.com:8080",
+        proxyUrl:
+          "http://proxy-one.com:8080\nhttp://proxy-two.com:8080\nhttp://proxy-three.com:8080",
       },
     };
 
@@ -286,11 +287,17 @@ describe("bootstrapJwt", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
 
     // Verify 1st bootstrap used proxy-one
-    expect(fetchMock.mock.calls[0][2].connectionProxyUrl).toBe("http://proxy-one.com:8080");
+    expect(fetchMock.mock.calls[0][2].connectionProxyUrl).toBe(
+      "http://proxy-one.com:8080",
+    );
     // Verify 2nd bootstrap used proxy-two
-    expect(fetchMock.mock.calls[1][2].connectionProxyUrl).toBe("http://proxy-two.com:8080");
+    expect(fetchMock.mock.calls[1][2].connectionProxyUrl).toBe(
+      "http://proxy-two.com:8080",
+    );
     // Verify 3rd bootstrap used proxy-three
-    expect(fetchMock.mock.calls[2][2].connectionProxyUrl).toBe("http://proxy-three.com:8080");
+    expect(fetchMock.mock.calls[2][2].connectionProxyUrl).toBe(
+      "http://proxy-three.com:8080",
+    );
   });
 
   it("falls back and rotates through all active system proxy pools on 429 retries if no connection-specific pool is provided", async () => {
@@ -302,16 +309,28 @@ describe("bootstrapJwt", () => {
 
     // Setup active system proxy pools
     mockProxyPools.push(
-      { type: "http", isActive: true, proxyUrl: "http://system-proxy-a.com:8888" },
-      { type: "http", isActive: true, proxyUrl: "http://system-proxy-b.com:8888" }
+      {
+        type: "http",
+        isActive: true,
+        proxyUrl: "http://system-proxy-a.com:8888",
+      },
+      {
+        type: "http",
+        isActive: true,
+        proxyUrl: "http://system-proxy-b.com:8888",
+      },
     );
 
     const jwt = await bootstrapJwt({ connectionProxyEnabled: true });
     expect(jwt).toBe(freshJwt);
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
-    expect(fetchMock.mock.calls[0][2].connectionProxyUrl).toBe("http://system-proxy-a.com:8888");
-    expect(fetchMock.mock.calls[1][2].connectionProxyUrl).toBe("http://system-proxy-b.com:8888");
+    expect(fetchMock.mock.calls[0][2].connectionProxyUrl).toBe(
+      "http://system-proxy-a.com:8888",
+    );
+    expect(fetchMock.mock.calls[1][2].connectionProxyUrl).toBe(
+      "http://system-proxy-b.com:8888",
+    );
   });
 
   it("prioritizes connection pool and rotates to system-wide pools on 429 retries", async () => {
@@ -322,9 +341,11 @@ describe("bootstrapJwt", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ jwt: freshJwt }));
 
     // Setup active system proxy pools
-    mockProxyPools.push(
-      { type: "http", isActive: true, proxyUrl: "http://system-proxy-fallback.com:8888" }
-    );
+    mockProxyPools.push({
+      type: "http",
+      isActive: true,
+      proxyUrl: "http://system-proxy-fallback.com:8888",
+    });
 
     const proxyOptions = {
       connectionProxyEnabled: true,
@@ -337,8 +358,12 @@ describe("bootstrapJwt", () => {
     expect(jwt).toBe(freshJwt);
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
-    expect(fetchMock.mock.calls[0][2].connectionProxyUrl).toBe("http://connection-proxy-primary.com:8080");
-    expect(fetchMock.mock.calls[1][2].connectionProxyUrl).toBe("http://system-proxy-fallback.com:8888");
+    expect(fetchMock.mock.calls[0][2].connectionProxyUrl).toBe(
+      "http://connection-proxy-primary.com:8080",
+    );
+    expect(fetchMock.mock.calls[1][2].connectionProxyUrl).toBe(
+      "http://system-proxy-fallback.com:8888",
+    );
   });
 });
 

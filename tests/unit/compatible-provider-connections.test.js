@@ -32,8 +32,29 @@ async function setupTestContext(nodeData) {
     node,
     POST,
     getProviderConnections,
-    cleanup() {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+    async cleanup() {
+      try {
+        const { getAdapter } = await import("@/lib/db/driver.js");
+        const adapter = await getAdapter();
+        if (adapter && typeof adapter.close === "function") {
+          adapter.close();
+        }
+      } catch (e) {}
+      if (global._dbAdapter) {
+        global._dbAdapter.instance = null;
+        global._dbAdapter.initPromise = null;
+      }
+      let retries = 5;
+      while (retries > 0) {
+        try {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+          break;
+        } catch (err) {
+          retries--;
+          if (retries === 0) throw err;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+      }
     },
   };
 }
@@ -73,11 +94,11 @@ describe("compatible provider connections API", () => {
     vi.clearAllMocks();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.doUnmock("next/server");
     vi.resetModules();
     vi.clearAllMocks();
-    cleanup();
+    await cleanup();
     cleanup = () => {};
     if (originalDataDir === undefined) delete process.env.DATA_DIR;
     else process.env.DATA_DIR = originalDataDir;

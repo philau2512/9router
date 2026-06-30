@@ -62,7 +62,9 @@ describe("extractActiveFromPending", () => {
         "mimo-code-pro-max (mimo-free)": 1, // different provider, should appear
       },
     };
-    const result = extractActiveFromPending(pending, { "conn-abc": "Kiro Account" });
+    const result = extractActiveFromPending(pending, {
+      "conn-abc": "Kiro Account",
+    });
 
     expect(result).toHaveLength(2);
     const providers = result.map((r) => r.provider);
@@ -88,7 +90,7 @@ describe("extractActiveFromPending", () => {
   it("uses fallback account name when connectionId not in connectionMap", () => {
     const pending = {
       byAccount: {
-        "abcdef1234567890": { "claude-opus (kiro)": 1 },
+        abcdef1234567890: { "claude-opus (kiro)": 1 },
       },
       byModel: {},
     };

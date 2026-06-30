@@ -15,7 +15,7 @@ export async function POST(request) {
     if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
       return NextResponse.json(
         { error: "API key is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -24,7 +24,7 @@ export async function POST(request) {
     // Validate the key and resolve its profileArn via ListAvailableProfiles
     const credential = await kiroService.validateApiKey(
       apiKey,
-      region || "us-east-1"
+      region || "us-east-1",
     );
 
     // Extract email from JWT if the key happens to be a JWT (optional display)
@@ -61,7 +61,7 @@ export async function POST(request) {
     // Do not reflect upstream response body to the client (SSRF hardening)
     return NextResponse.json(
       { error: "API key validation failed" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

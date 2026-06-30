@@ -141,8 +141,11 @@ export function handleStreamingResponse({
   if (onRequestSuccess) {
     Promise.resolve()
       .then(onRequestSuccess)
-      .catch(err => {
-        console.error("[ChatCore] onRequestSuccess failed:", err?.message || err);
+      .catch((err) => {
+        console.error(
+          "[ChatCore] onRequestSuccess failed:",
+          err?.message || err,
+        );
       });
   }
 
@@ -168,7 +171,8 @@ export function handleStreamingResponse({
   const wrappedOnStreamComplete = (contentObj, usage, ttftAt) =>
     onStreamComplete?.(contentObj, usage, ttftAt, streamDetailId);
 
-  const targetModelAlias = typeof body?.model === "string" && body.model !== model ? body.model : null;
+  const targetModelAlias =
+    typeof body?.model === "string" && body.model !== model ? body.model : null;
   const transformStream = buildTransformStream({
     provider,
     sourceFormat,
@@ -273,8 +277,7 @@ export function buildOnStreamComplete({
       total,
     };
     // R2-F6: distinguish fast-path PASSTHROUGH (no accumulatedContent) from truly empty
-    const safeContent = contentObj?.content ||
-      "[Empty streaming response]";
+    const safeContent = contentObj?.content || "[Empty streaming response]";
     const safeThinking = contentObj?.thinking || null;
 
     if (timing) {

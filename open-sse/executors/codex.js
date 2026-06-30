@@ -361,8 +361,12 @@ export class CodexExecutor extends BaseExecutor {
       // Phase 6: Try WebSocket executor first when enabled (falls back to HTTP SSE)
       if (CODEX_WS_ENABLED && args.credentials?.accessToken) {
         const wsResp = await tryCodexWSRequest(
-          { baseUrl: args.credentials.baseUrl || this.config.baseUrl, apiKey: args.credentials.accessToken },
-          args.body, args.signal
+          {
+            baseUrl: args.credentials.baseUrl || this.config.baseUrl,
+            apiKey: args.credentials.accessToken,
+          },
+          args.body,
+          args.signal,
         ).catch(() => null);
         if (wsResp) return { response: wsResp };
       }

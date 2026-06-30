@@ -201,7 +201,9 @@ function convertMessages(messages, tools, model) {
 
   const flushPending = () => {
     if (currentRole === "user") {
-      const content = pendingUserContent.join("\n\n").trim() || (pendingToolResults.length > 0 ? "[Tool Output]" : "continue");
+      const content =
+        pendingUserContent.join("\n\n").trim() ||
+        (pendingToolResults.length > 0 ? "[Tool Output]" : "continue");
       const userMsg = {
         userInputMessage: {
           content: content,
@@ -607,8 +609,9 @@ export function buildKiroPayload(model, body, stream, credentials) {
     thinking: modelImpliesThinking,
   } = resolveKiroModel(normalizedModel);
   // Resolve thinking budget from client intent; null means disabled
-  const thinkingBudget = resolveKiroThinkingBudget(body, null, normalizedModel)
-    ?? (modelImpliesThinking ? undefined : null);
+  const thinkingBudget =
+    resolveKiroThinkingBudget(body, null, normalizedModel) ??
+    (modelImpliesThinking ? undefined : null);
   const thinkingEnabled = thinkingBudget !== null;
 
   const { history, currentMessage, toolsAttached } = convertMessages(

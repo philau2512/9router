@@ -19,7 +19,11 @@ export async function register() {
       for (const cfg of Object.values(PROVIDERS)) {
         const urls = cfg.baseUrls || (cfg.baseUrl ? [cfg.baseUrl] : []);
         for (const url of urls) {
-          try { hostnames.add(new URL(url).hostname); } catch { /* skip */ }
+          try {
+            hostnames.add(new URL(url).hostname);
+          } catch {
+            /* skip */
+          }
         }
       }
 
@@ -27,8 +31,8 @@ export async function register() {
       Promise.all([
         warmupProviderAgents(PROVIDERS),
         warmupDnsCache([...hostnames]),
-      ]).catch(err =>
-        console.warn("[WARMUP] Provider warmup failed:", err?.message || err)
+      ]).catch((err) =>
+        console.warn("[WARMUP] Provider warmup failed:", err?.message || err),
       );
     } catch (err) {
       // Warmup is best-effort — never crash server start
