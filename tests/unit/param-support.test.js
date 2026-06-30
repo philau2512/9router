@@ -37,4 +37,22 @@ describe("stripUnsupportedParams", () => {
 
     expect(body).toEqual({ top_p: 1 });
   });
+
+  it("drops reasoning-related params for xAI provider", () => {
+    const body = {
+      model: "grok-build-0.1",
+      messages: [{ role: "user", content: "hello" }],
+      temperature: 0.7,
+      reasoning: { effort: "medium" },
+      reasoning_effort: "medium",
+      thinking: { type: "enabled", budget_tokens: 1024 },
+    };
+
+    stripUnsupportedParams("xai", "grok-build-0.1", body);
+
+    expect(body.reasoning).toBeUndefined();
+    expect(body.reasoning_effort).toBeUndefined();
+    expect(body.thinking).toBeUndefined();
+    expect(body.temperature).toBe(0.7); // should be preserved
+  });
 });

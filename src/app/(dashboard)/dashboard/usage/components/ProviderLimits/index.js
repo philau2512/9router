@@ -1149,6 +1149,25 @@ export default function ProviderLimits() {
                     />
                   )}
                 </div>
+
+                {conn.lastError && (
+                  <div className="px-3 pb-2.5">
+                    <div className="p-2 rounded-lg bg-red-500/5 border border-red-500/10 text-xs text-red-600 dark:text-red-400 flex items-start gap-1.5 break-words">
+                      <span className="material-symbols-outlined text-[14px] shrink-0 mt-0.5">
+                        error
+                      </span>
+                      <div className="min-w-0">
+                        <span className="font-semibold">Last Error: </span>
+                        {conn.lastError}
+                        {conn.lastErrorAt && (
+                          <span className="text-[10px] text-text-muted dark:text-text-muted/80 block mt-0.5">
+                            {new Date(conn.lastErrorAt).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </Card>
             );
           })}

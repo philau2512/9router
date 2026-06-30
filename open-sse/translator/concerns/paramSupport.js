@@ -16,6 +16,11 @@ const STRIP_RULES = [
   },
   // Cloudflare Workers AI: content must be plain string, rejects OpenAI content-part array (#1926)
   { provider: "cloudflare-ai", flattenContent: true },
+  // xAI: all models reject reasoning/thinking parameters with HTTP 400.
+  {
+    provider: "xai",
+    drop: ["reasoning", "reasoning_effort", "thinking"],
+  },
 ];
 
 // Test a rule's match (regex or predicate) against the model id.
