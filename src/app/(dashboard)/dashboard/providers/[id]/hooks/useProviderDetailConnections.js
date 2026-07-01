@@ -800,6 +800,52 @@ export function useProviderDetailConnections({
     .slice(0, 5)
     .map(getConnectionLabel);
 
+  const handleClearSelectedErrors = async (
+    connectionIds = selectedConnectionIds,
+  ) => {
+    if (connectionIds.length === 0) return;
+
+    try {
+      let failed = 0;
+      for (const connectionId of connectionIds) {
+        try {
+          const res = await updateProviderConnection(connectionId, {
+            lastError: null,
+            lastErrorAt: null,
+            testStatus: null,
+          });
+          if (!res.ok) failed += 1;
+        } catch (error) {
+          console.log(
+            "Error clearing connection error:",
+            connectionId,
+            error,
+          );
+          failed += 1;
+        }
+      }
+
+      // Optimistically clear lastError/lastErrorAt/testStatus for succeeded connections
+      const clearedIds = new Set(connectionIds);
+      applyConnections(
+        connectionsRef.current.map((conn) =>
+          clearedIds.has(conn.id)
+            ? { ...conn, lastError: null, lastErrorAt: null, testStatus: null }
+            : conn,
+        ),
+      );
+      setSelectedConnectionIds([]);
+
+      if (failed > 0) {
+        alert(`Cleared with ${failed} failed request(s).`);
+        await fetchConnections();
+      }
+    } catch (error) {
+      console.log("Error clearing selected connection errors:", error);
+      await fetchConnections();
+    }
+  };
+
   return {
     connections,
     setConnections,
@@ -861,5 +907,6 @@ export function useProviderDetailConnections({
     handleWarmupSelected,
     handleWarmupSingle,
     clearWarmupResults,
+    handleClearSelectedErrors,
   };
 }
