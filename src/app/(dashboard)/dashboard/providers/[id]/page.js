@@ -503,7 +503,22 @@ export default function ProviderDetailPage() {
         handleSwapPriority={handleSwapPriority}
         handleUpdateConnectionStatus={handleUpdateConnectionStatus}
         handleUpdateProxy={handleUpdateProxy}
-        handleDeleteConnection={handleDeleteConnection}
+        handleDeleteConnection={(connectionId) => {
+          const connection = connections.find((c) => c.id === connectionId);
+          const displayName = connection
+            ? connection.email || connection.name || connection.id
+            : connectionId;
+
+          setConfirmState({
+            title: "Delete Account",
+            message: `Delete account "${displayName}"? This action cannot be undone.`,
+            confirmText: "Delete",
+            onConfirm: async () => {
+              setConfirmState(null);
+              await handleDeleteConnection(connectionId);
+            },
+          });
+        }}
         onOpenEditConnection={(conn) => {
           setSelectedConnection(conn);
           setShowEditModal(true);
