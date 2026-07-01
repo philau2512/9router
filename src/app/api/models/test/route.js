@@ -4,7 +4,7 @@ import { UPDATER_CONFIG } from "@/shared/constants/config";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 
 const CLI_TOKEN_SALT = "9r-cli-auth";
-const MODEL_TEST_TIMEOUT_MS = 15000;
+const MODEL_TEST_TIMEOUT_MS = 60000;
 
 export function isTimeoutError(err) {
   return (

@@ -444,12 +444,12 @@ export default function ConnectionRow({
           )}
 
           {/* Row 3 — Error details (conditional, visually distinct) */}
-          {(connection.lastError && connection.isActive !== false) ||
+          {connection.lastError ||
           (oneByOneStatus?.state === "failed" && oneByOneStatus?.error) ||
           (manualRefreshStatus?.state === "failed" &&
             manualRefreshStatus?.error) ? (
             <div className="mt-1 flex flex-col gap-0.5 border-l-2 border-red-500/60 pl-2">
-              {connection.lastError && connection.isActive !== false && (
+              {connection.lastError && (
                 <span className="break-words text-xs text-red-500">
                   {connection.lastError}
                 </span>
