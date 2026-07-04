@@ -3,6 +3,7 @@ import { PROVIDERS } from "../config/providers.js";
 import { randomUUID } from "crypto";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
 import { resolveDefaultProfileArn } from "../config/kiroConstants.js";
+import { fetchKiroProfileArn } from "../../src/lib/oauth/kiro-provider-helpers.js";
 
 /**
  * KiroExecutor - Executor for Kiro AI (AWS CodeWhisperer)
@@ -103,6 +104,34 @@ export class KiroExecutor extends BaseExecutor {
    * classify the status, and trigger account fallback/cooldown.
    */
   async execute(args) {
+    const { credentials } = args;
+    const authMethod = credentials?.providerSpecificData?.authMethod;
+
+    // IDC tokens may not carry profileArn when provisioned cross-region.
+    // Discover and inject the ARN before building headers for the request.
+    // Port of upstream PR #2355.
+    if (authMethod === "idc" && !credentials?.providerSpecificData?.profileArn) {
+      const callerRegion =
+        credentials?.providerSpecificData?.region || "us-east-1";
+      try {
+        const discovered = await fetchKiroProfileArn(
+          credentials.accessToken,
+          callerRegion,
+        );
+        if (discovered?.arn) {
+          // Spread to avoid mutating the original reference — safe for retry logic
+          credentials.providerSpecificData = {
+            ...credentials.providerSpecificData,
+            profileArn: discovered.arn,
+            region: discovered.region,
+          };
+        }
+      } catch (err) {
+        // Non-fatal: proceed without profileArn, let upstream return the error
+        console.warn(`[Kiro] IDC profile ARN discovery failed: ${err.message}`);
+      }
+    }
+
     const result = await super.execute(args);
     if (result?.response?.ok) {
       result.response = this.transformEventStreamToSSE(

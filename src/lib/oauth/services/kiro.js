@@ -277,7 +277,9 @@ export class KiroService {
    */
   async listAvailableProfiles(accessToken, region = "us-east-1") {
     assertValidAwsRegion(region);
-    const endpoint = `https://codewhisperer.${region}.amazonaws.com`;
+    // q.<region>.amazonaws.com resolves in all regions;
+    // codewhisperer.<region> only works in us-east-1. PR #2314 fix.
+    const endpoint = `https://q.${region}.amazonaws.com`;
 
     const response = await fetch(endpoint, {
       method: "POST",

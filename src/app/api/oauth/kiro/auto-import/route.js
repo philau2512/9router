@@ -129,11 +129,16 @@ export async function GET() {
         const profileContent = await readFile(profilePath, "utf-8");
         const profileData = JSON.parse(profileContent);
         if (profileData.arn) {
-          // Normalize region to us-east-1 for the runtime gateway
-          profileArn = profileData.arn.replace(
-            /arn:aws:codewhisperer:[^:]+:/,
-            "arn:aws:codewhisperer:us-east-1:",
-          );
+          // IDC ARNs carry the actual service region — preserve as-is.
+          // Builder ID / social ARNs stay normalized to us-east-1 (gateway requirement).
+          // PR #2314 / Validation Session 1: guard authMethod === "idc".
+          const isIdc = authMethod === "idc";
+          profileArn = isIdc
+            ? profileData.arn
+            : profileData.arn.replace(
+                /arn:aws:codewhisperer:[^:]+:/,
+                "arn:aws:codewhisperer:us-east-1:",
+              );
           break;
         }
       } catch (error) {

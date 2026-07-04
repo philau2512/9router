@@ -280,8 +280,31 @@ function convertMessages(messages, tools, model) {
     const msg = messages[i];
     let role = msg.role;
 
-    // Normalize: system/tool -> user
-    if (role === "system" || role === "tool") {
+    // System messages: wrap in <system-reminder> so Kiro/model distinguishes
+    // them from plain user text — mirrors the pattern in claude-to-openai.js:174.
+    // PR #2319 upstream fix.
+    if (role === "system") {
+      const rawContent =
+        typeof msg.content === "string"
+          ? msg.content
+          : Array.isArray(msg.content)
+            ? msg.content.map((c) => c.text || "").join("\n")
+            : "";
+      if (rawContent) {
+        // Flush any pending content before injecting system reminder
+        if (currentRole !== "user" && currentRole !== null) {
+          flushPending();
+        }
+        currentRole = "user";
+        pendingUserContent.push(
+          `<system-reminder>\n${rawContent}\n</system-reminder>`,
+        );
+      }
+      continue; // skip remainder of loop — content already pushed
+    }
+
+    // Normalize: tool -> user
+    if (role === "tool") {
       role = "user";
     }
 

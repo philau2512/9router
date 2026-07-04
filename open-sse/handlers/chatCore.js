@@ -54,6 +54,7 @@ import {
   setCachedThinking,
   injectThinkingReplay,
 } from "../utils/antigravityReasoningReplay.js";
+import { stripOrphanedToolResults } from "../translator/concerns/toolCall.js";
 
 function maskLoggedUrl(rawUrl) {
   try {
@@ -201,6 +202,14 @@ export async function handleChatCore({
   // Skip all translation/normalization — only model and Bearer are swapped
   const clientTool = detectClientTool(clientRawRequest?.headers || {}, body);
   const passthrough = isNativePassthrough(clientTool, provider);
+
+  // Strip orphaned tool results before translation for non-Kiro paths.
+  // Kiro has its own reconcileOrphanedToolResults inside openai-to-kiro.js.
+  // Dangling tool results from client-side history compaction cause HTTP 400
+  // on strict upstreams (Anthropic, Gemini). Port of upstream PR #2298.
+  if (targetFormat !== FORMATS.KIRO) {
+    stripOrphanedToolResults(body);
+  }
 
   let translatedBody;
   let toolNameMap;
