@@ -41,6 +41,7 @@ function aggregateDailyData(
     const day = parseJson(dr.data, {});
     stats.totalPromptTokens += day.promptTokens || 0;
     stats.totalCompletionTokens += day.completionTokens || 0;
+    stats.totalCachedTokens += day.cachedTokens || 0;
     stats.totalCost += day.cost || 0;
 
     aggregateByProvider(day.byProvider, stats);
@@ -69,6 +70,7 @@ function aggregateByProvider(byProvider, stats) {
     stats.byProvider[prov].requests += p.requests || 0;
     stats.byProvider[prov].promptTokens += p.promptTokens || 0;
     stats.byProvider[prov].completionTokens += p.completionTokens || 0;
+    stats.byProvider[prov].cachedTokens = (stats.byProvider[prov].cachedTokens || 0) + (p.cachedTokens || 0);
     stats.byProvider[prov].cost += p.cost || 0;
   }
 }
@@ -89,6 +91,7 @@ function aggregateByModel(byModel, stats, dateKey, providerNodeNameMap) {
     stats.byModel[statsKey].requests += m.requests || 0;
     stats.byModel[statsKey].promptTokens += m.promptTokens || 0;
     stats.byModel[statsKey].completionTokens += m.completionTokens || 0;
+    stats.byModel[statsKey].cachedTokens = (stats.byModel[statsKey].cachedTokens || 0) + (m.cachedTokens || 0);
     stats.byModel[statsKey].cost += m.cost || 0;
     if (dateKey > (stats.byModel[statsKey].lastUsed || ""))
       stats.byModel[statsKey].lastUsed = dateKey;
@@ -121,6 +124,7 @@ function aggregateByAccount(
     stats.byAccount[accountKey].requests += a.requests || 0;
     stats.byAccount[accountKey].promptTokens += a.promptTokens || 0;
     stats.byAccount[accountKey].completionTokens += a.completionTokens || 0;
+    stats.byAccount[accountKey].cachedTokens = (stats.byAccount[accountKey].cachedTokens || 0) + (a.cachedTokens || 0);
     stats.byAccount[accountKey].cost += a.cost || 0;
     if (dateKey > (stats.byAccount[accountKey].lastUsed || ""))
       stats.byAccount[accountKey].lastUsed = dateKey;
@@ -160,6 +164,7 @@ function aggregateByApiKey(
     stats.byApiKey[apiKeyKey].requests += ak.requests || 0;
     stats.byApiKey[apiKeyKey].promptTokens += ak.promptTokens || 0;
     stats.byApiKey[apiKeyKey].completionTokens += ak.completionTokens || 0;
+    stats.byApiKey[apiKeyKey].cachedTokens = (stats.byApiKey[apiKeyKey].cachedTokens || 0) + (ak.cachedTokens || 0);
     stats.byApiKey[apiKeyKey].cost += ak.cost || 0;
     if (dateKey > (stats.byApiKey[apiKeyKey].lastUsed || ""))
       stats.byApiKey[apiKeyKey].lastUsed = dateKey;
@@ -183,6 +188,7 @@ function aggregateByEndpoint(byEndpoint, stats, dateKey, providerNodeNameMap) {
     stats.byEndpoint[epKey].requests += ep.requests || 0;
     stats.byEndpoint[epKey].promptTokens += ep.promptTokens || 0;
     stats.byEndpoint[epKey].completionTokens += ep.completionTokens || 0;
+    stats.byEndpoint[epKey].cachedTokens = (stats.byEndpoint[epKey].cachedTokens || 0) + (ep.cachedTokens || 0);
     stats.byEndpoint[epKey].cost += ep.cost || 0;
     if (dateKey > (stats.byEndpoint[epKey].lastUsed || ""))
       stats.byEndpoint[epKey].lastUsed = dateKey;
@@ -251,11 +257,13 @@ function aggregateLiveHistory(
     const tokens = parseJson(r.tokens, {}) || {};
     const promptTokens = tokens.prompt_tokens || 0;
     const completionTokens = tokens.completion_tokens || 0;
+    const cachedTokens = tokens.cached_tokens || tokens.cache_read_input_tokens || 0;
     const entryCost = r.cost || 0;
     const providerDisplayName = providerNodeNameMap[r.provider] || r.provider;
 
     stats.totalPromptTokens += promptTokens;
     stats.totalCompletionTokens += completionTokens;
+    stats.totalCachedTokens += cachedTokens;
     stats.totalCost += entryCost;
 
     // By provider
@@ -265,6 +273,7 @@ function aggregateLiveHistory(
     prov.requests++;
     prov.promptTokens += promptTokens;
     prov.completionTokens += completionTokens;
+    prov.cachedTokens = (prov.cachedTokens || 0) + cachedTokens;
     prov.cost += entryCost;
 
     // By model
@@ -282,6 +291,7 @@ function aggregateLiveHistory(
       completionTokens,
       entryCost,
       r.timestamp,
+      cachedTokens,
     );
 
     // By account
@@ -305,6 +315,7 @@ function aggregateLiveHistory(
         completionTokens,
         entryCost,
         r.timestamp,
+        cachedTokens,
       );
     }
 
@@ -330,6 +341,7 @@ function aggregateLiveHistory(
         completionTokens,
         entryCost,
         r.timestamp,
+        cachedTokens,
       );
     } else {
       if (!stats.byApiKey["local-no-key"]) {
@@ -348,6 +360,7 @@ function aggregateLiveHistory(
         completionTokens,
         entryCost,
         r.timestamp,
+        cachedTokens,
       );
     }
 
@@ -368,6 +381,7 @@ function aggregateLiveHistory(
       completionTokens,
       entryCost,
       r.timestamp,
+      cachedTokens,
     );
   }
 }
@@ -462,6 +476,7 @@ export async function getUsageStats(period = "all") {
     totalRequests: 0,
     totalPromptTokens: 0,
     totalCompletionTokens: 0,
+    totalCachedTokens: 0,
     totalCost: 0,
     byProvider: {},
     byModel: {},

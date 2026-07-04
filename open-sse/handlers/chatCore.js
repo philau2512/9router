@@ -592,7 +592,7 @@ export async function handleChatCore({
   }
 
   // Streaming response
-  const { onStreamComplete: _baseOnStreamComplete } = buildOnStreamComplete({
+  const { onStreamComplete: _baseOnStreamComplete, streamDetailId } = buildOnStreamComplete({
     ...sharedCtx,
     timing,
   });
@@ -622,6 +622,7 @@ export async function handleChatCore({
     onStreamComplete,
     credentials,
     timing,
+    streamDetailId,
   });
 }
 

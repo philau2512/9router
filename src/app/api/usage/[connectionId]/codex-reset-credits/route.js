@@ -2,7 +2,7 @@
 import "open-sse/index.js";
 
 import { getProviderConnectionById } from "@/lib/localDb";
-import { consumeCodexRateLimitResetCredit } from "open-sse/services/usage/codex.js";
+import { consumeCodexRateLimitResetCredit, getCodexRateLimitResetCredits } from "open-sse/services/usage/codex.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { refreshAndUpdateCredentials } from "../route.js";
 
@@ -64,6 +64,63 @@ function getResponseForConsumeResult(result, redeemRequestId) {
       status: result.status >= 400 && result.status < 500 ? result.status : 502,
     },
   );
+}
+
+export async function GET(request, { params }) {
+  let connection;
+  try {
+    const { connectionId } = await params;
+    connection = await getProviderConnectionById(connectionId);
+    if (!connection) {
+      return Response.json({ error: "Connection not found" }, { status: 404 });
+    }
+    if (connection.provider !== "codex") {
+      return Response.json(
+        { error: "Codex reset credits are only available for Codex connections." },
+        { status: 400 },
+      );
+    }
+    const isOAuth = connection.authType === "oauth";
+    const isAccessToken = connection.authType === "access_token";
+    if (!isOAuth && !isAccessToken) {
+      return Response.json(
+        { error: "Codex reset credits require an OAuth or access token connection." },
+        { status: 400 },
+      );
+    }
+
+    const proxyCfg = await resolveConnectionProxyConfig(connection.providerSpecificData);
+    const proxyOptions = {
+      connectionProxyEnabled: proxyCfg.connectionProxyEnabled === true,
+      connectionProxyUrl: proxyCfg.connectionProxyUrl || "",
+      connectionNoProxy: proxyCfg.connectionNoProxy || "",
+      vercelRelayUrl: proxyCfg.vercelRelayUrl || "",
+      strictProxy: false,
+    };
+
+    const { connection: refreshed } = await refreshAndUpdateCredentials(connection, false, proxyOptions);
+    connection = refreshed;
+
+    if (!connection.accessToken) {
+      return Response.json(
+        { error: "No access token available. Please re-authorize." },
+        { status: 401 },
+      );
+    }
+
+    const result = await getCodexRateLimitResetCredits(
+      connection.accessToken,
+      proxyOptions,
+      connection.providerSpecificData,
+    );
+    return Response.json(result);
+  } catch (error) {
+    console.log("Codex reset credits GET error:", error);
+    return Response.json(
+      { error: error.message || "Failed to fetch reset credits" },
+      { status: 500 },
+    );
+  }
 }
 
 export async function POST(request, { params }) {

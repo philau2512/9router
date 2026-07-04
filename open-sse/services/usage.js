@@ -17,7 +17,7 @@ import { getGitHubUsage } from "./usage/github.js";
 import { getGeminiUsage } from "./usage/gemini.js";
 import { getAntigravityUsage } from "./usage/antigravity.js";
 import { getClaudeUsage } from "./usage/claude.js";
-import { getCodexUsage } from "./usage/codex.js";
+import { getCodexUsage, getCodexRateLimitResetCredits } from "./usage/codex.js";
 import { getKiroUsage } from "./usage/kiro.js";
 import { getMiniMaxUsage } from "./usage/minimax.js";
 import {

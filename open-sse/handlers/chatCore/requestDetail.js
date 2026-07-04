@@ -4,6 +4,7 @@ import {
   saveRequestDetail,
 } from "@/lib/usageDb.js";
 import { COLORS } from "../../utils/stream.js";
+import { canonicalizeUsage } from "../../utils/usageTracking.js";
 
 const OPTIONAL_PARAMS = [
   "temperature",
@@ -125,8 +126,9 @@ export function saveUsageStats({
     );
   }
 
-  // Normalize to OpenAI token shape for storage
-  const normalized = {
+  // Canonicalize to one storage convention (prompt_tokens cache-inclusive) so
+  // cached/cache-creation tokens survive to cost calc + stats. See canonicalizeUsage.
+  const normalized = canonicalizeUsage(tokens) || {
     prompt_tokens: tokens.prompt_tokens ?? tokens.input_tokens ?? 0,
     completion_tokens: tokens.completion_tokens ?? tokens.output_tokens ?? 0,
   };

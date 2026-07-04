@@ -253,6 +253,9 @@ export const CLINE_CONFIG = {
   refreshUrl: "https://api.cline.bot/api/v1/auth/refresh",
 };
 
+// ClinePass OAuth Configuration (shares Cline's OAuth endpoints)
+export const CLINEPASS_CONFIG = { ...CLINE_CONFIG };
+
 // GitLab Duo OAuth Configuration (Authorization Code Flow with PKCE)
 // Supports both OAuth (PKCE) and Personal Access Token (PAT) modes
 export const GITLAB_CONFIG = {
@@ -297,6 +300,7 @@ export const PROVIDERS = {
   KIMI_CODING: "kimi-coding",
   KILOCODE: "kilocode",
   CLINE: "cline",
+  CLINEPASS: "clinepass",
   GITLAB: "gitlab",
   CODEBUDDY: "codebuddy-cn",
 };

@@ -276,6 +276,17 @@ export const PROVIDERS = {
     tokenUrl: "https://api.cline.bot/api/v1/auth/token",
     refreshUrl: "https://api.cline.bot/api/v1/auth/refresh",
   },
+  clinepass: {
+    baseUrl: "https://api.cline.bot/api/v1/chat/completions",
+    format: "openai",
+    category: "oauth",
+    headers: {
+      "HTTP-Referer": "https://cline.bot",
+      "X-Title": "Cline",
+    },
+    tokenUrl: "https://api.cline.bot/api/v1/auth/token",
+    refreshUrl: "https://api.cline.bot/api/v1/auth/refresh",
+  },
   nvidia: {
     baseUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
     format: "openai",
@@ -451,6 +462,12 @@ export const PROVIDERS = {
   "xiaomi-tokenplan": {
     baseUrl: "https://token-plan-sgp.xiaomimimo.com/v1/chat/completions",
     format: "openai",
+    regions: [
+      { id: "sgp", label: "Singapore (新加坡)" },
+      { id: "cn", label: "China (中国大陆)" },
+      { id: "ams", label: "Amsterdam (阿姆斯特丹)" },
+    ],
+    defaultRegion: "sgp",
   },
   // Region map for Xiaomi MiMo Token Plan (keys are cluster-specific)
   // Used by resolveXiaomiTokenplanBaseUrl below

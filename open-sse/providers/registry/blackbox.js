@@ -1,4 +1,4 @@
-export default {
+const blackboxRegistry = {
   id: "blackbox",
   priority: 50,
   alias: "blackbox",
@@ -77,3 +77,5 @@ export default {
     },
   ],
 };
+
+export default blackboxRegistry;

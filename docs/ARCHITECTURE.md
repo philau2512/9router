@@ -1,6 +1,6 @@
 # 9Router Architecture
 
-_Last updated: 2026-06-19_
+_Last updated: 2026-07-04_
 
 ## Executive Summary
 
@@ -160,6 +160,8 @@ Usage DB:
   - DNS rebinding protection: `open-sse/translator/helpers/imageHelper.js` resolves hostname once, pins to public IP, rejects redirects, enforces byte cap; blocked hosts list in `open-sse/config/mediaConfig.js`
   - AWS region injection (GHSA-6mwv-4mrm-5p3m): `src/lib/oauth/constants/oauth.js` exports `assertValidAwsRegion()`; called in all Kiro region-interpolating code paths
 - **Kiro API-key auth (2026-06-19):** `POST /api/oauth/kiro/api-key` — headless auth without OAuth device flow; `src/lib/oauth/services/kiro.js` adds `validateApiKey()` and `listAvailableProfiles()`
+- **Kiro IdC regional routing (2026-07-04):** `open-sse/executors/kiro.js` overrides `buildUrl()` — IAM Identity Center (`authMethod: "idc"`) tokens route to `*.amazonaws.com` CodeWhisperer surface, regionalized from `credentials.region`. `claude-to-kiro.js` + `openai-to-kiro.js` extended to treat `idc`/`external_idp` as account-bound auth (no shared default ARN fallback).
+- **Kiro Claude Sonnet 5 (2026-07-04):** `open-sse/providers/capabilities.js` adds `claude-sonnet-5` + 3 variants (thinking/agentic/thinking-agentic) with 1M context + adaptive thinking. `src/shared/constants/cliTools.js` adds Sonnet 5 to Kiro MITM defaultModels.
 
 ## 5) Cloud URL Configuration
 
@@ -443,6 +445,9 @@ flowchart LR
 - Response translators: `open-sse/translator/response/*`
 - Format constants: `open-sse/translator/formats.js`
 - **Direct CLAUDE↔KIRO routes (2026-06-19):** `open-sse/translator/request/claude-to-kiro.js` + `open-sse/translator/response/kiro-to-claude.js` — registered as direct routes, bypassing the CLAUDE→OPENAI→KIRO pivot for lower latency and correct tool/thinking handling
+- **Cached token cost tracking (2026-07-04):** `open-sse/utils/usageTracking.js` adds `canonicalizeUsage()` (folds Claude `cache_read_input_tokens` / `cache_creation_input_tokens` into `prompt_tokens`) and `mergeUsage()` (field-wise max-merge for Anthropic split events). `claude-to-openai.js` captures cache fields from `message_start` so `message_delta` doesn't reset them. `pricing-utils.js` subtracts both `cachedTokens` + `cacheCreationTokens` from non-cached input to prevent double-charging. Dashboard stats (`usage-helpers.js`, `usage-stats.js`) surface `cachedTokens` across all dimensions.
+- **ClinePass provider (2026-07-04):** New OAuth + API-key provider using Cline's OpenAI-compatible API. `open-sse/services/clinepassModels.js` — live `/v1/models` resolver filtering `cline-pass/*` models. `src/lib/oauth/providers.js` registers ClinePass with base64 token exchange (same as Cline). `open-sse/executors/default.js` `refreshCline()` now injects `workos:` prefix on access tokens. `src/app/api/v1/models/route.js` registers live resolver.
+- **Xiaomi-tokenplan region selector (2026-07-04):** `open-sse/config/providers.js` adds `regions` array (sgp/cn/ams) + `defaultRegion`; `EditConnectionModal` generically renders a `<Select>` for any provider with `regions`. Validate route accepts HTTP 403 as valid for xiaomi-tokenplan (keys lack list permission). Multi-connection guard removed for compatible/embedding nodes.
 - Translator concerns (DRY extractions): `open-sse/translator/concerns/thinking.js`, `thinkingUnified.js`, `paramSupport.js`, `usage.js`; schema enums: `open-sse/translator/schema/`
 - Config-driven param stripping: `stripUnsupportedParams` in `paramSupport.js`, called by default/github executors; `ANTIGRAVITY_REQUEST_BLACKLIST` in `antigravity.js`
 
@@ -461,6 +466,7 @@ Specialized executors:
 - `kiro`
 - `codex`
 - `cursor`
+- `clinepass` (via `default.js` with `clineHeaders` hook + `workos:` token prefix)
 
 Default executor path:
 
@@ -530,6 +536,7 @@ Runtime visibility sources:
 - **Claude 429 cooldown (2026-06-19):** `open-sse/services/usage/claude.js` tracks per-token 180s cooldown on 429 responses to avoid usage-poller spam
 - **Claude auto-ping (2026-06-19):** `src/shared/services/claudeAutoPing.js` — 60s tick scheduler warms the 5h OAuth quota window after reset; opt-in per connection; started from `initializeApp.js`
 - **Codex reset credits (2026-06-19):** `POST /api/usage/[connectionId]/codex-reset-credits` — consumes one Codex rate-limit reset credit (irreversible); `open-sse/services/usage/codex.js` exports `consumeCodexRateLimitResetCredit()`
+- **Codex reset credit expiry (2026-07-04):** `GET /api/usage/[connectionId]/codex-reset-credits` — read-only fetch of credit inventory (status, grantedAt, expiresAt); `resolveClinepassModels()` in `open-sse/services/usage/codex.js`; Quota Tracker modal in `ProviderLimits` shows per-credit expiry.
 
 ## Security-Sensitive Boundaries
 

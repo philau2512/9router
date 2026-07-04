@@ -195,8 +195,27 @@ function convertContent(content) {
     }
   }
 
-  // Content with only functionResponses → return array of tool messages
+  // Content with functionResponses — return array of tool result messages,
+  // plus an assistant message for any co-located tool calls / text.
+  // Preserves tool_calls when functionResponse and functionCall coexist in
+  // the same content part, and skips empty text parts before they reach Claude.
   if (toolResults.length > 0) {
+    if (toolCalls.length > 0 || textParts.length > 0 || reasoningContent) {
+      const assistantMsg = { role: "assistant" };
+      if (textParts.length > 0) {
+        assistantMsg.content =
+          textParts.length === 1 && textParts[0].type === "text"
+            ? textParts[0].text
+            : textParts;
+      }
+      if (reasoningContent) {
+        assistantMsg.reasoning_content = reasoningContent;
+      }
+      if (toolCalls.length > 0) {
+        assistantMsg.tool_calls = toolCalls;
+      }
+      return [...toolResults, assistantMsg];
+    }
     return toolResults;
   }
 

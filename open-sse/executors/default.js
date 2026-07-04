@@ -279,6 +279,7 @@ export class DefaultExecutor extends BaseExecutor {
       gemini: () => this.refreshGoogle(credentials.refreshToken, proxyOptions),
       kiro: () => this.refreshKiro(credentials.refreshToken, proxyOptions),
       cline: () => this.refreshCline(credentials.refreshToken, proxyOptions),
+      clinepass: () => this.refreshCline(credentials.refreshToken, proxyOptions),
       "kimi-coding": () =>
         this.refreshKimiCoding(credentials.refreshToken, proxyOptions),
       kilocode: () =>
@@ -464,8 +465,12 @@ export class DefaultExecutor extends BaseExecutor {
         )
       : undefined;
     console.log("[DEBUG] Cline refresh success, expiresIn:", expiresIn);
+    let accessToken = data?.accessToken;
+    if (accessToken && !accessToken.startsWith("workos:")) {
+      accessToken = `workos:${accessToken}`;
+    }
     return {
-      accessToken: data?.accessToken,
+      accessToken,
       refreshToken: data?.refreshToken || refreshToken,
       expiresIn,
     };

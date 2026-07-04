@@ -49,6 +49,46 @@ export class KiroExecutor extends BaseExecutor {
   }
 
   /**
+   * Override buildUrl to route CodeWhisperer-surface auth methods (api_key /
+   * external_idp / idc) to *.amazonaws.com endpoints only, and regionalize
+   * them when credentials.region differs from the hardcoded us-east-1 default.
+   *
+   * IAM Identity Center (idc) tokens are AWS SSO access tokens — the kiro.dev
+   * gateway rejects them with 403 "bearer token invalid". They must hit the
+   * CodeWhisperer surface and in the region the token was minted in.
+   */
+  buildUrl(model, stream, urlIndex = 0, credentials = null) {
+    const authMethod = credentials?.providerSpecificData?.authMethod;
+    const isCodeWhispererSurface =
+      authMethod === "api_key" ||
+      authMethod === "external_idp" ||
+      authMethod === "idc";
+
+    if (isCodeWhispererSurface) {
+      const region = (
+        credentials?.providerSpecificData?.region || "us-east-1"
+      ).trim();
+      const regionalize = (u) =>
+        region && region !== "us-east-1" && u.includes("amazonaws.com")
+          ? u.replace(
+              /([a-z]+)\.[a-z0-9-]+\.amazonaws\.com/,
+              `$1.${region}.amazonaws.com`,
+            )
+          : u;
+
+      const baseUrls = this.getBaseUrls();
+      const amazon = baseUrls
+        .filter((u) => u.includes("amazonaws.com"))
+        .map(regionalize);
+      const others = baseUrls.filter((u) => !u.includes("amazonaws.com"));
+      const ordered = amazon.length > 0 ? [...amazon, ...others] : baseUrls;
+      return ordered[urlIndex] || ordered[0];
+    }
+
+    return super.buildUrl(model, stream, urlIndex, credentials);
+  }
+
+  /**
    * Kiro execute — delegate to BaseExecutor for endpoint fallback + retry, then
    * transform the binary AWS EventStream into OpenAI-shaped SSE on success.
    *
@@ -473,6 +513,11 @@ export class KiroExecutor extends BaseExecutor {
             if (metrics && typeof metrics === "object") {
               const inputTokens = metrics.inputTokens || 0;
               const outputTokens = metrics.outputTokens || 0;
+              // ponytail: Amazon Q upstream does not expose cache fields today,
+              // but pick up cache_read_input_tokens / cache_creation_input_tokens
+              // if the event shape grows them so cost tracking stays accurate.
+              const cachedTokens = metrics.cacheReadInputTokens || metrics.cache_read_input_tokens || 0;
+              const cacheCreationInputTokens = metrics.cacheCreationInputTokens || metrics.cache_creation_input_tokens || 0;
 
               if (inputTokens > 0 || outputTokens > 0) {
                 state.usage = {
@@ -480,6 +525,11 @@ export class KiroExecutor extends BaseExecutor {
                   completion_tokens: outputTokens,
                   total_tokens: inputTokens + outputTokens,
                 };
+                // Kiro is Claude-backed: inputTokens EXCLUDES cache (Claude convention),
+                // not inclusive like OpenAI's cached_tokens. Emit cache_read_input_tokens
+                // (not cached_tokens) so canonicalizeUsage takes the Claude fold path.
+                if (cachedTokens > 0) state.usage.cache_read_input_tokens = cachedTokens;
+                if (cacheCreationInputTokens > 0) state.usage.cache_creation_input_tokens = cacheCreationInputTokens;
               }
             }
           }
