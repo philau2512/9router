@@ -31,9 +31,24 @@ const LIVE_MODEL_RESOLVERS = {
       {
         accessToken: conn.accessToken,
         refreshToken: conn.refreshToken,
+        expiresAt: conn.expiresAt || null,
         providerSpecificData: conn.providerSpecificData || {},
       },
-      { log: console },
+      {
+        log: console,
+        onCredentialsRefreshed: async (refreshed) => {
+          if (refreshed?.accessToken) {
+            await updateProviderCredentials(conn.id, {
+              accessToken: refreshed.accessToken,
+              refreshToken: refreshed.refreshToken || conn.refreshToken,
+              expiresIn: refreshed.expiresIn,
+            });
+            conn.accessToken = refreshed.accessToken;
+            if (refreshed.refreshToken)
+              conn.refreshToken = refreshed.refreshToken;
+          }
+        },
+      },
     );
     return result?.models?.length ? { models: result.models } : null;
   },

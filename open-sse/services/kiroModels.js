@@ -249,12 +249,59 @@ export async function resolveKiroModels(credentials, options = {}) {
     }
   }
 
+  // Proactive token refresh: if token is expired or expiring within 5 min,
+  // refresh before hitting the API — avoids the 403 "invalid bearer token"
+  // that occurs when kiroModels runs ahead of the main chat refresh cycle.
+  const EXPIRY_BUFFER_MS = 5 * 60 * 1000;
+  const tokenExpiresAt = credentials.expiresAt
+    ? new Date(credentials.expiresAt).getTime()
+    : null;
+  const tokenExpiringSoon =
+    tokenExpiresAt !== null && tokenExpiresAt - Date.now() < EXPIRY_BUFFER_MS;
+
+  if (tokenExpiringSoon && credentials.refreshToken) {
+    options.log?.info?.(
+      "KIRO_MODELS",
+      `Token expiring soon (expiresAt=${credentials.expiresAt}); refreshing proactively`,
+    );
+    try {
+      const refreshed = await refreshKiroToken(
+        credentials.refreshToken,
+        credentials.providerSpecificData,
+        options.log,
+      );
+      if (refreshed?.accessToken) {
+        credentials.accessToken = refreshed.accessToken;
+        if (refreshed.refreshToken)
+          credentials.refreshToken = refreshed.refreshToken;
+        if (typeof options.onCredentialsRefreshed === "function") {
+          try {
+            await options.onCredentialsRefreshed(refreshed);
+          } catch (e) {
+            options.log?.warn?.(
+              "KIRO_MODELS",
+              `onCredentialsRefreshed failed: ${e?.message || e}`,
+            );
+          }
+        }
+      }
+    } catch (e) {
+      // Non-fatal — proceed with current token; reactive retry still covers 401/403
+      options.log?.warn?.(
+        "KIRO_MODELS",
+        `Proactive refresh failed: ${e?.message || e}`,
+      );
+    }
+  }
+
   let raw;
   try {
     raw = await fetchKiroCatalogRaw(credentials, options.signal);
   } catch (err) {
-    if (err && err.status === 401 && credentials.refreshToken) {
-      options.log?.info?.("KIRO_MODELS", "Got 401 from Kiro; refreshing token");
+    // Kiro returns 403 (not 401) for expired/invalid tokens on ListAvailableModels.
+    // Treat both as recoverable with a token refresh. PR #2298 area fix.
+    if (err && (err.status === 401 || err.status === 403) && credentials.refreshToken) {
+      options.log?.info?.("KIRO_MODELS", `Got ${err.status} from Kiro; refreshing token`);
       const refreshed = await refreshKiroToken(
         credentials.refreshToken,
         credentials.providerSpecificData,
