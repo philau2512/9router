@@ -375,6 +375,61 @@ export class AntigravityExecutor extends BaseExecutor {
     );
   }
 
+  /**
+   * Parse Antigravity 429 quota errors to extract precise reset timestamp.
+   * Looks for ErrorInfo.metadata.quotaResetTimeStamp (absolute) or
+   * RetryInfo.retryDelay (relative seconds, e.g. "12872.41s") in gRPC details array.
+   * Without this, the fallback backoff only locks for a few seconds despite a 3-4h quota reset.
+   * @param {Response} response
+   * @param {string} bodyText
+   */
+  parseError(response, bodyText) {
+    if (response.status === 429 && bodyText) {
+      try {
+        const json = JSON.parse(bodyText);
+        const details = json?.error?.details;
+        if (Array.isArray(details)) {
+          // Prefer absolute reset timestamp from ErrorInfo metadata (most reliable)
+          for (const detail of details) {
+            if (
+              detail["@type"]?.includes("ErrorInfo") &&
+              detail?.metadata?.quotaResetTimeStamp
+            ) {
+              const resetMs = new Date(
+                detail.metadata.quotaResetTimeStamp,
+              ).getTime();
+              if (resetMs > Date.now()) {
+                return {
+                  status: 429,
+                  message: json.error?.message || bodyText,
+                  resetsAtMs: resetMs,
+                };
+              }
+            }
+          }
+          // Fallback: relative delay from RetryInfo (e.g. "12872.411299746s")
+          for (const detail of details) {
+            if (detail["@type"]?.includes("RetryInfo") && detail?.retryDelay) {
+              const seconds = parseFloat(
+                String(detail.retryDelay).replace(/s$/, ""),
+              );
+              if (seconds > 0) {
+                return {
+                  status: 429,
+                  message: json.error?.message || bodyText,
+                  resetsAtMs: Date.now() + seconds * 1000,
+                };
+              }
+            }
+          }
+        }
+      } catch {
+        /* fall through to default */
+      }
+    }
+    return super.parseError(response, bodyText);
+  }
+
   async execute({
     model,
     body,
