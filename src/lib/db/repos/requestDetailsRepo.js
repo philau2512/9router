@@ -101,6 +101,32 @@ function truncateField(obj, maxSize) {
   return obj || {};
 }
 
+/**
+ * Truncate request field while preserving tools array under a separate 64KB budget.
+ * Tools can be large (many definitions) and are important for debugging agent requests.
+ * Without this, a large request body causes tools to be lost along with the truncated blob.
+ * @param {object} request - Request object (may contain .tools array)
+ * @param {number} maxSize - Max bytes for the request body (excluding tools)
+ */
+function truncateRequestWithTools(request, maxSize) {
+  if (!request || typeof request !== "object") return request || {};
+  const TOOLS_MAX_SIZE = 64 * 1024; // 64KB separate budget for tools
+  const { tools, ...requestWithoutTools } = request;
+  const truncated = truncateField(requestWithoutTools, maxSize);
+  if (tools !== undefined) {
+    const toolsStr = JSON.stringify(tools);
+    truncated.tools =
+      toolsStr.length <= TOOLS_MAX_SIZE
+        ? tools
+        : {
+            _truncated: true,
+            _originalSize: toolsStr.length,
+            _preview: toolsStr.substring(0, 200),
+          };
+  }
+  return truncated;
+}
+
 async function flushToDatabase() {
   if (isFlushing) return;
   if (writeBuffer.length === 0) return;
@@ -155,7 +181,7 @@ async function flushToDatabase() {
                     status: item.status || null,
                     latency: item.latency || {},
                     tokens: item.tokens || {},
-                    request: truncateField(item.request, _config.maxJsonSize),
+                    request: truncateRequestWithTools(item.request, _config.maxJsonSize),
                     providerRequest: truncateField(
                       item.providerRequest,
                       _config.maxJsonSize,

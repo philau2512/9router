@@ -500,7 +500,7 @@ export async function getUsageStats(period = "all") {
   const useDailySummary = period !== "24h" && period !== "today";
 
   if (useDailySummary) {
-    const periodDays = { "7d": 7, "30d": 30, "60d": 60 };
+    const periodDays = { "7d": 7, "30d": 30, "60d": 60, "90d": 90, "180d": 180, "365d": 365 };
     const maxDays = periodDays[period] || null;
     const dayRows = loadDaysInRange(db, maxDays);
     aggregateDailyData(
