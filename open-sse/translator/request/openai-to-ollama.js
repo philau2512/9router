@@ -116,6 +116,7 @@ function normalizeMessages(messages) {
         role: "assistant",
         content: content,
         tool_calls: ollamaToolCalls,
+        ...(msg.reasoning_content && { thinking: msg.reasoning_content }),
       });
       continue;
     }
@@ -135,6 +136,11 @@ function normalizeMessages(messages) {
 
     if (images.length > 0) {
       out.images = images;
+    }
+
+    // reasoning_content → thinking field for Ollama
+    if (role === "assistant" && msg.reasoning_content) {
+      out.thinking = msg.reasoning_content;
     }
 
     result.push(out);

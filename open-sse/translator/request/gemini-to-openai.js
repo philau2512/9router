@@ -81,10 +81,16 @@ function convertGeminiContent(content) {
 
   const parts = [];
   const toolCalls = [];
+  let reasoningContent = ""; // Accumulate thought parts → reasoning_content
 
   for (const part of content.parts) {
     if (part.text !== undefined) {
-      parts.push({ type: "text", text: part.text });
+      if (part.thought) {
+        // Thought parts → reasoning_content, not visible text
+        reasoningContent += part.text;
+      } else {
+        parts.push({ type: "text", text: part.text });
+      }
     }
 
     if (part.inlineData) {
@@ -126,15 +132,23 @@ function convertGeminiContent(content) {
       result.content = parts.length === 1 ? parts[0].text : parts;
     }
     result.tool_calls = toolCalls;
+    if (reasoningContent) result.reasoning_content = reasoningContent;
     return result;
   }
 
   if (parts.length > 0) {
-    return {
+    const result = {
       role,
       content:
         parts.length === 1 && parts[0].type === "text" ? parts[0].text : parts,
     };
+    if (role === "assistant" && reasoningContent) result.reasoning_content = reasoningContent;
+    return result;
+  }
+
+  // Only reasoning content (no visible text/tool calls)
+  if (reasoningContent) {
+    return { role: "assistant", content: "", reasoning_content: reasoningContent };
   }
 
   return null;
@@ -152,3 +166,50 @@ function extractGeminiText(content) {
 // Register
 register(FORMATS.GEMINI, FORMATS.OPENAI, geminiToOpenAIRequest, null);
 register(FORMATS.GEMINI_CLI, FORMATS.OPENAI, geminiToOpenAIRequest, null);
+
+/**
+ * Fixed wrapper for geminiToOpenAIRequest that handles contents where
+ * functionResponse parts are co-located with functionCall or text parts.
+ *
+ * Problem: convertGeminiContent() returns early on the first functionResponse,
+ * discarding any co-located functionCall/text parts in the same content.
+ *
+ * Fix: Pre-split mixed contents into separate sub-contents before delegating
+ * to the original translator. Tool results are emitted before remaining parts
+ * to match expected message ordering.
+ */
+function geminiToOpenAIRequestFixed(model, body, stream) {
+  if (!body.contents || !Array.isArray(body.contents)) {
+    return geminiToOpenAIRequest(model, body, stream);
+  }
+
+  const fixedContents = [];
+  for (const content of body.contents) {
+    if (!content.parts || !Array.isArray(content.parts)) {
+      fixedContents.push(content);
+      continue;
+    }
+
+    const functionResponseParts = content.parts.filter((p) => p.functionResponse);
+    const otherParts = content.parts.filter((p) => !p.functionResponse);
+
+    // No mixing — pass through unchanged
+    if (functionResponseParts.length === 0 || otherParts.length === 0) {
+      fixedContents.push(content);
+      continue;
+    }
+
+    // Emit one sub-content per functionResponse (tool results first)
+    for (const frPart of functionResponseParts) {
+      fixedContents.push({ ...content, parts: [frPart] });
+    }
+    // Emit remaining parts (functionCall/text) under original role
+    fixedContents.push({ ...content, parts: otherParts });
+  }
+
+  return geminiToOpenAIRequest(model, { ...body, contents: fixedContents }, stream);
+}
+
+// Override: last registration wins — route through fixed wrapper
+register(FORMATS.GEMINI,     FORMATS.OPENAI, geminiToOpenAIRequestFixed, null);
+register(FORMATS.GEMINI_CLI, FORMATS.OPENAI, geminiToOpenAIRequestFixed, null);

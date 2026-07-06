@@ -17,6 +17,8 @@ import {
   FREE_PROVIDERS,
 } from "@/shared/constants/providers.js";
 import * as log from "../utils/logger.js";
+import { getProxyPools } from "@/models";
+import { pickProxyPoolId } from "@/lib/network/connectionProxy";
 
 // Mutex to prevent race conditions during account selection
 let selectionMutex = Promise.resolve();
@@ -59,8 +61,17 @@ export async function getProviderCredentials(
     if (FREE_PROVIDERS[providerId]?.noAuth) {
       const settings = await getSettings();
       const override = (settings.providerStrategies || {})[providerId] || {};
+      const rotateStrategy = override.rotateStrategy || "none";
+      let resolvedProxyPoolId;
+      if (rotateStrategy !== "none") {
+        const allPools = await getProxyPools({ isActive: true });
+        const poolIds = (allPools || []).map((p) => p.id);
+        resolvedProxyPoolId = pickProxyPoolId(poolIds, rotateStrategy, providerId);
+      } else {
+        resolvedProxyPoolId = override.proxyPoolId || "";
+      }
       const resolvedProxy = await resolveConnectionProxyConfig({
-        proxyPoolId: override.proxyPoolId || "",
+        proxyPoolId: resolvedProxyPoolId,
       });
       return {
         id: "noauth",

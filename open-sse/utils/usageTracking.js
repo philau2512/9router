@@ -224,7 +224,10 @@ export function canonicalizeUsage(usage) {
     prompt = prompt + cached + cacheCreation;
   } else {
     // OpenAI/Gemini path (or already-canonical input): prompt already includes cached.
-    cached = num(usage.cached_tokens);
+    // Gemini translator stores cached under prompt_tokens_details.cached_tokens (OpenAI
+    // nested shape) rather than top-level cached_tokens — read both so the value survives
+    // canonicalization and reaches the DB.
+    cached = num(usage.cached_tokens ?? usage.prompt_tokens_details?.cached_tokens);
   }
 
   const result = {

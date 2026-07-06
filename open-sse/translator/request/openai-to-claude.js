@@ -60,6 +60,14 @@ export function openaiToClaudeRequest(model, body, stream) {
       const hasToolUse = blocks.some((b) => b.type === "tool_use");
       const hasToolResult = blocks.some((b) => b.type === "tool_result");
 
+      // reasoning_content → prepend leading thinking block (before text/tool_use blocks)
+      if (newRole === "assistant" && msg.reasoning_content) {
+        const hasThinking = blocks.some((b) => b.type === "thinking");
+        if (!hasThinking) {
+          blocks.unshift({ type: "thinking", thinking: msg.reasoning_content });
+        }
+      }
+
       // Separate tool_result from other content
       if (hasToolResult) {
         const toolResultBlocks = blocks.filter((b) => b.type === "tool_result");
