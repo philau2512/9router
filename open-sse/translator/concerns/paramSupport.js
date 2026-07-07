@@ -1,5 +1,6 @@
 // Strip request params a given provider/model rejects upstream (e.g. HTTP 400).
 // Config-driven: add a rule instead of scattering `delete body.x` across executors.
+import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 
 // Each rule: optional provider, regex match on model, list of params to drop.
 // A param is removed only when it is present (!== undefined).
@@ -21,6 +22,8 @@ const STRIP_RULES = [
     provider: "xai",
     drop: ["reasoning", "reasoning_effort", "thinking"],
   },
+  // Volcengine Ark GLM-5 rejects max_tokens above the model output ceiling.
+  { provider: "volcengine-ark", match: /glm-5/i, clampToModelMaxOutput: true },
 ];
 
 // Test a rule's match (regex or predicate) against the model id.
@@ -28,6 +31,13 @@ function matches(rule, model) {
   return typeof rule.match === "function"
     ? rule.match(model)
     : rule.match.test(model);
+}
+
+function clampNumber(body, key, ceiling) {
+  if (!Number.isFinite(ceiling) || body[key] === undefined) return;
+  const value = Number(body[key]);
+  if (!Number.isFinite(value) || value <= ceiling) return;
+  body[key] = ceiling;
 }
 
 // Remove unsupported params from body in place; returns body.
@@ -52,6 +62,10 @@ export function stripUnsupportedParams(provider, model, body) {
             .join("");
         }
       }
+    }
+    if (rule.clampToModelMaxOutput) {
+      const ceiling = getCapabilitiesForModel(provider, model).maxOutput;
+      clampNumber(body, "max_tokens", ceiling);
     }
   }
   return body;

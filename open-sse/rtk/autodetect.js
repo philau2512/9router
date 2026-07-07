@@ -1,11 +1,12 @@
 // Port of auto_detect_filter (rtk/src/cmds/system/pipe_cmd.rs:132-188) + JS extras
-// Order: git-diff → git-status → build-output → grep → find → tree → ls → search-list
-//        → read-numbered → dedup-log → smart-truncate → null
+// Order: git-log → git-diff → git-status → build-output → grep → find → tree → ls
+//        → search-list → read-numbered → dedup-log → smart-truncate → null
 import {
   DETECT_WINDOW,
   READ_NUMBERED_MIN_HIT_RATIO,
   SMART_TRUNCATE_MIN_LINES,
 } from "./constants.js";
+import { gitLog } from "./filters/gitLog.js";
 import { gitDiff } from "./filters/gitDiff.js";
 import { gitStatus } from "./filters/gitStatus.js";
 import { buildOutput } from "./filters/buildOutput.js";
@@ -18,6 +19,8 @@ import { smartTruncate } from "./filters/smartTruncate.js";
 import { readNumbered, READ_NUMBERED_LINE_RE } from "./filters/readNumbered.js";
 import { searchList, SEARCH_LIST_HEADER_RE } from "./filters/searchList.js";
 
+const RE_GIT_LOG = /^[*|/\\ ]*commit [0-9a-f]{7,40}$/m;
+const RE_GIT_LOG_ONELINE = /^[*|/\\ ]*[0-9a-f]{7,40}\s+\S/m;
 const RE_GIT_DIFF = /^diff --git /m;
 const RE_GIT_DIFF_HUNK = /^@@ /m;
 const RE_GIT_STATUS =
@@ -34,6 +37,7 @@ export function autoDetectFilter(text) {
   const head =
     text.length > DETECT_WINDOW ? text.slice(0, DETECT_WINDOW) : text;
 
+  if (RE_GIT_LOG.test(head) || isGitLogOneline(head)) return gitLog;
   if (RE_GIT_DIFF.test(head) || RE_GIT_DIFF_HUNK.test(head)) return gitDiff;
   if (RE_GIT_STATUS.test(head)) return gitStatus;
 
@@ -73,6 +77,13 @@ export function autoDetectFilter(text) {
   if (hasMinLines(text, SMART_TRUNCATE_MIN_LINES)) return smartTruncate;
 
   return null;
+}
+
+function isGitLogOneline(head) {
+  const lines = head.split("\n").filter((l) => l.trim());
+  if (lines.length < 3) return false;
+  const hits = lines.filter((l) => RE_GIT_LOG_ONELINE.test(l)).length;
+  return hits >= 3 && hits / lines.length >= 0.6;
 }
 
 function isGrepLine(line) {

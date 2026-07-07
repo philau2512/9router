@@ -55,4 +55,13 @@ describe("stripUnsupportedParams", () => {
     expect(body.thinking).toBeUndefined();
     expect(body.temperature).toBe(0.7); // should be preserved
   });
+
+  it("clamps Volcengine Ark GLM-5 max_tokens to model output ceiling", () => {
+    const body = { max_tokens: 200000, temperature: 0.7 };
+
+    stripUnsupportedParams("volcengine-ark", "glm-5.2", body);
+
+    expect(body.max_tokens).toBe(128000);
+    expect(body.temperature).toBe(0.7);
+  });
 });

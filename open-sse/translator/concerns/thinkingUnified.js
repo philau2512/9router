@@ -2,6 +2,8 @@
 // This is a registry-free subset of the upstream thinkingUnified.js concern —
 // only extractThinking is ported here; full provider-native application (applyThinking)
 // is deferred until the registry migration lands (Phase 6).
+// TODO: When applyThinking/applyFormat lands, port upstream Kimi reasoning_effort
+// normalization so "disabled" maps to the backend's "auto" enum.
 
 import { LEVEL_TO_BUDGET } from "./thinking.js";
 

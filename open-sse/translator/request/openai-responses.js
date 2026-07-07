@@ -248,19 +248,19 @@ export function openaiToOpenAIResponsesRequest(
     store: false,
   };
 
-  // Extract system message as instructions
+  // Extract instruction-bearing messages as instructions
   let hasSystemMessage = false;
   const messages = body.messages || [];
 
   for (const msg of messages) {
-    if (msg.role === "system") {
-      // Use first system message as instructions
+    if (msg.role === "system" || msg.role === "developer") {
+      // Use the first instruction-bearing message as instructions (role=system or role=developer for GPT-5/Codex)
       if (!hasSystemMessage) {
         result.instructions =
           typeof msg.content === "string" ? msg.content : "";
         hasSystemMessage = true;
       }
-      continue; // Skip system messages in input
+      continue; // Skip instruction messages in input
     }
 
     // Convert user/assistant messages to input items

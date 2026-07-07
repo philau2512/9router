@@ -1,6 +1,7 @@
 // Claude helper functions for translator
 import { DEFAULT_THINKING_CLAUDE_SIGNATURE } from "../../config/defaultThinkingSignature.js";
-import { adjustMaxTokens } from "./maxTokensHelper.js";
+import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
+import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { applyCloaking } from "../../utils/claudeCloaking.js";
 import { deriveSessionId } from "../../utils/sessionManager.js";
 import { isValidClaudeSignature } from "../../utils/claudeSignature.js";
@@ -228,6 +229,20 @@ export function prepareClaudeRequest(
             });
           }
         }
+      }
+    }
+  }
+
+  // Reconcile max_tokens vs thinking.budget_tokens AFTER applyThinking has set the budget.
+  // adjustMaxTokens ran earlier with model ceiling; now raise max_tokens if budget exceeds it,
+  // or shrink budget if it meets/exceeds the ceiling.
+  if (body.thinking?.type === "enabled" && body.thinking.budget_tokens) {
+    const ceiling =
+      getCapabilitiesForModel(provider, body.model).maxOutput || DEFAULT_MAX_TOKENS;
+    if (body.thinking.budget_tokens >= body.max_tokens) {
+      body.max_tokens = Math.min(body.thinking.budget_tokens + 1024, ceiling);
+      if (body.thinking.budget_tokens >= body.max_tokens) {
+        body.thinking.budget_tokens = Math.max(1024, body.max_tokens - 1024);
       }
     }
   }

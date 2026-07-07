@@ -605,13 +605,26 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
 
   // Atomically claim lock to prevent concurrent startServer across processes.
   // O_EXCL (flag: "wx") fails with EEXIST if the file already exists.
-  try {
-    fs.writeFileSync(LOCK_FILE, String(process.pid), { flag: "wx" });
-  } catch (e) {
-    if (e.code === "EEXIST") {
-      throw new Error("MITM server is already starting (lock contention)");
+  let lockClaimed = false;
+  for (let attempt = 0; attempt < 2 && !lockClaimed; attempt++) {
+    try {
+      fs.writeFileSync(LOCK_FILE, String(process.pid), { flag: "wx" });
+      lockClaimed = true;
+    } catch (e) {
+      if (e.code !== "EEXIST") throw e;
+      const lockPid = parseInt(fs.readFileSync(LOCK_FILE, "utf-8").trim(), 10);
+      if (lockPid && isProcessAlive(lockPid)) {
+        throw new Error("MITM server is already starting (lock contention)");
+      }
+      try {
+        fs.unlinkSync(LOCK_FILE);
+      } catch (unlinkError) {
+        if (unlinkError.code !== "ENOENT") throw unlinkError;
+      }
     }
-    throw e;
+  }
+  if (!lockClaimed) {
+    throw new Error("MITM server is already starting (lock contention)");
   }
 
   try {

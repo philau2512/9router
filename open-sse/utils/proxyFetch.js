@@ -26,11 +26,21 @@ const proxyDispatchers = new Map();
 // TLS fingerprinting via got-scraping for api.anthropic.com
 let _gotScraping = null;
 let _gotScrapingChecked = false;
+let _gotScrapingLoader = () => eval('import("got-scraping")');
+
+export function __setGotScrapingLoaderForTest(loader) {
+  if (process.env.NODE_ENV !== "test") return;
+  _gotScraping = null;
+  _gotScrapingChecked = false;
+  _gotScrapingLoader =
+    typeof loader === "function" ? loader : () => eval('import("got-scraping")');
+}
+
 async function getGotScraping() {
   if (_gotScrapingChecked) return _gotScraping;
   _gotScrapingChecked = true;
   try {
-    const mod = await eval('import("got-scraping")');
+    const mod = await _gotScrapingLoader();
     _gotScraping =
       typeof mod.gotScraping === "function" ? mod.gotScraping : null;
   } catch {

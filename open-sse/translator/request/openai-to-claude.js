@@ -1,6 +1,8 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { CLAUDE_SYSTEM_PROMPT } from "../../config/appConstants.js";
+import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
+import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { adjustMaxTokens } from "../helpers/maxTokensHelper.js";
 
 // Empty prefix matches real Claude Code behavior (no tool name prefix).
@@ -11,9 +13,11 @@ const CLAUDE_OAUTH_TOOL_PREFIX = "";
 export function openaiToClaudeRequest(model, body, stream) {
   // Tool name mapping for Claude OAuth (capitalizedName → originalName)
   const toolNameMap = new Map();
+  const modelCeiling =
+    getCapabilitiesForModel(null, model).maxOutput || DEFAULT_MAX_TOKENS;
   const result = {
     model: model,
-    max_tokens: adjustMaxTokens(body),
+    max_tokens: adjustMaxTokens(body, modelCeiling),
     stream: stream,
   };
 
