@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Modal from "./Modal";
 import Input from "./Input";
 import Button from "./Button";
@@ -122,7 +122,7 @@ export default function ComboFormModal({
       .catch(() => {});
   }, [isOpen]);
 
-  const validateName = (value) => {
+  const validateName = useCallback((value) => {
     if (!value.trim()) {
       setNameError("Name is required");
       return false;
@@ -134,9 +134,9 @@ export default function ComboFormModal({
     }
     setNameError("");
     return true;
-  };
+  }, [forcePrefix]);
 
-  const handleNameChange = (e) => {
+  const handleNameChange = useCallback((e) => {
     let value = e.target.value;
     // If user types prefix manually, strip it (we always prepend)
     if (forcePrefix && value.startsWith(forcePrefix))
@@ -144,35 +144,47 @@ export default function ComboFormModal({
     setName(value);
     if (value) validateName(value);
     else setNameError("");
-  };
+  }, [forcePrefix, validateName]);
 
-  const handleAddModel = (model) => {
+  const handleAddModel = useCallback((model) => {
     if (!models.includes(model.value)) setModels([...models, model.value]);
-  };
-  const handleDeselectModel = (model) => {
+  }, [models]);
+
+  const handleDeselectModel = useCallback((model) => {
     setModels(models.filter((m) => m !== model.value));
-  };
-  const handleRemoveModel = (i) =>
-    setModels(models.filter((_, idx) => idx !== i));
-  const handleMoveUp = (i) => {
+  }, [models]);
+
+  const handleRemoveModel = useCallback((i) =>
+    setModels(models.filter((_, idx) => idx !== i)), [models]);
+
+  const handleMoveUp = useCallback((i) => {
     if (i === 0) return;
     const a = [...models];
     [a[i - 1], a[i]] = [a[i], a[i - 1]];
     setModels(a);
-  };
-  const handleMoveDown = (i) => {
+  }, [models]);
+
+  const handleMoveDown = useCallback((i) => {
     if (i === models.length - 1) return;
     const a = [...models];
     [a[i], a[i + 1]] = [a[i + 1], a[i]];
     setModels(a);
-  };
+  }, [models]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!validateName(name)) return;
     setSaving(true);
     await onSave({ name: forcePrefix + name.trim(), models });
     setSaving(false);
-  };
+  }, [name, models, forcePrefix, onSave, validateName]);
+
+  const handleOpenModelSelect = useCallback(() => {
+    setShowModelSelect(true);
+  }, []);
+
+  const handleCloseModelSelect = useCallback(() => {
+    setShowModelSelect(false);
+  }, []);
 
   const isEdit = !!combo;
 
@@ -251,7 +263,7 @@ export default function ComboFormModal({
               </div>
             )}
             <button
-              onClick={() => setShowModelSelect(true)}
+              onClick={handleOpenModelSelect}
               className="w-full mt-2 py-2 border border-dashed border-black/10 dark:border-white/10 rounded-lg text-xs text-primary font-medium hover:text-primary hover:border-primary/50 transition-colors flex items-center justify-center gap-1"
             >
               <span className="material-symbols-outlined text-[16px]">add</span>
@@ -277,7 +289,7 @@ export default function ComboFormModal({
 
       <ModelSelectModal
         isOpen={showModelSelect}
-        onClose={() => setShowModelSelect(false)}
+        onClose={handleCloseModelSelect}
         onSelect={handleAddModel}
         onDeselect={handleDeselectModel}
         activeProviders={activeProviders}
