@@ -2,7 +2,7 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { randomUUID } from "crypto";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
-import { resolveDefaultProfileArn } from "../config/kiroConstants.js";
+import { resolveKiroRequestProfileArn } from "../config/kiroConstants.js";
 import { fetchKiroProfileArn } from "../../src/lib/oauth/kiro-provider-helpers.js";
 
 /**
@@ -32,12 +32,13 @@ export class KiroExecutor extends BaseExecutor {
       }
     }
 
-    // Inject profileArn header — required by Kiro/CodeWhisperer gateway for all auth methods.
-    // Without this header, the API returns 403 "User is not authorized to make this call."
-    // Fallback to public default ARN when not stored (e.g. old connections pre-fix).
-    const profileArn =
-      credentials?.providerSpecificData?.profileArn ||
-      resolveDefaultProfileArn(authMethod);
+    // Inject profileArn header. Resolution is centralized in
+    // resolveKiroRequestProfileArn: account-bound methods send their own ARN
+    // (or nothing, letting the token use its default profile); free-tier
+    // Builder ID / social send the shared default and NEVER an account-specific
+    // ARN that leaked into storage — that mismatch is what triggers
+    // 403 "User is not authorized to make this call."
+    const profileArn = resolveKiroRequestProfileArn(credentials);
     if (profileArn) {
       headers["x-amzn-codewhisperer-profile-arn"] = profileArn;
     }

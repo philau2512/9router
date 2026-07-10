@@ -38,6 +38,42 @@ export function resolveDefaultProfileArn(authMethod) {
     : KIRO_DEFAULT_PROFILE_ARNS["builder-id"];
 }
 
+// Auth methods whose token is bound to a specific account/profile. These send
+// their OWN resolved profileArn (or an empty string, so CodeWhisperer falls
+// back to the token's default profile) and must NEVER use the shared default
+// ARN — that ARN belongs to a different account and yields
+// 403 "User is not authorized to make this call."
+const ACCOUNT_BOUND_AUTH_METHODS = new Set(["api_key", "idc", "external_idp"]);
+
+/** True when the auth method binds the token to its own CodeWhisperer profile. */
+export function isAccountBoundAuthMethod(authMethod) {
+  return ACCOUNT_BOUND_AUTH_METHODS.has(authMethod);
+}
+
+/**
+ * Single source of truth for the profileArn sent with a Kiro request.
+ *
+ * - Account-bound (api_key / idc / external_idp): use the account's own
+ *   profileArn, or "" so CodeWhisperer uses the token's default profile. Never
+ *   the shared default (belongs to another account -> 403).
+ * - Shared free-tier (builder-id / social / google / github / imported /
+ *   unknown): free-tier Builder ID / social tokens are ONLY authorized on the
+ *   shared profile. Any account-specific ARN that leaked into storage (via IDE
+ *   auto-import or a refresh-time ARN patch) is IGNORED here — always send the
+ *   shared default, which every free-tier token is authorized to call.
+ *
+ * @param {object} credentials Credential object with providerSpecificData
+ * @returns {string} profileArn to send ('' means "omit / use token default")
+ */
+export function resolveKiroRequestProfileArn(credentials) {
+  const psd = credentials?.providerSpecificData || {};
+  const authMethod = psd.authMethod;
+  if (isAccountBoundAuthMethod(authMethod)) {
+    return psd.profileArn || "";
+  }
+  return resolveDefaultProfileArn(authMethod);
+}
+
 export const KIRO_THINKING_BUDGET_DEFAULT = 16000;
 
 // Resolve the Kiro thinking budget from client intent.

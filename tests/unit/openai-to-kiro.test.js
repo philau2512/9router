@@ -251,4 +251,82 @@ describe("buildKiroPayload", () => {
       );
     });
   });
+
+  // Regression: 403 "User is not authorized to make this call."
+  // Free-tier Builder ID / social tokens are authorized ONLY on the shared
+  // profile. An account-specific ARN that leaked into storage (e.g. scraped
+  // from Kiro IDE profile.json during auto-import) must be IGNORED — sending
+  // it triggered the 403. Account-bound methods keep their own ARN.
+  describe("profileArn leak guard (403 regression)", () => {
+    const LEAKED_ARN =
+      "arn:aws:codewhisperer:us-east-1:111122223333:profile/LEAKEDACCOUNT";
+
+    it("ignores a leaked account-specific ARN for builder-id and uses the shared default", () => {
+      const result = buildKiroPayload(
+        "claude-sonnet-4.6",
+        { messages: [{ role: "user", content: "Hello" }] },
+        true,
+        {
+          providerSpecificData: {
+            profileArn: LEAKED_ARN,
+            authMethod: "builder-id",
+          },
+        },
+      );
+      expect(result.profileArn).toBe(
+        "arn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX",
+      );
+    });
+
+    it("ignores a leaked ARN for imported tokens and uses the shared default", () => {
+      const result = buildKiroPayload(
+        "claude-sonnet-4.6",
+        { messages: [{ role: "user", content: "Hello" }] },
+        true,
+        {
+          providerSpecificData: {
+            profileArn: LEAKED_ARN,
+            authMethod: "imported",
+          },
+        },
+      );
+      expect(result.profileArn).toBe(
+        "arn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX",
+      );
+    });
+
+    it("keeps the account's own ARN for account-bound api_key auth", () => {
+      const ownArn =
+        "arn:aws:codewhisperer:us-east-1:444455556666:profile/OWNACCOUNT";
+      const result = buildKiroPayload(
+        "claude-sonnet-4.6",
+        { messages: [{ role: "user", content: "Hello" }] },
+        true,
+        {
+          providerSpecificData: {
+            profileArn: ownArn,
+            authMethod: "api_key",
+          },
+        },
+      );
+      expect(result.profileArn).toBe(ownArn);
+    });
+
+    it("does not send a shared-default ARN for account-bound auth with no stored profile (token default)", () => {
+      const result = buildKiroPayload(
+        "claude-sonnet-4.6",
+        { messages: [{ role: "user", content: "Hello" }] },
+        true,
+        {
+          providerSpecificData: {
+            profileArn: null,
+            authMethod: "idc",
+          },
+        },
+      );
+      // Empty/omitted so CodeWhisperer uses the token's own default profile;
+      // crucially NOT the shared builder-id default (which would 403).
+      expect(result.profileArn || "").toBe("");
+    });
+  });
 });
