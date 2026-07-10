@@ -90,3 +90,9 @@ export function resolveRetryEntry(entry) {
 export const SKIP_PATTERNS = [
   "Please write a 5-10 word title for the following conversation:",
 ];
+
+// SearXNG endpoint used by the unauthenticated web-search provider.
+// Configure this for a separate Docker service or remote SearXNG instance.
+// See upstream fix e79f9eddb.
+export const SEARXNG_URL =
+  (process.env.SEARXNG_URL || "").trim() || "http://localhost:8888/search";

@@ -24,6 +24,12 @@ const STRIP_RULES = [
   },
   // Volcengine Ark GLM-5 rejects max_tokens above the model output ceiling.
   { provider: "volcengine-ark", match: /glm-5/i, clampToModelMaxOutput: true },
+  // VolcEngine Ark caps Kimi family at max_tokens <= 32768. Model's advertised
+  // ceiling is far higher (Kimi-K2.7-Code → maxOutput 262144), so clampToModelMaxOutput
+  // alone leaves it uncapped and requests 400. Pin explicit endpoint cap; min()
+  // with model ceiling still applies if variant's own limit is lower.
+  // See upstream fix cfbdf0604.
+  { provider: "volcengine-ark", match: /kimi/i, maxOutputCap: 32768, clampToModelMaxOutput: true },
 ];
 
 // Test a rule's match (regex or predicate) against the model id.
@@ -63,10 +69,28 @@ export function stripUnsupportedParams(provider, model, body) {
         }
       }
     }
-    if (rule.clampToModelMaxOutput) {
-      const ceiling = getCapabilitiesForModel(provider, model).maxOutput;
-      clampNumber(body, "max_tokens", ceiling);
+    if (rule.clampToModelMaxOutput || Number.isFinite(rule.maxOutputCap)) {
+      const modelCeiling = getCapabilitiesForModel(provider, model).maxOutput;
+      const candidates = [];
+      if (rule.clampToModelMaxOutput && Number.isFinite(modelCeiling) && modelCeiling > 0) {
+        candidates.push(modelCeiling);
+      }
+      if (Number.isFinite(rule.maxOutputCap) && rule.maxOutputCap > 0) {
+        candidates.push(rule.maxOutputCap);
+      }
+      if (candidates.length > 0) {
+        const ceiling = Math.min(...candidates);
+        clampNumber(body, "max_tokens", ceiling);
+        clampNumber(body, "max_completion_tokens", ceiling);
+        clampNumber(body, "max_output_tokens", ceiling);
+      }
     }
   }
+  // Clamp reasoning_effort "max" → "xhigh" for all OpenAI-format providers.
+  // OpenAI enum caps at "xhigh"; sending "max" returns HTTP 400.
+  // RED-TEAM fix H-1: covers non-Codex providers (cursor, grok-web, openrouter, etc.)
+  // See upstream commit 288940960.
+  if (body.reasoning_effort === "max") body.reasoning_effort = "xhigh";
+  if (body.reasoning?.effort === "max") body.reasoning.effort = "xhigh";
   return body;
 }

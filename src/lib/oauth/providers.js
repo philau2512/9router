@@ -27,6 +27,7 @@ import {
   GITLAB_CONFIG,
   CODEBUDDY_CONFIG,
   getOAuthClientMetadata,
+  GROK_CLI_CONFIG,
 } from "./constants/oauth";
 import { XAI_CONFIG, XAI_PKCE_VERIFIER_BYTES } from "./constants/xai";
 
@@ -362,6 +363,100 @@ const PROVIDERS = {
         mapped.providerSpecificData = { idToken: tokens.id_token };
       }
       return mapped;
+    },
+  },
+
+  // Grok CLI / Grok Build — device-code flow to auth.x.ai, inference on
+  // cli-chat-proxy.grok.com (OpenAI Responses API). See upstream a11937cdd.
+  "grok-cli": {
+    config: GROK_CLI_CONFIG,
+    flowType: "device_code",
+    requestDeviceCode: async (config) => {
+      const body = new URLSearchParams({
+        client_id: config.clientId,
+        scope: config.scope,
+      });
+      if (config.referrer) body.set("referrer", config.referrer);
+      const response = await fetch(config.deviceCodeUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+          "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+        },
+        body,
+      });
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Grok CLI device code request failed: ${error}`);
+      }
+      return await response.json();
+    },
+    pollToken: async (config, deviceCode) => {
+      const response = await fetch(config.tokenUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+          "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+        },
+        body: new URLSearchParams({
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          device_code: deviceCode,
+          client_id: config.clientId,
+        }),
+      });
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        const text = await response.text();
+        data = { error: "invalid_response", error_description: text };
+      }
+      const pending =
+        data?.error === "authorization_pending" || data?.error === "slow_down";
+      return { ok: response.ok || pending, data };
+    },
+    postExchange: async (tokens) => {
+      try {
+        const res = await fetch("https://cli-chat-proxy.grok.com/v1/user", {
+          headers: {
+            Authorization: `Bearer ${tokens.access_token}`,
+            Accept: "application/json",
+            "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+            "x-xai-token-auth": "xai-grok-cli",
+            "x-grok-client-version": "0.2.93",
+          },
+        });
+        if (res.ok) return { user: await res.json() };
+      } catch { /* ignore */ }
+      return { user: null };
+    },
+    mapTokens: (tokens, extra) => {
+      const email =
+        decodeXaiIdTokenEmail(tokens.id_token) ||
+        extractEmailFromAccessToken(tokens.access_token) ||
+        extra?.user?.email ||
+        null;
+      const displayName =
+        [extra?.user?.firstName, extra?.user?.lastName]
+          .filter(Boolean)
+          .join(" ")
+          .trim() || null;
+      return {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token || null,
+        expiresIn: tokens.expires_in,
+        scope: tokens.scope,
+        email: email || undefined,
+        name: displayName || email || undefined,
+        displayName: displayName || undefined,
+        providerSpecificData: {
+          userId: extra?.user?.userId || extra?.user?.principalId || null,
+          hasGrokCodeAccess: extra?.user?.hasGrokCodeAccess ?? null,
+          ...(tokens.id_token ? { idToken: tokens.id_token } : {}),
+        },
+      };
     },
   },
 
@@ -884,6 +979,11 @@ const PROVIDERS = {
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
       expiresIn: tokens.expires_in,
+      // Surface GitHub identity fields at top level for connection labeling.
+      // Prefer login (stable) over name (display). See upstream fix 3a7a878f9.
+      name: extra?.userInfo?.login || extra?.userInfo?.name || null,
+      displayName: extra?.userInfo?.name || extra?.userInfo?.login || null,
+      email: extra?.userInfo?.email || null,
       providerSpecificData: {
         copilotToken: extra?.copilotToken?.token,
         copilotTokenExpiresAt: extra?.copilotToken?.expires_at,

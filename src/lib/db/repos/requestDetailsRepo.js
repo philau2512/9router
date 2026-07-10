@@ -408,6 +408,17 @@ export async function getRequestDetailById(id) {
   return row ? parseJson(row.data, null) : null;
 }
 
+// Return DISTINCT provider values from requestDetails — avoids loading every
+// row's full JSON blob (can be hundreds of MB), which previously caused OOM
+// in the usage/providers route. See upstream fix b25e10160.
+export async function getDistinctProviders() {
+  const db = await getAdapter();
+  const rows = db.all(
+    `SELECT DISTINCT provider FROM requestDetails WHERE provider IS NOT NULL ORDER BY provider ASC`,
+  );
+  return rows.map((r) => r.provider);
+}
+
 const _shutdownHandler = async () => {
   if (flushTimer) {
     clearTimeout(flushTimer);

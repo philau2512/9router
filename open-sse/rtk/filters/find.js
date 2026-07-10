@@ -9,16 +9,18 @@ export function find(input) {
   const byDir = new Map();
 
   for (const path of lines) {
-    const lastSlash = path.lastIndexOf("/");
+    // Accept both Unix ("/a/b") and Windows ("C:\a\b") separators.
+    // See upstream fix d75471bbb.
+    const lastSep = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
     let dir;
     let basename;
-    if (lastSlash === -1) {
+    if (lastSep === -1) {
       dir = ".";
       basename = path;
     } else {
       // Rust: PathBuf::from(path).parent().display() + file_name().display()
-      dir = path.slice(0, lastSlash) || "/";
-      basename = path.slice(lastSlash + 1);
+      dir = path.slice(0, lastSep) || "/";
+      basename = path.slice(lastSep + 1);
     }
     if (!byDir.has(dir)) byDir.set(dir, []);
     byDir.get(dir).push(basename);

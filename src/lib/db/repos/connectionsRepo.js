@@ -135,6 +135,22 @@ function reorderInTx(db, providerId) {
   });
 }
 
+// Derive a display name for a new OAuth connection.
+// GitHub login is more stable than displayName; prefer it for Copilot profiles.
+// See upstream fix 3a7a878f9.
+function deriveConnectionName(data, fallbackName) {
+  if (data.provider === "github") {
+    return (
+      data.providerSpecificData?.githubLogin ||
+      data.providerSpecificData?.githubEmail ||
+      data.email ||
+      data.providerSpecificData?.githubName ||
+      fallbackName
+    );
+  }
+  return fallbackName;
+}
+
 export async function createProviderConnection(data) {
   const db = await getAdapter();
   const now = new Date().toISOString();
@@ -153,6 +169,15 @@ export async function createProviderConnection(data) {
       const incomingWs = data.providerSpecificData?.chatgptAccountId;
       existing = all.find((c) => {
         if (c.authType !== "oauth" || c.email !== data.email) return false;
+
+        // Codex: multiple OAuth grants can share the same email address.
+        // Only match when both rows expose the same ChatGPT account/workspace ID.
+        // See upstream fix c73c419d0.
+        if (data.provider === "codex") {
+          const existingWs = c.providerSpecificData?.chatgptAccountId;
+          return !!incomingWs && !!existingWs && incomingWs === existingWs;
+        }
+
         // Workspace providers (Codex) use workspace ID when both sides have it
         const existingWs = c.providerSpecificData?.chatgptAccountId;
         if (incomingWs && existingWs) return incomingWs === existingWs;
@@ -175,6 +200,20 @@ export async function createProviderConnection(data) {
         (c) => c.authType === "apikey" && c.name === data.name,
       );
     }
+    // GitHub F8 fix: existing connections created before email was stored have email=null.
+    // On re-auth (now has email), the email-match above won't find them → duplicate created.
+    // Fall back to githubLogin match which is stable across re-auths.
+    // See RED-TEAM finding F8 / upstream fix 3a7a878f9.
+    if (!existing && data.provider === "github" && data.authType === "oauth") {
+      const incomingLogin = data.providerSpecificData?.githubLogin;
+      if (incomingLogin) {
+        existing = all.find(
+          (c) =>
+            c.authType === "oauth" &&
+            c.providerSpecificData?.githubLogin === incomingLogin,
+        );
+      }
+    }
     // access_token: never dedup — user manages duplicates manually
 
     if (existing) {
@@ -189,7 +228,10 @@ export async function createProviderConnection(data) {
       !connectionName &&
       (data.authType === "oauth" || data.authType === "access_token")
     ) {
-      connectionName = data.email || `Account ${all.length + 1}`;
+      connectionName = deriveConnectionName(
+        data,
+        data.email || `Account ${all.length + 1}`,
+      );
     }
     let connectionPriority = data.priority;
     if (!connectionPriority) {

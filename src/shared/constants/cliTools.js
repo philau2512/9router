@@ -214,6 +214,15 @@ export const CLI_TOOLS = {
     description: "OpenAI Codex CLI",
     configType: "custom",
   },
+  // Grok Build (Grok CLI) — device-code OAuth, cli-chat-proxy.grok.com. See upstream a11937cdd.
+  "grok-cli": {
+    id: "grok-cli",
+    name: "Grok Build (Grok CLI)",
+    image: "/providers/grok-cli.png",
+    color: "#1DA1F2",
+    description: "xAI Grok Build CLI via device-code OAuth",
+    configType: "custom",
+  },
   opencode: {
     id: "opencode",
     name: "OpenCode",

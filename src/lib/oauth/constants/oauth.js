@@ -284,6 +284,20 @@ export const CODEBUDDY_CONFIG = {
 // OAuth timeout (5 minutes)
 export const OAUTH_TIMEOUT = 300000;
 
+// Grok CLI / Grok Build OAuth Configuration (Device Code Flow to auth.x.ai).
+// Same client_id as xAI PKCE flow; different grant + scopes. See upstream a11937cdd.
+export const GROK_CLI_CONFIG = {
+  clientId: "b1a00492-073a-47ea-816f-4c329264a828",
+  deviceCodeUrl: "https://auth.x.ai/oauth2/device/code",
+  tokenUrl: "https://auth.x.ai/oauth2/token",
+  scope:
+    "openid profile email offline_access " +
+    "api-key:read api-key:write model:read model:write " +
+    "conversation:read conversation:write",
+  referrer: "grok-build",
+  pollInterval: 5000,
+};
+
 // Provider list
 export const PROVIDERS = {
   CLAUDE: "claude",
@@ -303,4 +317,5 @@ export const PROVIDERS = {
   CLINEPASS: "clinepass",
   GITLAB: "gitlab",
   CODEBUDDY: "codebuddy-cn",
+  GROK_CLI: "grok-cli",
 };

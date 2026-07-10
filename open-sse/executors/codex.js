@@ -22,7 +22,17 @@ const CODEX_SSE_OVERLOADED_PATTERNS = [
   "server_is_overloaded",
   "service_unavailable_error",
 ];
-const CODEX_SSE_PEEK_BYTES = 1024;
+// SSE patterns that mean the selected model is at capacity — convert to 503
+// so the outer account-fallback layer can rotate to the next account.
+// See upstream fix 0c55d49ab.
+const CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS = [
+  "selected model is at capacity",
+  "model_at_capacity",
+];
+const CODEX_MODEL_CAPACITY_MESSAGE =
+  "Selected model is at capacity. Please try a different model or account.";
+// Peek enough bytes to catch error events before normal response output begins.
+const CODEX_SSE_PEEK_BYTES = 256 * 1024; // was 1024
 
 // In-memory map: hash(machineId + first assistant content) → { sessionId, lastUsed }
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -171,6 +181,12 @@ getConsistentMachineId().then((id) => {
   cachedMachineId = id;
 });
 
+// Codex endpoint rejects reasoning_effort "max"; clamp to highest valid value "xhigh".
+// See upstream fix 0c55d49ab.
+function normalizeReasoningEffort(value) {
+  return value === "max" ? "xhigh" : value;
+}
+
 function hashContent(text) {
   return createHash("sha256").update(text).digest("hex").slice(0, 16);
 }
@@ -276,14 +292,19 @@ export class CodexExecutor extends BaseExecutor {
       this._currentSessionId || credentials?.connectionId || "default";
     // Identify client type to Codex backend (matches official codex CLI)
     if (!headers["originator"]) headers["originator"] = "codex_cli_rs";
-    // Workspace binding header — improves account scope + cache affinity
-    const workspaceId = credentials?.providerSpecificData?.workspaceId;
+    // Workspace binding header — improves account scope + cache affinity.
+    // Fallback chain: workspaceId → chatgptAccountId → accountId.
+    // See upstream fix 0c55d49ab (c73c419d0).
+    const accountId =
+      credentials?.providerSpecificData?.workspaceId ||
+      credentials?.providerSpecificData?.chatgptAccountId ||
+      credentials?.providerSpecificData?.accountId;
     if (
-      typeof workspaceId === "string" &&
-      workspaceId &&
+      typeof accountId === "string" &&
+      accountId &&
       !headers["chatgpt-account-id"]
     ) {
-      headers["chatgpt-account-id"] = workspaceId;
+      headers["chatgpt-account-id"] = accountId;
     }
     return headers;
   }
@@ -383,6 +404,24 @@ export class CodexExecutor extends BaseExecutor {
         }
         return result;
       }
+      // Capacity errors → return 503 immediately so the outer account-fallback
+      // layer can rotate to the next account. Do NOT retry on the same account.
+      // See upstream fix 0c55d49ab.
+      if (peek.matched.startsWith("capacity:")) {
+        args.log?.warn?.(
+          "RETRY",
+          `CODEX | model at capacity "${peek.matched}" — returning 503 for account fallback`,
+        );
+        const body503 = JSON.stringify({
+          error: { message: CODEX_MODEL_CAPACITY_MESSAGE, type: "capacity_error" },
+        });
+        result.response = new Response(body503, {
+          status: 503,
+          statusText: "Service Unavailable",
+          headers: { "content-type": "application/json" },
+        });
+        return result;
+      }
       if (attempt >= attempts) {
         args.log?.warn?.(
           "RETRY",
@@ -438,6 +477,16 @@ export class CodexExecutor extends BaseExecutor {
         const hit = CODEX_SSE_OVERLOADED_PATTERNS.find((p) => text.includes(p));
         if (hit) {
           matched = hit;
+          break;
+        }
+
+        // Check for capacity patterns — triggers account fallback (returns 503).
+        // See upstream fix 0c55d49ab.
+        const capacityHit = CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS.find((p) =>
+          text.includes(p)
+        );
+        if (capacityHit) {
+          matched = `capacity:${capacityHit}`;
           break;
         }
 
@@ -590,10 +639,14 @@ export class CodexExecutor extends BaseExecutor {
 
     // Priority: explicit reasoning.effort > reasoning_effort param > model suffix > default (medium)
     if (!body.reasoning) {
-      const effort = body.reasoning_effort || modelEffort || "low";
+      const effort = normalizeReasoningEffort(body.reasoning_effort || modelEffort || "low");
       body.reasoning = { effort, summary: "auto" };
     } else if (!body.reasoning.summary) {
       body.reasoning.summary = "auto";
+    }
+    // Normalize effort within existing reasoning object
+    if (body.reasoning?.effort) {
+      body.reasoning.effort = normalizeReasoningEffort(body.reasoning.effort);
     }
     delete body.reasoning_effort;
 

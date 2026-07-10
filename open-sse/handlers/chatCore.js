@@ -48,6 +48,8 @@ import {
   formatHeadroomSizeLog,
   isHeadroomPhantomSavings,
 } from "../rtk/headroom.js";
+import { extractThinking } from "../translator/concerns/thinkingUnified.js";
+import { resolveSessionId } from "../utils/sessionManager.js";
 import {
   getAntigravitySessionKey,
   getCachedThinking,
@@ -55,6 +57,7 @@ import {
   injectThinkingReplay,
 } from "../utils/antigravityReasoningReplay.js";
 import { stripOrphanedToolResults } from "../translator/concerns/toolCall.js";
+import { compressWithPxpipe, formatPxpipeLog } from "../rtk/pxpipe.js";
 
 function maskLoggedUrl(rawUrl) {
   try {
@@ -98,6 +101,12 @@ export async function handleChatCore({
   midStreamResumeEnabled,
   sourceFormatOverride,
   providerThinking,
+  // PxPipe multimodal compression params (P10d, upstream dcf1927f2)
+  pxpipeEnabled = false,
+  pxpipeMinChars,
+  pxpipeTimeoutMs,
+  pxpipeTransform,
+  onPxpipeEvent,
   timing = null,
   clientSignal = null,
 }) {
@@ -105,6 +114,24 @@ export async function handleChatCore({
   const requestStartTime = timing?.requestStartTime || Date.now();
 
   const sourceFormat = sourceFormatOverride || detectFormat(body);
+
+  // Resolve session tag for unified request lifecycle logging (a625ea9fd).
+  // Additive — does not replace existing log calls.
+  const sessionSeed = (() => {
+    try {
+      return resolveSessionId({
+        headers: clientRawRequest?.headers,
+        body,
+        connectionId,
+        scope: provider,
+      });
+    } catch {
+      return connectionId || "";
+    }
+  })();
+  const reqTag = log?.tagForSession
+    ? log.tagForSession(sessionSeed)
+    : (log?.nextTag ? log.nextTag() : "");
 
   // Check for bypass patterns (warmup, skip, cc naming)
   const bypassResponse = handleBypassRequest(
@@ -245,6 +272,33 @@ export async function handleChatCore({
     translatedBody.model = model;
   }
 
+  // Unified ▶ request summary line — correlates all lifecycle logs by session tag.
+  // Additive: COLORS/formatRtkLog imports are kept below. See upstream a625ea9fd.
+  if (log?.line) {
+    try {
+      const clientModel = clientRawRequest?.body?.model || `${provider}/${model}`;
+      const msgN = translatedBody.messages?.length || body.messages?.length || 0;
+      const toolN = translatedBody.tools?.length || body.tools?.length || 0;
+      const fmtStr = passthrough
+        ? `FMT:${sourceFormat}(pass)`
+        : `FMT:${sourceFormat}→${targetFormat}`;
+      const think = log.fmtThink?.(extractThinking(translatedBody));
+      const acc = credentials?.connectionName || "-";
+      const parts = [
+        `POST ${clientModel} → ${provider}/${model}`,
+        fmtStr,
+        stream ? "STREAM" : "JSON",
+        `${msgN}MSG`,
+      ];
+      if (toolN) parts.push(`${toolN}TOOL`);
+      if (think) parts.push(`THINK:${think}`);
+      parts.push(`ACC:${acc}`);
+      log.line(reqTag, "▶", parts.join(" · "));
+    } catch {
+      /* never crash on logging */
+    }
+  }
+
   // Dedupe duplicate built-in tools when equivalent MCP tools are present (Claude clients only).
   if (clientTool === "claude" && Array.isArray(translatedBody.tools)) {
     const { tools: deduped, stripped } = dedupeTools(translatedBody.tools);
@@ -303,6 +357,30 @@ export async function handleChatCore({
   const rtkStats = compressMessages(translatedBody, rtkEnabled);
   const rtkLine = formatRtkLog(rtkStats);
   if (rtkLine) console.log(rtkLine);
+
+  // PxPipe: multimodal prompt compression (upstream dcf1927f2).
+  // Runs after RTK, before dispatch. Additive — placeholder until P10 is fully wired.
+  let pxpipeSummary = null;
+  if (pxpipeEnabled) {
+    try {
+      const pxpipeResult = await compressWithPxpipe(translatedBody, {
+        enabled: true,
+        format: finalFormat,
+        model,
+        minChars: pxpipeMinChars,
+        timeoutMs: pxpipeTimeoutMs,
+        transform: pxpipeTransform,
+      });
+      pxpipeSummary = pxpipeResult.summary;
+      if (pxpipeResult.body) translatedBody = pxpipeResult.body;
+      const pxpipeLine = formatPxpipeLog(pxpipeSummary);
+      if (pxpipeLine) log?.info?.("PXPIPE", pxpipeLine);
+      try { onPxpipeEvent?.({ provider, model, ...pxpipeSummary }); } catch { /* stats must not break requests */ }
+    } catch (e) {
+      log?.debug?.("PXPIPE", `error: ${e?.message}`);
+    }
+  }
+  // PxPipe summary wired into sharedCtx so requestDetail builders can include compression stats.
 
   // Caveman: inject terse-style system prompt
   if (cavemanEnabled && cavemanLevel) {
@@ -561,6 +639,8 @@ export async function handleChatCore({
     clientRawRequest,
     onRequestSuccess,
     midStreamResumeEnabled,
+    // PxPipe compression stats — included so requestDetail builders can persist them.
+    pxpipe: pxpipeSummary || undefined,
   };
   const appendLog = (extra) =>
     appendRequestLog({ model, provider, connectionId, ...extra }).catch(

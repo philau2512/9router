@@ -328,6 +328,16 @@ export const PROVIDERS = {
     baseUrl: "https://api.perplexity.ai/chat/completions",
     format: "openai",
   },
+  // Perplexity Agent API — OpenAI Responses API format. See upstream ce6bdf7fc.
+  "perplexity-agent": {
+    baseUrl: "https://api.perplexity.ai/v1/responses",
+    format: "openai-responses",
+  },
+  // Featherless — OpenAI-compatible inference. See upstream 0d4d4bc26.
+  featherless: {
+    baseUrl: "https://api.featherless.ai/v1/chat/completions",
+    format: "openai",
+  },
   together: {
     baseUrl: "https://api.together.xyz/v1/chat/completions",
     format: "openai",
@@ -428,6 +438,12 @@ export const PROVIDERS = {
     baseUrl: "https://grok.com/rest/app-chat/conversations/new",
     format: "grok-web",
     authType: "cookie",
+  },
+  // Grok CLI / Grok Build — device-code OAuth, Responses API. See upstream a11937cdd.
+  "grok-cli": {
+    baseUrl: "https://cli-chat-proxy.grok.com/v1/responses",
+    format: "openai-responses",
+    authType: "oauth",
   },
   "perplexity-web": {
     baseUrl: "https://www.perplexity.ai/rest/sse/perplexity_ask",

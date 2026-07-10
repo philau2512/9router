@@ -99,6 +99,10 @@ function isGrepLine(line) {
 function isPathLike(line) {
   const t = line.trim();
   if (t.length === 0) return false;
+  // Windows absolute path: "C:\Users\..." or "C:/Users/..." — treat as path-like
+  // before the general colon rejection (drive letter colons are valid path prefixes).
+  // See upstream fix d75471bbb.
+  if (/^[A-Za-z]:[\\/]/.test(t)) return true;
   if (t.includes(":")) return false;
   return t.startsWith(".") || t.startsWith("/") || t.includes("/");
 }

@@ -197,6 +197,7 @@ export default function OAuthModal({
         "kimi-coding",
         "kilocode",
         "codebuddy-cn",
+        "grok-cli", // device-code flow to auth.x.ai, upstream a11937cdd
       ];
       if (deviceCodeProviders.includes(provider)) {
         setIsDeviceCode(true);

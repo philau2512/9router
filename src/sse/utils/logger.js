@@ -135,3 +135,49 @@ export function maskKey(key) {
   if (!key || key.length < 8) return "***";
   return `${key.slice(0, 4)}...${key.slice(-4)}`;
 }
+
+// ── Unified request lifecycle logging (upstream a625ea9fd) ──────────────────
+
+// Colored-dot tags to correlate request lines by session in the terminal log.
+const REQ_TAGS = ["🟢", "🔵", "🟣", "🟡", "🟠", "🔴", "⚪", "🟤"];
+let tagCursor = 0;
+
+// Pick next tag in round-robin order.
+export function nextTag() {
+  return REQ_TAGS[(tagCursor++) % REQ_TAGS.length];
+}
+
+// Deterministically pick a tag from a seed string (stable per session/connectionId).
+export function tagForSession(seed) {
+  if (!seed) return nextTag();
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
+  return REQ_TAGS[Math.abs(h) % REQ_TAGS.length];
+}
+
+// Emit a structured INFO log line tagged with a session dot.
+export function line(tag, symbol, message) {
+  if (LEVEL > LOG_LEVELS.INFO) return;
+  console.log(`[${formatTime()}] ${tag} ${symbol} ${message}`);
+}
+
+// Emit a log line regardless of LOG_LEVEL (used for errors/fallback).
+export function errorLine(tag, symbol, message) {
+  console.log(`[${formatTime()}] ${tag} ${symbol} ${message}`);
+}
+
+// Format a thinking intent object into a short display string.
+export function fmtThink(intent) {
+  if (!intent || !intent.mode) return null;
+  if (intent.mode === "none") return "off";
+  if (intent.mode === "auto") return "auto";
+  if (intent.mode === "budget") {
+    const k =
+      intent.budget >= 1000
+        ? `${Math.round(intent.budget / 1000)}k`
+        : `${intent.budget}`;
+    return k;
+  }
+  if (intent.mode === "level") return intent.level;
+  return null;
+}

@@ -1,4 +1,5 @@
-@import "tailwindcss";
+/* source() sets scan base for both webpack + Turbopack. See upstream 0270f6ea7. */
+@import "tailwindcss" source("../../");
 
 @custom-variant dark (&:where(.dark, .dark *));
 

@@ -178,8 +178,12 @@ Respond ONLY with the JSON object, no other text.`);
         continue;
       }
 
-      const toolData =
-        toolType === "function" && tool.function ? tool.function : tool;
+      // Function-shaped tools arrive in two flavors:
+      //   (a) openai-spec: { type: "function", function: { name, ... } }
+      //   (b) legacy/loose: { function: { name, ... } }  (no parent `type`)
+      // Unwrap whenever `function` key is present — avoids name=undefined upstream.
+      // See upstream fix ddd5509e9.
+      const toolData = tool.function ?? tool;
       const originalName = toolData.name;
 
       // Claude OAuth requires prefixed tool names to avoid conflicts

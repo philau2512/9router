@@ -4,7 +4,28 @@ const { spawn, exec, execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const https = require("https");
+const net = require("net");
 const os = require("os");
+
+// Poll until server accepts TCP connections — avoids blind fixed setTimeout waits.
+// See upstream 0270f6ea7.
+function waitServerReady(port, { timeoutMs = 15000, intervalMs = 150 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    const tryConnect = () => {
+      const socket = net.connect({ host: "127.0.0.1", port }, () => {
+        socket.destroy();
+        resolve(true);
+      });
+      socket.on("error", () => {
+        socket.destroy();
+        if (Date.now() >= deadline) return resolve(false);
+        setTimeout(tryConnect, intervalMs);
+      });
+    };
+    tryConnect();
+  });
+}
 
 // Native spinner - no external dependency
 function createSpinner(text) {
@@ -691,16 +712,16 @@ if (!fs.existsSync(serverPath)) {
   process.exit(1);
 }
 
-// Check for updates FIRST, then start server
-checkForUpdate().then((latestVersion) => {
-  killAllAppProcesses(port)
-    .then(() => {
-      return killProcessOnPort(port);
-    })
-    .then(() => {
-      startServer(latestVersion);
-    });
-});
+// Check for updates in parallel with server start — not on critical path.
+// See upstream 0270f6ea7.
+const updatePromise = checkForUpdate();
+killAllAppProcesses(port)
+  .then(() => {
+    return killProcessOnPort(port);
+  })
+  .then(() => {
+    startServer(updatePromise);
+  });
 
 // Show interface selection menu
 async function showInterfaceMenu(latestVersion) {
@@ -760,7 +781,9 @@ async function showInterfaceMenu(latestVersion) {
 const MAX_RESTARTS = 2;
 const RESTART_RESET_MS = 30000; // Reset counter if alive > 30s
 
-function startServer(latestVersion) {
+async function startServer(latestVersionPromise) {
+  // Resolve update check in parallel — server is already starting while we await.
+  const latestVersion = await Promise.resolve(latestVersionPromise);
   const displayHost = host === DEFAULT_HOST ? "localhost" : host;
   const url = `http://${displayHost}:${port}/dashboard`;
 
@@ -877,19 +900,19 @@ function startServer(latestVersion) {
     console.log(`\n🚀 ${pkg.name} v${pkg.version}`);
     console.log(`Server: http://${displayHost}:${port}`);
 
-    setTimeout(() => {
+    waitServerReady(port).then(() => {
       initTrayIcon();
       console.log(
         "\n💡 Router is now running in system tray. Close this terminal if you want.",
       );
       console.log("   Right-click tray icon to open dashboard or quit.\n");
-    }, 2000);
+    });
 
     return;
   }
 
   // Wait for server to be ready, then show interface menu loop + tray
-  setTimeout(async () => {
+  waitServerReady(port).then(async () => {
     // Start tray icon alongside TUI
     initTrayIcon();
 
@@ -988,7 +1011,7 @@ function startServer(latestVersion) {
       cleanup();
       process.exit(1);
     }
-  }, 3000);
+  });
 
   function attachServerEvents() {
     server.on("error", (err) => {

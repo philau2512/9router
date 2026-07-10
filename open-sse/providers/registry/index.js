@@ -15,10 +15,14 @@ import {
 // Add new provider files here as they are created.
 import veniceRegistry from "./venice.js";
 import blackboxRegistry from "./blackbox.js";
+import perplexityAgentRegistry from "./perplexity-agent.js";
+import grokCLIRegistry from "./grok-cli.js";
 
 const REGISTRY_OVERRIDES = new Map([
   ["venice", veniceRegistry],
   ["blackbox", blackboxRegistry],
+  ["perplexity-agent", perplexityAgentRegistry],
+  ["grok-cli", grokCLIRegistry],
 ]);
 
 // Generate minimal registry entries from fork's flat provider config.
