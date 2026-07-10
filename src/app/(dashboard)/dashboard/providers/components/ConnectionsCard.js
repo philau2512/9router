@@ -12,6 +12,7 @@ import {
   EditConnectionModal,
   ConfirmModal,
 } from "@/shared/components";
+import { useNotificationStore } from "@/store/notificationStore";
 
 // ── CooldownTimer ──────────────────────────────────────────────
 function CooldownTimer({ until }) {
@@ -527,6 +528,8 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
   const [providerStrategy, setProviderStrategy] = useState(null);
   const [providerStickyLimit, setProviderStickyLimit] = useState("1");
   const [confirmState, setConfirmState] = useState(null);
+  const [clearingErrors, setClearingErrors] = useState(false);
+  const notify = useNotificationStore((s) => s.addNotification);
 
   const fetch_ = useCallback(async () => {
     try {
@@ -700,6 +703,74 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
     }
   };
 
+  const runClearAllErrors = async (errored) => {
+    setClearingErrors(true);
+    try {
+      const results = await Promise.allSettled(
+        errored.map(async (c) => {
+          const res = await fetch(`/api/providers/${c.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lastError: null, lastErrorAt: null }),
+          });
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+          }
+          return c.id;
+        }),
+      );
+      const succeededIds = new Set(
+        results
+          .filter((r) => r.status === "fulfilled")
+          .map((r) => r.value),
+      );
+      const failCount = errored.length - succeededIds.size;
+
+      if (succeededIds.size > 0) {
+        setConnections((prev) =>
+          prev.map((c) =>
+            succeededIds.has(c.id)
+              ? { ...c, lastError: null, lastErrorAt: null }
+              : c,
+          ),
+        );
+      }
+
+      if (failCount === 0) {
+        notify({
+          type: "success",
+          message: `Cleared errors for ${succeededIds.size} connection${succeededIds.size > 1 ? "s" : ""}.`,
+        });
+      } else if (succeededIds.size > 0) {
+        notify({
+          type: "warning",
+          message: `Cleared ${succeededIds.size}; ${failCount} failed. Refresh to sync.`,
+        });
+        await fetch_();
+      } else {
+        notify({ type: "error", message: "Failed to clear errors." });
+      }
+    } catch (e) {
+      console.log("clearAllErrors error:", e);
+      notify({ type: "error", message: "Failed to clear errors." });
+    } finally {
+      setClearingErrors(false);
+    }
+  };
+
+  const requestClearAllErrors = () => {
+    const errored = connections.filter((c) => c.lastError);
+    if (errored.length === 0) return;
+    const n = errored.length;
+    setConfirmState({
+      title: "Clear Errors",
+      message: `Clear stored error messages for ${n} connection${n > 1 ? "s" : ""}? This does not re-test accounts.`,
+      onConfirm: async () => {
+        setConfirmState(null);
+        await runClearAllErrors(errored);
+      },
+    });
+  };
   if (loading)
     return (
       <Card>
@@ -743,6 +814,17 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
                   className="w-16 px-2 py-1 text-xs border border-border rounded-md bg-background focus:outline-none focus:border-primary"
                 />
               </div>
+            )}
+            {connections.some((c) => c.lastError) && (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon="cancel"
+                onClick={requestClearAllErrors}
+                disabled={clearingErrors}
+              >
+                {clearingErrors ? "Clearing..." : "Clear Errors"}
+              </Button>
             )}
           </div>
         </div>

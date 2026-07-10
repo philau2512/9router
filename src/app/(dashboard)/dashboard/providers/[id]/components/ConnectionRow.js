@@ -187,15 +187,25 @@ export default function ConnectionRow({
       : "API Key";
   const isEmail = (v) =>
     typeof v === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-  const displayName = connection.name?.trim()
-    || connection.email?.trim()
-    || connection.displayName?.trim()
-    || (isOAuthConnection ? "OAuth Account" : isCookieConnection ? "Cookie Account" : "API Key");
-  const secondaryDisplayName = connection.name?.trim() && connection.email?.trim() && connection.name.trim() !== connection.email.trim()
-    ? connection.email.trim()
-    : connection.name?.trim() && connection.displayName?.trim() && connection.name.trim() !== connection.displayName.trim()
-      ? connection.displayName.trim()
-      : null;
+  const displayName =
+    connection.name?.trim() ||
+    connection.email?.trim() ||
+    connection.displayName?.trim() ||
+    (isOAuthConnection
+      ? "OAuth Account"
+      : isCookieConnection
+        ? "Cookie Account"
+        : "API Key");
+  const secondaryDisplayName =
+    connection.name?.trim() &&
+    connection.email?.trim() &&
+    connection.name.trim() !== connection.email.trim()
+      ? connection.email.trim()
+      : connection.name?.trim() &&
+          connection.displayName?.trim() &&
+          connection.name.trim() !== connection.displayName.trim()
+        ? connection.displayName.trim()
+        : null;
   const formattedExpiresAt = formatVietnameseExpiresAt(connection.expiresAt);
   const remainingExpiresAt = formatRemainingExpiresAt(connection.expiresAt);
 
@@ -341,7 +351,9 @@ export default function ConnectionRow({
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{displayName}</p>
           {secondaryDisplayName && (
-            <p className="text-xs text-text-muted truncate">{secondaryDisplayName}</p>
+            <p className="text-xs text-text-muted truncate">
+              {secondaryDisplayName}
+            </p>
           )}
           {formattedExpiresAt && (
             <div className="mt-1 text-xs text-text-muted">
@@ -432,12 +444,12 @@ export default function ConnectionRow({
           )}
 
           {/* Row 3 — Error details (conditional, visually distinct) */}
-          {(connection.lastError && connection.isActive !== false) ||
+          {connection.lastError ||
           (oneByOneStatus?.state === "failed" && oneByOneStatus?.error) ||
           (manualRefreshStatus?.state === "failed" &&
             manualRefreshStatus?.error) ? (
             <div className="mt-1 flex flex-col gap-0.5 border-l-2 border-red-500/60 pl-2">
-              {connection.lastError && connection.isActive !== false && (
+              {connection.lastError && (
                 <span className="break-words text-xs text-red-500">
                   {connection.lastError}
                 </span>

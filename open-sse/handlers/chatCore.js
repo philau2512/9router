@@ -42,13 +42,22 @@ import {
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
-import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings } from "../rtk/headroom.js";
+import {
+  compressWithHeadroom,
+  formatHeadroomLog,
+  formatHeadroomSizeLog,
+  isHeadroomPhantomSavings,
+} from "../rtk/headroom.js";
+import { extractThinking } from "../translator/concerns/thinkingUnified.js";
+import { resolveSessionId } from "../utils/sessionManager.js";
 import {
   getAntigravitySessionKey,
   getCachedThinking,
   setCachedThinking,
   injectThinkingReplay,
 } from "../utils/antigravityReasoningReplay.js";
+import { stripOrphanedToolResults } from "../translator/concerns/toolCall.js";
+import { compressWithPxpipe, formatPxpipeLog } from "../rtk/pxpipe.js";
 
 function maskLoggedUrl(rawUrl) {
   try {
@@ -92,6 +101,12 @@ export async function handleChatCore({
   midStreamResumeEnabled,
   sourceFormatOverride,
   providerThinking,
+  // PxPipe multimodal compression params (P10d, upstream dcf1927f2)
+  pxpipeEnabled = false,
+  pxpipeMinChars,
+  pxpipeTimeoutMs,
+  pxpipeTransform,
+  onPxpipeEvent,
   timing = null,
   clientSignal = null,
 }) {
@@ -99,6 +114,24 @@ export async function handleChatCore({
   const requestStartTime = timing?.requestStartTime || Date.now();
 
   const sourceFormat = sourceFormatOverride || detectFormat(body);
+
+  // Resolve session tag for unified request lifecycle logging (a625ea9fd).
+  // Additive — does not replace existing log calls.
+  const sessionSeed = (() => {
+    try {
+      return resolveSessionId({
+        headers: clientRawRequest?.headers,
+        body,
+        connectionId,
+        scope: provider,
+      });
+    } catch {
+      return connectionId || "";
+    }
+  })();
+  const reqTag = log?.tagForSession
+    ? log.tagForSession(sessionSeed)
+    : (log?.nextTag ? log.nextTag() : "");
 
   // Check for bypass patterns (warmup, skip, cc naming)
   const bypassResponse = handleBypassRequest(
@@ -146,8 +179,12 @@ export async function handleChatCore({
 
   // Image generation models require non-streaming (Google v1internal:generateContent)
   const modelType = getModelType(alias, model);
-  const isImageGenModel = modelType === "image" || /image|imagen|image-generation/i.test(model);
-  if (isImageGenModel && (provider === "antigravity" || provider === "gemini-cli")) {
+  const isImageGenModel =
+    modelType === "image" || /image|imagen|image-generation/i.test(model);
+  if (
+    isImageGenModel &&
+    (provider === "antigravity" || provider === "gemini-cli")
+  ) {
     stream = false;
   }
 
@@ -162,7 +199,12 @@ export async function handleChatCore({
   const acceptHeader = clientRawRequest?.headers?.accept || "";
   const clientPrefersJson = acceptHeader.includes("application/json");
   const clientPrefersSSE = acceptHeader.includes("text/event-stream");
-  if (clientPrefersJson && !clientPrefersSSE && body.stream !== true && !providerRequiresStreaming) {
+  if (
+    clientPrefersJson &&
+    !clientPrefersSSE &&
+    body.stream !== true &&
+    !providerRequiresStreaming
+  ) {
     stream = false;
   }
 
@@ -187,6 +229,14 @@ export async function handleChatCore({
   // Skip all translation/normalization — only model and Bearer are swapped
   const clientTool = detectClientTool(clientRawRequest?.headers || {}, body);
   const passthrough = isNativePassthrough(clientTool, provider);
+
+  // Strip orphaned tool results before translation for non-Kiro paths.
+  // Kiro has its own reconcileOrphanedToolResults inside openai-to-kiro.js.
+  // Dangling tool results from client-side history compaction cause HTTP 400
+  // on strict upstreams (Anthropic, Gemini). Port of upstream PR #2298.
+  if (targetFormat !== FORMATS.KIRO) {
+    stripOrphanedToolResults(body);
+  }
 
   let translatedBody;
   let toolNameMap;
@@ -222,6 +272,33 @@ export async function handleChatCore({
     translatedBody.model = model;
   }
 
+  // Unified ▶ request summary line — correlates all lifecycle logs by session tag.
+  // Additive: COLORS/formatRtkLog imports are kept below. See upstream a625ea9fd.
+  if (log?.line) {
+    try {
+      const clientModel = clientRawRequest?.body?.model || `${provider}/${model}`;
+      const msgN = translatedBody.messages?.length || body.messages?.length || 0;
+      const toolN = translatedBody.tools?.length || body.tools?.length || 0;
+      const fmtStr = passthrough
+        ? `FMT:${sourceFormat}(pass)`
+        : `FMT:${sourceFormat}→${targetFormat}`;
+      const think = log.fmtThink?.(extractThinking(translatedBody));
+      const acc = credentials?.connectionName || "-";
+      const parts = [
+        `POST ${clientModel} → ${provider}/${model}`,
+        fmtStr,
+        stream ? "STREAM" : "JSON",
+        `${msgN}MSG`,
+      ];
+      if (toolN) parts.push(`${toolN}TOOL`);
+      if (think) parts.push(`THINK:${think}`);
+      parts.push(`ACC:${acc}`);
+      log.line(reqTag, "▶", parts.join(" · "));
+    } catch {
+      /* never crash on logging */
+    }
+  }
+
   // Dedupe duplicate built-in tools when equivalent MCP tools are present (Claude clients only).
   if (clientTool === "claude" && Array.isArray(translatedBody.tools)) {
     const { tools: deduped, stripped } = dedupeTools(translatedBody.tools);
@@ -251,12 +328,21 @@ export async function handleChatCore({
   const headroomLine = formatHeadroomLog(headroomStats);
   const headroomSizeLine = formatHeadroomSizeLog(headroomDiagnostics);
   if (headroomLine) {
-    log?.info?.("HEADROOM", `${headroomLine}${headroomSizeLine ? ` | ${headroomSizeLine}` : ""}`);
+    log?.info?.(
+      "HEADROOM",
+      `${headroomLine}${headroomSizeLine ? ` | ${headroomSizeLine}` : ""}`,
+    );
     if (isHeadroomPhantomSavings(headroomStats, headroomDiagnostics)) {
-      log?.warn?.("HEADROOM", `reported token delta, but outbound JSON shrank <5%; provider may bill near-original payload | ${headroomSizeLine}`);
+      log?.warn?.(
+        "HEADROOM",
+        `reported token delta, but outbound JSON shrank <5%; provider may bill near-original payload | ${headroomSizeLine}`,
+      );
     }
   } else if (headroomEnabled) {
-    log?.warn?.("HEADROOM", `skipped: ${headroomDiagnostics.reason || "compression unavailable"}${headroomDiagnostics.endpoint ? ` (${headroomDiagnostics.endpoint})` : ""}`);
+    log?.warn?.(
+      "HEADROOM",
+      `skipped: ${headroomDiagnostics.reason || "compression unavailable"}${headroomDiagnostics.endpoint ? ` (${headroomDiagnostics.endpoint})` : ""}`,
+    );
   }
 
   // TTS models don't support tool messages/function calling
@@ -271,6 +357,30 @@ export async function handleChatCore({
   const rtkStats = compressMessages(translatedBody, rtkEnabled);
   const rtkLine = formatRtkLog(rtkStats);
   if (rtkLine) console.log(rtkLine);
+
+  // PxPipe: multimodal prompt compression (upstream dcf1927f2).
+  // Runs after RTK, before dispatch. Additive — placeholder until P10 is fully wired.
+  let pxpipeSummary = null;
+  if (pxpipeEnabled) {
+    try {
+      const pxpipeResult = await compressWithPxpipe(translatedBody, {
+        enabled: true,
+        format: finalFormat,
+        model,
+        minChars: pxpipeMinChars,
+        timeoutMs: pxpipeTimeoutMs,
+        transform: pxpipeTransform,
+      });
+      pxpipeSummary = pxpipeResult.summary;
+      if (pxpipeResult.body) translatedBody = pxpipeResult.body;
+      const pxpipeLine = formatPxpipeLog(pxpipeSummary);
+      if (pxpipeLine) log?.info?.("PXPIPE", pxpipeLine);
+      try { onPxpipeEvent?.({ provider, model, ...pxpipeSummary }); } catch { /* stats must not break requests */ }
+    } catch (e) {
+      log?.debug?.("PXPIPE", `error: ${e?.message}`);
+    }
+  }
+  // PxPipe summary wired into sharedCtx so requestDetail builders can include compression stats.
 
   // Caveman: inject terse-style system prompt
   if (cavemanEnabled && cavemanLevel) {
@@ -324,7 +434,7 @@ export async function handleChatCore({
       credentials?.connectionName || credentials?.connectionId || "unknown";
     const poolId =
       credentials?.providerSpecificData?.connectionProxyPoolId || "none";
-    log?.info?.(
+    log?.debug?.(
       "PROXY",
       `${provider.toUpperCase()} | ${model} | conn=${connectionName} | pool=${poolId} | vercel-relay=${maskLoggedUrl(proxyOptions.vercelRelayUrl)}`,
     );
@@ -347,7 +457,7 @@ export async function handleChatCore({
       credentials?.providerSpecificData?.connectionProxyPoolId || "none";
     const connectionName =
       credentials?.connectionName || credentials?.connectionId || "unknown";
-    log?.info?.(
+    log?.debug?.(
       "PROXY",
       `${provider.toUpperCase()} | ${model} | conn=${connectionName} | pool=${poolId} | url=${maskedProxyUrl}`,
     );
@@ -529,6 +639,8 @@ export async function handleChatCore({
     clientRawRequest,
     onRequestSuccess,
     midStreamResumeEnabled,
+    // PxPipe compression stats — included so requestDetail builders can persist them.
+    pxpipe: pxpipeSummary || undefined,
   };
   const appendLog = (extra) =>
     appendRequestLog({ model, provider, connectionId, ...extra }).catch(
@@ -569,12 +681,22 @@ export async function handleChatCore({
   }
 
   // Streaming response
-  const { onStreamComplete: _baseOnStreamComplete } = buildOnStreamComplete({ ...sharedCtx, timing });
-  const _agReplayKey = provider === "antigravity" ? getAntigravitySessionKey(model, body) : null;
+  const { onStreamComplete: _baseOnStreamComplete, streamDetailId } = buildOnStreamComplete({
+    ...sharedCtx,
+    timing,
+  });
+  const _agReplayKey =
+    provider === "antigravity" ? getAntigravitySessionKey(model, body) : null;
   const onStreamComplete = _agReplayKey
     ? (contentObj, usage, ttftAt, streamDetailId) => {
-        if (contentObj?.thinking) setCachedThinking(_agReplayKey, contentObj.thinking);
-        return _baseOnStreamComplete?.(contentObj, usage, ttftAt, streamDetailId);
+        if (contentObj?.thinking)
+          setCachedThinking(_agReplayKey, contentObj.thinking);
+        return _baseOnStreamComplete?.(
+          contentObj,
+          usage,
+          ttftAt,
+          streamDetailId,
+        );
       }
     : _baseOnStreamComplete;
   return handleStreamingResponse({
@@ -589,6 +711,7 @@ export async function handleChatCore({
     onStreamComplete,
     credentials,
     timing,
+    streamDetailId,
   });
 }
 

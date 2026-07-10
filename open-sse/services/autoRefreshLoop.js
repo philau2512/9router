@@ -13,14 +13,18 @@
 const REFRESH_CONCURRENCY = 16;
 const REFRESH_INEFFECTIVE_BACKOFF_MS = 30_000; // if refresh returns same token
 const REFRESH_FAILURE_BACKOFF_MS = 5 * 60_000; // on error
-const REFRESH_CHECK_INTERVAL_MS = 5_000;       // fallback poll
+const REFRESH_CHECK_INTERVAL_MS = 5_000; // fallback poll
 
 // ── MinHeap ────────────────────────────────────────────────────────────────
 
 class RefreshMinHeap {
-  constructor() { this.items = []; }
+  constructor() {
+    this.items = [];
+  }
 
-  _cmp(a, b) { return a.nextRefreshAt - b.nextRefreshAt; }
+  _cmp(a, b) {
+    return a.nextRefreshAt - b.nextRefreshAt;
+  }
 
   push(item) {
     this.items.push(item);
@@ -38,12 +42,16 @@ class RefreshMinHeap {
     return top;
   }
 
-  peek() { return this.items[0] ?? null; }
-  size() { return this.items.length; }
+  peek() {
+    return this.items[0] ?? null;
+  }
+  size() {
+    return this.items.length;
+  }
 
   // Update existing item by id or push new
   upsert(item) {
-    const idx = this.items.findIndex(i => i.id === item.id);
+    const idx = this.items.findIndex((i) => i.id === item.id);
     if (idx >= 0) {
       this.items[idx] = item;
       this._siftUp(idx);
@@ -57,7 +65,10 @@ class RefreshMinHeap {
     while (i > 0) {
       const parent = (i - 1) >> 1;
       if (this._cmp(this.items[i], this.items[parent]) < 0) {
-        [this.items[i], this.items[parent]] = [this.items[parent], this.items[i]];
+        [this.items[i], this.items[parent]] = [
+          this.items[parent],
+          this.items[i],
+        ];
         i = parent;
       } else break;
     }
@@ -67,11 +78,17 @@ class RefreshMinHeap {
     const n = this.items.length;
     while (true) {
       let smallest = i;
-      const l = 2 * i + 1, r = 2 * i + 2;
-      if (l < n && this._cmp(this.items[l], this.items[smallest]) < 0) smallest = l;
-      if (r < n && this._cmp(this.items[r], this.items[smallest]) < 0) smallest = r;
+      const l = 2 * i + 1,
+        r = 2 * i + 2;
+      if (l < n && this._cmp(this.items[l], this.items[smallest]) < 0)
+        smallest = l;
+      if (r < n && this._cmp(this.items[r], this.items[smallest]) < 0)
+        smallest = r;
       if (smallest === i) break;
-      [this.items[i], this.items[smallest]] = [this.items[smallest], this.items[i]];
+      [this.items[i], this.items[smallest]] = [
+        this.items[smallest],
+        this.items[i],
+      ];
       i = smallest;
     }
   }
@@ -82,7 +99,7 @@ class RefreshMinHeap {
 class AutoRefreshLoop {
   constructor() {
     this.heap = new RefreshMinHeap();
-    this.entries = new Map();     // id → entry metadata
+    this.entries = new Map(); // id → entry metadata
     this.ineffBackoffs = new Map(); // id → nextRetryAt
     this._wakeResolve = null;
     this._running = false;
@@ -96,7 +113,8 @@ class AutoRefreshLoop {
   register(entry) {
     if (!entry?.id || !entry.doRefresh) return;
     this.entries.set(entry.id, entry);
-    const nextAt = entry.getNextRefreshAt?.() ?? (Date.now() + REFRESH_CHECK_INTERVAL_MS);
+    const nextAt =
+      entry.getNextRefreshAt?.() ?? Date.now() + REFRESH_CHECK_INTERVAL_MS;
     this.heap.upsert({ id: entry.id, nextRefreshAt: nextAt });
     this.wake();
   }
@@ -108,7 +126,10 @@ class AutoRefreshLoop {
   }
 
   wake() {
-    if (this._wakeResolve) { this._wakeResolve(); this._wakeResolve = null; }
+    if (this._wakeResolve) {
+      this._wakeResolve();
+      this._wakeResolve = null;
+    }
   }
 
   start() {
@@ -117,7 +138,10 @@ class AutoRefreshLoop {
     this._loop().catch(() => {});
   }
 
-  stop() { this._running = false; this.wake(); }
+  stop() {
+    this._running = false;
+    this.wake();
+  }
 
   async _loop() {
     while (this._running) {
@@ -127,10 +151,17 @@ class AutoRefreshLoop {
         : REFRESH_CHECK_INTERVAL_MS;
 
       await Promise.race([
-        new Promise(r => { this._wakeResolve = r; }),
-        new Promise(r => { this._timer = setTimeout(r, waitMs); }),
+        new Promise((r) => {
+          this._wakeResolve = r;
+        }),
+        new Promise((r) => {
+          this._timer = setTimeout(r, waitMs);
+        }),
       ]);
-      if (this._timer) { clearTimeout(this._timer); this._timer = null; }
+      if (this._timer) {
+        clearTimeout(this._timer);
+        this._timer = null;
+      }
       if (!this._running) break;
 
       await this._processDue();
@@ -148,7 +179,11 @@ class AutoRefreshLoop {
 
     // Process with concurrency cap
     for (let i = 0; i < due.length; i += REFRESH_CONCURRENCY) {
-      await Promise.all(due.slice(i, i + REFRESH_CONCURRENCY).map(item => this._refreshOne(item)));
+      await Promise.all(
+        due
+          .slice(i, i + REFRESH_CONCURRENCY)
+          .map((item) => this._refreshOne(item)),
+      );
     }
   }
 
@@ -170,22 +205,34 @@ class AutoRefreshLoop {
 
       if (!result) {
         // Null result — schedule retry with failure backoff
-        this.heap.upsert({ id: item.id, nextRefreshAt: Date.now() + REFRESH_FAILURE_BACKOFF_MS });
+        this.heap.upsert({
+          id: item.id,
+          nextRefreshAt: Date.now() + REFRESH_FAILURE_BACKOFF_MS,
+        });
         return;
       }
 
       // Ineffective check: token didn't change
       if (result.accessToken && result.accessToken === prevToken) {
-        this.ineffBackoffs.set(item.id, Date.now() + REFRESH_INEFFECTIVE_BACKOFF_MS);
-        this.heap.upsert({ id: item.id, nextRefreshAt: Date.now() + REFRESH_INEFFECTIVE_BACKOFF_MS });
+        this.ineffBackoffs.set(
+          item.id,
+          Date.now() + REFRESH_INEFFECTIVE_BACKOFF_MS,
+        );
+        this.heap.upsert({
+          id: item.id,
+          nextRefreshAt: Date.now() + REFRESH_INEFFECTIVE_BACKOFF_MS,
+        });
         return;
       }
 
       this.ineffBackoffs.delete(item.id);
-      const nextAt = entry.getNextRefreshAt?.() ?? (Date.now() + 55 * 60_000);
+      const nextAt = entry.getNextRefreshAt?.() ?? Date.now() + 55 * 60_000;
       this.heap.upsert({ id: item.id, nextRefreshAt: nextAt });
     } catch {
-      this.heap.upsert({ id: item.id, nextRefreshAt: Date.now() + REFRESH_FAILURE_BACKOFF_MS });
+      this.heap.upsert({
+        id: item.id,
+        nextRefreshAt: Date.now() + REFRESH_FAILURE_BACKOFF_MS,
+      });
     }
   }
 }

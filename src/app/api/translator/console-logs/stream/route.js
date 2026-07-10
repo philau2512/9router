@@ -11,7 +11,13 @@ initConsoleLogCapture();
 export async function GET(request) {
   const encoder = new TextEncoder();
   const emitter = getConsoleEmitter();
-  const state = { closed: false, send: null, sendLines: null, sendClear: null, keepalive: null };
+  const state = {
+    closed: false,
+    send: null,
+    sendLines: null,
+    sendClear: null,
+    keepalive: null,
+  };
 
   // Idempotent: safe to call from request.signal abort, cancel(), or enqueue failure.
   const cleanup = () => {
@@ -56,7 +62,11 @@ export async function GET(request) {
       state.sendLines = (lines) => {
         if (state.closed || !Array.isArray(lines) || lines.length === 0) return;
         try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "lines", lines })}\n\n`));
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ type: "lines", lines })}\n\n`,
+            ),
+          );
         } catch {
           cleanup();
         }

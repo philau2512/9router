@@ -3,6 +3,7 @@ import { FORMATS } from "../translator/formats.js";
 import { trackPendingRequest, appendRequestLog } from "@/lib/usageDb.js";
 import {
   extractUsage,
+  mergeUsage,
   hasValidUsage,
   estimateUsage,
   logUsage,
@@ -101,7 +102,7 @@ export function createSSEStream(options = {}) {
     if (firstEmittedChunkAt) return;
     firstEmittedChunkAt = Date.now();
     firstEmittedChunkBytes = sharedEncoder.encode(output || "").byteLength;
-    log.info(
+    log.debug(
       "SSE-FIRST",
       `${provider || "unknown"}/${model || "unknown"} | mode=${mode} | firstEmitMs=${firstEmittedChunkAt - streamStartAt}ms | bytes=${firstEmittedChunkBytes}${meta.kind ? ` | kind=${meta.kind}` : ""}`,
     );
@@ -122,7 +123,7 @@ export function createSSEStream(options = {}) {
   let currentOpenAIResponsesEvent = null;
   let openAIResponsesTerminalSeen = false;
   let openAIResponsesDoneSent = false;
-  let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
+  let streamDoneSent = false; // track duplicate [DONE] across transform + flush
   const outputItemCollector = createOutputItemCollector(); // Phase 4: Codex output reconstruction
 
   let upstreamFirstByteRecorded = false;
@@ -138,7 +139,7 @@ export function createSSEStream(options = {}) {
       const text = decoder.decode(chunk, { stream: true });
       if (!firstRawChunkLogged) {
         firstRawChunkLogged = true;
-        log.info(
+        log.debug(
           "SSE-FIRST",
           `${provider || "unknown"}/${model || "unknown"} | mode=${mode} | firstRawMs=${Date.now() - streamStartAt}ms | bytes=${sharedEncoder.encode(text).byteLength}`,
         );
@@ -199,7 +200,10 @@ export function createSSEStream(options = {}) {
               }
 
               // Track reasoning for semantic stall watchdog (F3)
-              if (dataStr.includes('"reasoning_content":') && streamStateTracker) {
+              if (
+                dataStr.includes('"reasoning_content":') &&
+                streamStateTracker
+              ) {
                 streamStateTracker.inThinking = true;
               }
 
@@ -208,9 +212,10 @@ export function createSSEStream(options = {}) {
               totalContentLength += Math.ceil(dataStr.length / 4);
               updateTracker(); // F10 + R2-F2
 
-              const fastOutput = line.startsWith("data:") && !line.startsWith("data: ")
-                ? "data: " + line.slice(5) + "\n"
-                : line + "\n";
+              const fastOutput =
+                line.startsWith("data:") && !line.startsWith("data: ")
+                  ? "data: " + line.slice(5) + "\n"
+                  : line + "\n";
 
               emitFirstChunkLog(fastOutput, { kind: "passthrough-fast" }); // R2-F1
               reqLogger?.appendConvertedChunk?.(fastOutput);
@@ -257,13 +262,38 @@ export function createSSEStream(options = {}) {
               }
 
               // Rewrite model alias so client receives the alias they requested (Phase 2)
-              if (targetModelAlias && parsed.model && parsed.model !== targetModelAlias) {
+              if (
+                targetModelAlias &&
+                parsed.model &&
+                parsed.model !== targetModelAlias
+              ) {
                 parsed.model = targetModelAlias;
                 fieldsInjected = true;
               }
-              if (targetModelAlias && parsed.response?.model && parsed.response.model !== targetModelAlias) {
-                parsed.response = { ...parsed.response, model: targetModelAlias };
+              if (
+                targetModelAlias &&
+                parsed.response?.model &&
+                parsed.response.model !== targetModelAlias
+              ) {
+                parsed.response = {
+                  ...parsed.response,
+                  model: targetModelAlias,
+                };
                 fieldsInjected = true;
+              }
+
+              // Strip empty tool_calls arrays that break AI SDK reasoning tracking.
+              // Some providers (e.g. CodeBuddy CN) include `"tool_calls": []` in
+              // every streaming delta. @ai-sdk/openai-compatible checks
+              // `delta.tool_calls != null` — an empty array passes this check,
+              // causing premature `reasoning-end` on every chunk.
+              if (parsed?.choices) {
+                for (const choice of parsed.choices) {
+                  if (choice.delta?.tool_calls && Array.isArray(choice.delta.tool_calls) && choice.delta.tool_calls.length === 0) {
+                    delete choice.delta.tool_calls;
+                    fieldsInjected = true;
+                  }
+                }
               }
 
               if (!hasValuableContent(parsed, FORMATS.OPENAI)) {
@@ -284,7 +314,7 @@ export function createSSEStream(options = {}) {
 
               const extracted = extractUsage(parsed);
               if (extracted) {
-                usage = extracted;
+                usage = mergeUsage(usage, extracted);
               }
 
               const isFinishChunk = parsed.choices?.[0]?.finish_reason;
@@ -337,7 +367,7 @@ export function createSSEStream(options = {}) {
         if (!parsed) continue;
         if (!firstParsedEventLogged) {
           firstParsedEventLogged = true;
-          log.info(
+          log.debug(
             "SSE-FIRST",
             `${provider || "unknown"}/${model || "unknown"} | mode=${mode} | firstEvent=${parsed.type || parsed.event || "unknown"}`,
           );
@@ -420,16 +450,28 @@ export function createSSEStream(options = {}) {
 
         // Extract usage
         const extracted = extractUsage(parsed);
-        if (extracted) state.usage = extracted; // Keep original usage for logging
+        if (extracted) state.usage = mergeUsage(state.usage, extracted); // Keep original usage for logging
 
         // Codex output_item.done reconstruction (Phase 4)
-        if (keepsOpenAIResponsesFormat && parsed.type === "response.output_item.done") {
+        if (
+          keepsOpenAIResponsesFormat &&
+          parsed.type === "response.output_item.done"
+        ) {
           collectOutputItemDone(outputItemCollector, parsed);
         }
-        if (keepsOpenAIResponsesFormat && parsed.type === "response.completed") {
+        if (
+          keepsOpenAIResponsesFormat &&
+          parsed.type === "response.completed"
+        ) {
           const patched = patchCompletedOutput(parsed, outputItemCollector);
           if (patched !== parsed) {
-            const output = formatSSE({ event: openAIResponsesEventName || "response.completed", data: patched }, sourceFormat);
+            const output = formatSSE(
+              {
+                event: openAIResponsesEventName || "response.completed",
+                data: patched,
+              },
+              sourceFormat,
+            );
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));
             currentOpenAIResponsesEvent = null;

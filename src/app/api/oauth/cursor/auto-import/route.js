@@ -94,30 +94,53 @@ async function extractTokensViaBetterSqlite(dbPath) {
   // Exact key lookup via bulk IN query
   const allKeys = [...ACCESS_TOKEN_KEYS, ...MACHINE_ID_KEYS];
   const placeholders = allKeys.map(() => "?").join(",");
-  const rows = db.prepare(`SELECT key, value FROM itemTable WHERE key IN (${placeholders})`).all(...allKeys);
+  const rows = db
+    .prepare(`SELECT key, value FROM itemTable WHERE key IN (${placeholders})`)
+    .all(...allKeys);
   const rowMap = Object.fromEntries((rows || []).map((r) => [r.key, r.value]));
 
   let accessToken = null;
   for (const key of ACCESS_TOKEN_KEYS) {
-    if (rowMap[key]) { accessToken = normalize(rowMap[key]); break; }
+    if (rowMap[key]) {
+      accessToken = normalize(rowMap[key]);
+      break;
+    }
   }
 
   let machineId = null;
   for (const key of MACHINE_ID_KEYS) {
-    if (rowMap[key]) { machineId = normalize(rowMap[key]); break; }
+    if (rowMap[key]) {
+      machineId = normalize(rowMap[key]);
+      break;
+    }
   }
 
   // Fuzzy fallback: single LIKE query, then partition by key content
   if (!accessToken || !machineId) {
     try {
-      const fuzzyRows = db.prepare("SELECT key, value FROM itemTable WHERE key LIKE ? OR key LIKE ? OR key LIKE ? OR key LIKE ? LIMIT 20").all("%accessToken%", "%access_token%", "%machineId%", "%machine_id%");
-      for (const r of (fuzzyRows || [])) {
+      const fuzzyRows = db
+        .prepare(
+          "SELECT key, value FROM itemTable WHERE key LIKE ? OR key LIKE ? OR key LIKE ? OR key LIKE ? LIMIT 20",
+        )
+        .all("%accessToken%", "%access_token%", "%machineId%", "%machine_id%");
+      for (const r of fuzzyRows || []) {
         if (!r.value) continue;
         const k = r.key.toLowerCase();
-        if (!accessToken && (k.includes("accesstoken") || k.includes("access_token"))) { accessToken = normalize(r.value); }
-        else if (!machineId && (k.includes("machineid") || k.includes("machine_id"))) { machineId = normalize(r.value); }
+        if (
+          !accessToken &&
+          (k.includes("accesstoken") || k.includes("access_token"))
+        ) {
+          accessToken = normalize(r.value);
+        } else if (
+          !machineId &&
+          (k.includes("machineid") || k.includes("machine_id"))
+        ) {
+          machineId = normalize(r.value);
+        }
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   db.close();
@@ -189,7 +212,10 @@ export async function GET() {
   try {
     const platform = process.platform;
     if (platform !== "darwin" && platform !== "win32" && platform !== "linux") {
-      return NextResponse.json({ found: false, error: "Unsupported platform" }, { status: 400 });
+      return NextResponse.json(
+        { found: false, error: "Unsupported platform" },
+        { status: 400 },
+      );
     }
     const candidates = getCandidatePaths(platform);
 
@@ -198,7 +224,11 @@ export async function GET() {
     if (platform === "linux") {
       const linuxPath = candidates[0];
       if (!linuxPath) {
-        return NextResponse.json({ found: false, error: "Cursor database not found. Make sure Cursor IDE is installed and you are logged in." });
+        return NextResponse.json({
+          found: false,
+          error:
+            "Cursor database not found. Make sure Cursor IDE is installed and you are logged in.",
+        });
       }
       try {
         // Check file exists via sync stat
@@ -206,7 +236,11 @@ export async function GET() {
         if (!fsSync.existsSync(linuxPath)) throw new Error("not found");
         dbPath = linuxPath;
       } catch {
-        return NextResponse.json({ found: false, error: "Cursor database not found. Make sure Cursor IDE is installed and you are logged in." });
+        return NextResponse.json({
+          found: false,
+          error:
+            "Cursor database not found. Make sure Cursor IDE is installed and you are logged in.",
+        });
       }
     } else {
       for (const candidate of candidates) {
@@ -266,13 +300,24 @@ export async function GET() {
       }
       // Tokens not found even after fuzzy — login required
       if (!tokens.accessToken && !tokens.machineId) {
-        return NextResponse.json({ found: false, error: "Please login to Cursor IDE first and try again." });
+        return NextResponse.json({
+          found: false,
+          error: "Please login to Cursor IDE first and try again.",
+        });
       }
     } catch (dbErr) {
       // Surface open errors (e.g. SQLITE_CANTOPEN) clearly
       const msg = dbErr?.message || String(dbErr);
-      if (msg && (msg.includes("SQLITE_") || msg.includes("CANTOPEN") || !msg.toLowerCase().includes("bindings"))) {
-        return NextResponse.json({ found: false, error: `Cursor database found at ${dbPath} but could not open it: ${msg}` });
+      if (
+        msg &&
+        (msg.includes("SQLITE_") ||
+          msg.includes("CANTOPEN") ||
+          !msg.toLowerCase().includes("bindings"))
+      ) {
+        return NextResponse.json({
+          found: false,
+          error: `Cursor database found at ${dbPath} but could not open it: ${msg}`,
+        });
       }
       // Native bindings unavailable — try CLI fallback
     }
@@ -292,7 +337,10 @@ export async function GET() {
     }
 
     // No tokens found — prompt login
-    return NextResponse.json({ found: false, error: "Please login to Cursor IDE first and try again." });
+    return NextResponse.json({
+      found: false,
+      error: "Please login to Cursor IDE first and try again.",
+    });
   } catch (error) {
     console.log("Cursor auto-import error:", error);
     return NextResponse.json(

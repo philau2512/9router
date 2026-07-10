@@ -3,6 +3,7 @@ import { PROVIDERS } from "../config/providers.js";
 import { randomUUID } from "crypto";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
 import { resolveDefaultProfileArn } from "../config/kiroConstants.js";
+import { fetchKiroProfileArn } from "../../src/lib/oauth/kiro-provider-helpers.js";
 
 /**
  * KiroExecutor - Executor for Kiro AI (AWS CodeWhisperer)
@@ -34,7 +35,8 @@ export class KiroExecutor extends BaseExecutor {
     // Inject profileArn header — required by Kiro/CodeWhisperer gateway for all auth methods.
     // Without this header, the API returns 403 "User is not authorized to make this call."
     // Fallback to public default ARN when not stored (e.g. old connections pre-fix).
-    const profileArn = credentials?.providerSpecificData?.profileArn ||
+    const profileArn =
+      credentials?.providerSpecificData?.profileArn ||
       resolveDefaultProfileArn(authMethod);
     if (profileArn) {
       headers["x-amzn-codewhisperer-profile-arn"] = profileArn;
@@ -45,6 +47,46 @@ export class KiroExecutor extends BaseExecutor {
 
   transformRequest(model, body, stream, credentials) {
     return body;
+  }
+
+  /**
+   * Override buildUrl to route CodeWhisperer-surface auth methods (api_key /
+   * external_idp / idc) to *.amazonaws.com endpoints only, and regionalize
+   * them when credentials.region differs from the hardcoded us-east-1 default.
+   *
+   * IAM Identity Center (idc) tokens are AWS SSO access tokens — the kiro.dev
+   * gateway rejects them with 403 "bearer token invalid". They must hit the
+   * CodeWhisperer surface and in the region the token was minted in.
+   */
+  buildUrl(model, stream, urlIndex = 0, credentials = null) {
+    const authMethod = credentials?.providerSpecificData?.authMethod;
+    const isCodeWhispererSurface =
+      authMethod === "api_key" ||
+      authMethod === "external_idp" ||
+      authMethod === "idc";
+
+    if (isCodeWhispererSurface) {
+      const region = (
+        credentials?.providerSpecificData?.region || "us-east-1"
+      ).trim();
+      const regionalize = (u) =>
+        region && region !== "us-east-1" && u.includes("amazonaws.com")
+          ? u.replace(
+              /([a-z]+)\.[a-z0-9-]+\.amazonaws\.com/,
+              `$1.${region}.amazonaws.com`,
+            )
+          : u;
+
+      const baseUrls = this.getBaseUrls();
+      const amazon = baseUrls
+        .filter((u) => u.includes("amazonaws.com"))
+        .map(regionalize);
+      const others = baseUrls.filter((u) => !u.includes("amazonaws.com"));
+      const ordered = amazon.length > 0 ? [...amazon, ...others] : baseUrls;
+      return ordered[urlIndex] || ordered[0];
+    }
+
+    return super.buildUrl(model, stream, urlIndex, credentials);
   }
 
   /**
@@ -62,6 +104,34 @@ export class KiroExecutor extends BaseExecutor {
    * classify the status, and trigger account fallback/cooldown.
    */
   async execute(args) {
+    const { credentials } = args;
+    const authMethod = credentials?.providerSpecificData?.authMethod;
+
+    // IDC tokens may not carry profileArn when provisioned cross-region.
+    // Discover and inject the ARN before building headers for the request.
+    // Port of upstream PR #2355.
+    if (authMethod === "idc" && !credentials?.providerSpecificData?.profileArn) {
+      const callerRegion =
+        credentials?.providerSpecificData?.region || "us-east-1";
+      try {
+        const discovered = await fetchKiroProfileArn(
+          credentials.accessToken,
+          callerRegion,
+        );
+        if (discovered?.arn) {
+          // Spread to avoid mutating the original reference — safe for retry logic
+          credentials.providerSpecificData = {
+            ...credentials.providerSpecificData,
+            profileArn: discovered.arn,
+            region: discovered.region,
+          };
+        }
+      } catch (err) {
+        // Non-fatal: proceed without profileArn, let upstream return the error
+        console.warn(`[Kiro] IDC profile ARN discovery failed: ${err.message}`);
+      }
+    }
+
     const result = await super.execute(args);
     if (result?.response?.ok) {
       result.response = this.transformEventStreamToSSE(
@@ -93,7 +163,7 @@ export class KiroExecutor extends BaseExecutor {
       seenToolIds: new Map(),
       totalContentLength: 0,
       contextUsagePercentage: 0,
-      inThinking: false
+      inThinking: false,
     };
 
     const transformStream = new TransformStream({
@@ -139,7 +209,10 @@ export class KiroExecutor extends BaseExecutor {
 
           // Handle assistantResponseEvent
 
-          if (eventType === "assistantResponseEvent" && event.payload?.content) {
+          if (
+            eventType === "assistantResponseEvent" &&
+            event.payload?.content
+          ) {
             let content = event.payload.content;
 
             // Helper: emit thinking text extracted from <thinking> tags as reasoning_content
@@ -156,12 +229,16 @@ export class KiroExecutor extends BaseExecutor {
                 object: "chat.completion.chunk",
                 created,
                 model,
-                choices: [{ index: 0, delta: reasoningDelta, finish_reason: null }],
+                choices: [
+                  { index: 0, delta: reasoningDelta, finish_reason: null },
+                ],
               };
               chunkIndex++;
               state.reasoningChunkCount++;
               controller.enqueue(
-                new TextEncoder().encode(`data: ${JSON.stringify(reasoningChunk)}\n\n`),
+                new TextEncoder().encode(
+                  `data: ${JSON.stringify(reasoningChunk)}\n\n`,
+                ),
               );
             }
             // Kiro model "auto" leaks <thinking>...</thinking> blocks into the
@@ -185,10 +262,17 @@ export class KiroExecutor extends BaseExecutor {
               if (content.includes("</thinking>")) {
                 state.inThinking = false;
                 const before = content.split("<thinking>")[0];
-                const inner = content.split("<thinking>")[1].split("</thinking>")[0];
-                const after = content.split("</thinking>").slice(1).join("</thinking>");
+                const inner = content
+                  .split("<thinking>")[1]
+                  .split("</thinking>")[0];
+                const after = content
+                  .split("</thinking>")
+                  .slice(1)
+                  .join("</thinking>");
                 if (inner) emitReasoningChunk(inner);
-                content = before + (after.startsWith("\n") ? after.substring(1) : after);
+                content =
+                  before +
+                  (after.startsWith("\n") ? after.substring(1) : after);
               } else {
                 const before = content.split("<thinking>")[0];
                 const inner = content.split("<thinking>")[1];
@@ -458,6 +542,11 @@ export class KiroExecutor extends BaseExecutor {
             if (metrics && typeof metrics === "object") {
               const inputTokens = metrics.inputTokens || 0;
               const outputTokens = metrics.outputTokens || 0;
+              // ponytail: Amazon Q upstream does not expose cache fields today,
+              // but pick up cache_read_input_tokens / cache_creation_input_tokens
+              // if the event shape grows them so cost tracking stays accurate.
+              const cachedTokens = metrics.cacheReadInputTokens || metrics.cache_read_input_tokens || 0;
+              const cacheCreationInputTokens = metrics.cacheCreationInputTokens || metrics.cache_creation_input_tokens || 0;
 
               if (inputTokens > 0 || outputTokens > 0) {
                 state.usage = {
@@ -465,6 +554,11 @@ export class KiroExecutor extends BaseExecutor {
                   completion_tokens: outputTokens,
                   total_tokens: inputTokens + outputTokens,
                 };
+                // Kiro is Claude-backed: inputTokens EXCLUDES cache (Claude convention),
+                // not inclusive like OpenAI's cached_tokens. Emit cache_read_input_tokens
+                // (not cached_tokens) so canonicalizeUsage takes the Claude fold path.
+                if (cachedTokens > 0) state.usage.cache_read_input_tokens = cachedTokens;
+                if (cacheCreationInputTokens > 0) state.usage.cache_creation_input_tokens = cacheCreationInputTokens;
               }
             }
           }

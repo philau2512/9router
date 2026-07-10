@@ -202,6 +202,7 @@ export default function ProviderDetailPage() {
     handleWarmupSelected,
     handleWarmupSingle,
     clearWarmupResults,
+    handleClearSelectedErrors,
   } = useProviderDetailConnections({
     providerId,
     isCompatible,
@@ -468,6 +469,32 @@ export default function ProviderDetailPage() {
             },
           });
         }}
+        onClearSelectedErrors={() => {
+          const erroredConnections = selectedConnections.filter(
+            (c) => c.lastError,
+          );
+          if (erroredConnections.length === 0) return;
+
+          const erroredIds = erroredConnections.map((c) => c.id);
+          const previewItems = erroredConnections
+            .slice(0, 5)
+            .map((c) => c.email || c.name || c.id);
+
+          setConfirmState({
+            title: "Clear Errors",
+            message: `Clear stored error messages for ${erroredIds.length} connection${erroredIds.length > 1 ? "s" : ""}? This does not re-test accounts.`,
+            items: previewItems,
+            moreCount: Math.max(0, erroredIds.length - previewItems.length),
+            confirmText: `Clear ${erroredIds.length} error${erroredIds.length > 1 ? "s" : ""}`,
+            onConfirm: async () => {
+              setConfirmState(null);
+              await handleClearSelectedErrors(erroredIds);
+            },
+          });
+        }}
+        hasErroredSelection={
+          selectedConnections.some((c) => c.lastError)
+        }
         handleRunOneByOneTest={handleRunOneByOneTest}
         handleStopOneByOneTest={handleStopOneByOneTest}
         openBulkProxyModal={openBulkProxyModal}
@@ -476,7 +503,22 @@ export default function ProviderDetailPage() {
         handleSwapPriority={handleSwapPriority}
         handleUpdateConnectionStatus={handleUpdateConnectionStatus}
         handleUpdateProxy={handleUpdateProxy}
-        handleDeleteConnection={handleDeleteConnection}
+        handleDeleteConnection={(connectionId) => {
+          const connection = connections.find((c) => c.id === connectionId);
+          const displayName = connection
+            ? connection.email || connection.name || connection.id
+            : connectionId;
+
+          setConfirmState({
+            title: "Delete Account",
+            message: `Delete account "${displayName}"? This action cannot be undone.`,
+            confirmText: "Delete",
+            onConfirm: async () => {
+              setConfirmState(null);
+              await handleDeleteConnection(connectionId);
+            },
+          });
+        }}
         onOpenEditConnection={(conn) => {
           setSelectedConnection(conn);
           setShowEditModal(true);

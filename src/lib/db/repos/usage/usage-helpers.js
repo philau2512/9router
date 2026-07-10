@@ -124,11 +124,13 @@ export function addToCounter(target, key, values) {
       requests: 0,
       promptTokens: 0,
       completionTokens: 0,
+      cachedTokens: 0,
       cost: 0,
     };
   target[key].requests += values.requests || 1;
   target[key].promptTokens += values.promptTokens || 0;
   target[key].completionTokens += values.completionTokens || 0;
+  target[key].cachedTokens += values.cachedTokens || 0;
   target[key].cost += values.cost || 0;
   if (values.meta) Object.assign(target[key], values.meta);
 }
@@ -142,12 +144,15 @@ export function aggregateEntryToDay(day, entry) {
     entry.tokens?.prompt_tokens || entry.tokens?.input_tokens || 0;
   const completionTokens =
     entry.tokens?.completion_tokens || entry.tokens?.output_tokens || 0;
+  const cachedTokens =
+    entry.tokens?.cached_tokens || entry.tokens?.cache_read_input_tokens || 0;
   const cost = entry.cost || 0;
-  const vals = { promptTokens, completionTokens, cost };
+  const vals = { promptTokens, completionTokens, cachedTokens, cost };
 
   day.requests = (day.requests || 0) + 1;
   day.promptTokens = (day.promptTokens || 0) + promptTokens;
   day.completionTokens = (day.completionTokens || 0) + completionTokens;
+  day.cachedTokens = (day.cachedTokens || 0) + cachedTokens;
   day.cost = (day.cost || 0) + cost;
 
   day.byProvider ||= {};
@@ -198,7 +203,12 @@ export function aggregateEntryToDay(day, entry) {
 /**
  * Accumulate usage summary with a single entry's token counts.
  */
-export function accumulateUsageSummary(summary, promptTokens, completionTokens, cost) {
+export function accumulateUsageSummary(
+  summary,
+  promptTokens,
+  completionTokens,
+  cost,
+) {
   summary.requests += 1;
   summary.promptTokens += promptTokens;
   summary.completionTokens += completionTokens;
@@ -221,10 +231,18 @@ export function createStatsEntry(overrides = {}) {
 /**
  * Increment an existing stats bucket entry with token counts.
  */
-export function incrementStatsEntry(entry, promptTokens, completionTokens, cost, timestamp) {
+export function incrementStatsEntry(
+  entry,
+  promptTokens,
+  completionTokens,
+  cost,
+  timestamp,
+  cachedTokens = 0,
+) {
   entry.requests++;
   entry.promptTokens += promptTokens;
   entry.completionTokens += completionTokens;
+  entry.cachedTokens = (entry.cachedTokens || 0) + cachedTokens;
   entry.cost += cost;
   if (timestamp && new Date(timestamp) > new Date(entry.lastUsed || ""))
     entry.lastUsed = timestamp;
@@ -248,7 +266,9 @@ export function extractActiveFromPending(pending, connectionMap = {}) {
   const seenProviders = new Set();
 
   // 1) Requests with connectionId tracked in byAccount
-  for (const [connectionId, models] of Object.entries(pending.byAccount || {})) {
+  for (const [connectionId, models] of Object.entries(
+    pending.byAccount || {},
+  )) {
     for (const [modelKey, count] of Object.entries(models)) {
       if (count <= 0) continue;
       const accountName =
@@ -273,7 +293,12 @@ export function extractActiveFromPending(pending, connectionMap = {}) {
     const provider = match[2];
     if (seenProviders.has(provider.toLowerCase())) continue;
     seenProviders.add(provider.toLowerCase());
-    activeRequests.push({ model: match[1], provider, account: "(Free)", count });
+    activeRequests.push({
+      model: match[1],
+      provider,
+      account: "(Free)",
+      count,
+    });
   }
 
   return activeRequests;
@@ -287,30 +312,35 @@ export function extractActiveFromPending(pending, connectionMap = {}) {
  */
 export function deduplicateRecentRequests(rows, maxItems = 20) {
   const seen = new Set();
-  return rows
-    .map((r) => {
-      // tokens may be a JSON string (from DB) or already-parsed object (from ring buffer)
-      const t = typeof r.tokens === "string" ? parseJson(r.tokens, {}) : (r.tokens || {});
-      return {
-        timestamp: r.timestamp,
-        model: r.model,
-        provider: r.provider || "",
-        promptTokens: t.prompt_tokens || t.input_tokens || 0,
-        completionTokens: t.completion_tokens || t.output_tokens || 0,
-        status: r.status || "ok",
-      };
-    })
-    .filter((e) => {
-      if (e.promptTokens === 0 && e.completionTokens === 0) return false;
-      const minute = e.timestamp ? e.timestamp.slice(0, 16) : "";
-      const key = `${e.model}|${e.provider}|${e.promptTokens}|${e.completionTokens}|${minute}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    // Always return newest-first regardless of input order
-    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-    .slice(0, maxItems);
+  return (
+    rows
+      .map((r) => {
+        // tokens may be a JSON string (from DB) or already-parsed object (from ring buffer)
+        const t =
+          typeof r.tokens === "string"
+            ? parseJson(r.tokens, {})
+            : r.tokens || {};
+        return {
+          timestamp: r.timestamp,
+          model: r.model,
+          provider: r.provider || "",
+          promptTokens: t.prompt_tokens || t.input_tokens || 0,
+          completionTokens: t.completion_tokens || t.output_tokens || 0,
+          status: r.status || "ok",
+        };
+      })
+      .filter((e) => {
+        if (e.promptTokens === 0 && e.completionTokens === 0) return false;
+        const minute = e.timestamp ? e.timestamp.slice(0, 16) : "";
+        const key = `${e.model}|${e.provider}|${e.promptTokens}|${e.completionTokens}|${minute}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      // Always return newest-first regardless of input order
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+      .slice(0, maxItems)
+  );
 }
 
 // --- Database helpers ---

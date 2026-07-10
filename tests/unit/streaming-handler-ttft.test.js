@@ -52,7 +52,7 @@ describe("streamingHandler TTFT path", () => {
     const { handleStreamingResponse } =
       await import("../../open-sse/handlers/chatCore/streamingHandler.js");
 
-    const result = handleStreamingResponse({
+    const result = await handleStreamingResponse({
       providerResponse: createProviderResponse(),
       provider: "codex",
       model: "gpt-5.5",

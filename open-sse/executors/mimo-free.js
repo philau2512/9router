@@ -117,7 +117,10 @@ async function bootstrapJwt(proxyOptions = null, log = null) {
     try {
       const activePools = await getProxyPools({ isActive: true });
       for (const pool of activePools) {
-        if (pool?.proxyUrl && (pool.type === "http" || pool.type === "socks" || !pool.type)) {
+        if (
+          pool?.proxyUrl &&
+          (pool.type === "http" || pool.type === "socks" || !pool.type)
+        ) {
           const urls = pool.proxyUrl
             .split(/[\n,;]+/)
             .map((u) => u.trim())
@@ -126,7 +129,10 @@ async function bootstrapJwt(proxyOptions = null, log = null) {
         }
       }
     } catch (err) {
-      log?.warn?.("AUTH", `MiMo: Failed to read active proxy pools: ${err.message}`);
+      log?.warn?.(
+        "AUTH",
+        `MiMo: Failed to read active proxy pools: ${err.message}`,
+      );
     }
   }
 
@@ -139,14 +145,18 @@ async function bootstrapJwt(proxyOptions = null, log = null) {
     // Select proxy for this attempt
     let activeProxyOptions = proxyOptions;
     if (candidateProxyUrls.length > 0) {
-      const chosenProxyUrl = candidateProxyUrls[attempt % candidateProxyUrls.length];
+      const chosenProxyUrl =
+        candidateProxyUrls[attempt % candidateProxyUrls.length];
       activeProxyOptions = {
         ...(proxyOptions || {}),
         connectionProxyEnabled: true,
         connectionProxyUrl: chosenProxyUrl,
         url: chosenProxyUrl,
       };
-      log?.debug?.("AUTH", `MiMo bootstrap attempt ${attempt + 1}: Using proxy ${chosenProxyUrl}`);
+      log?.debug?.(
+        "AUTH",
+        `MiMo bootstrap attempt ${attempt + 1}: Using proxy ${chosenProxyUrl}`,
+      );
     }
 
     try {
@@ -156,7 +166,8 @@ async function bootstrapJwt(proxyOptions = null, log = null) {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "User-Agent": USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
+            "User-Agent":
+              USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
           },
           body: JSON.stringify({ client: fingerprint }),
         },
@@ -166,7 +177,10 @@ async function bootstrapJwt(proxyOptions = null, log = null) {
       if (response.status === 429) {
         attempt++;
         if (attempt < maxAttempts) {
-          log?.warn?.("AUTH", `MiMo bootstrap got 429, retrying (attempt ${attempt}/${maxAttempts})`);
+          log?.warn?.(
+            "AUTH",
+            `MiMo bootstrap got 429, retrying (attempt ${attempt}/${maxAttempts})`,
+          );
           continue;
         }
         throw new Error("MiMo bootstrap failed: 429");
@@ -267,7 +281,10 @@ export class MimoFreeExecutor extends BaseExecutor {
           proxyOptions,
         );
       } catch (retryError) {
-        log?.error?.("AUTH", `MiMo bootstrap retry failed: ${retryError.message}`);
+        log?.error?.(
+          "AUTH",
+          `MiMo bootstrap retry failed: ${retryError.message}`,
+        );
       }
     }
 

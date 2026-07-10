@@ -50,6 +50,7 @@ const getLocaleInfo = (locale) => {
     fi: { name: "Suomi", flag: "🇫🇮" },
     da: { name: "Dansk", flag: "🇩🇰" },
     no: { name: "Norsk", flag: "🇳🇴" },
+    fa: { name: "فارسی", flag: "🇮🇷" },
   };
   return locales[locale] || { name: locale, flag: "🌐" };
 };

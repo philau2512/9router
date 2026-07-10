@@ -201,7 +201,9 @@ function convertMessages(messages, tools, model) {
 
   const flushPending = () => {
     if (currentRole === "user") {
-      const content = pendingUserContent.join("\n\n").trim() || "continue";
+      const content =
+        pendingUserContent.join("\n\n").trim() ||
+        (pendingToolResults.length > 0 ? "[Tool Output]" : "continue");
       const userMsg = {
         userInputMessage: {
           content: content,
@@ -278,8 +280,31 @@ function convertMessages(messages, tools, model) {
     const msg = messages[i];
     let role = msg.role;
 
-    // Normalize: system/tool -> user
-    if (role === "system" || role === "tool") {
+    // System messages: wrap in <system-reminder> so Kiro/model distinguishes
+    // them from plain user text — mirrors the pattern in claude-to-openai.js:174.
+    // PR #2319 upstream fix.
+    if (role === "system") {
+      const rawContent =
+        typeof msg.content === "string"
+          ? msg.content
+          : Array.isArray(msg.content)
+            ? msg.content.map((c) => c.text || "").join("\n")
+            : "";
+      if (rawContent) {
+        // Flush any pending content before injecting system reminder
+        if (currentRole !== "user" && currentRole !== null) {
+          flushPending();
+        }
+        currentRole = "user";
+        pendingUserContent.push(
+          `<system-reminder>\n${rawContent}\n</system-reminder>`,
+        );
+      }
+      continue; // skip remainder of loop — content already pushed
+    }
+
+    // Normalize: tool -> user
+    if (role === "tool") {
       role = "user";
     }
 
@@ -607,8 +632,9 @@ export function buildKiroPayload(model, body, stream, credentials) {
     thinking: modelImpliesThinking,
   } = resolveKiroModel(normalizedModel);
   // Resolve thinking budget from client intent; null means disabled
-  const thinkingBudget = resolveKiroThinkingBudget(body, null, normalizedModel)
-    ?? (modelImpliesThinking ? undefined : null);
+  const thinkingBudget =
+    resolveKiroThinkingBudget(body, null, normalizedModel) ??
+    (modelImpliesThinking ? undefined : null);
   const thinkingEnabled = thinkingBudget !== null;
 
   const { history, currentMessage, toolsAttached } = convertMessages(
@@ -617,11 +643,17 @@ export function buildKiroPayload(model, body, stream, credentials) {
     upstreamModel,
   );
 
-  let profileArn = credentials?.providerSpecificData?.profileArn || "";
-  if (!profileArn) {
-    const authMethod = credentials?.providerSpecificData?.authMethod;
-    profileArn = resolveDefaultProfileArn(authMethod);
-  }
+  // api_key / idc / external_idp carry an account-specific (or token-bound)
+  // profile. The shared builder-id/social default ARN belongs to a different
+  // account and triggers 403 "bearer token invalid", so never fall back to it —
+  // send the resolved ARN, or an empty string so CodeWhisperer uses the token's
+  // own default profile. Only OAuth/social keep the shared placeholder.
+  const authMethod = credentials?.providerSpecificData?.authMethod;
+  const accountBoundAuth =
+    authMethod === "api_key" || authMethod === "idc" || authMethod === "external_idp";
+  const profileArn = accountBoundAuth
+    ? (credentials?.providerSpecificData?.profileArn || "")
+    : (credentials?.providerSpecificData?.profileArn || resolveDefaultProfileArn(authMethod));
 
   let finalContent = currentMessage?.userInputMessage?.content || "";
   const timestamp = new Date().toISOString();

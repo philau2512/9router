@@ -276,6 +276,7 @@ const PROVIDER_MODELS_CONFIG = {
       const credentials = {
         accessToken: connection.accessToken,
         refreshToken: connection.refreshToken,
+        expiresAt: connection.expiresAt || null,
         providerSpecificData: connection.providerSpecificData || {},
       };
       let warning;

@@ -33,8 +33,10 @@ export async function GET(request) {
     }
 
     // List mode: return metadata only (fast)
-    const page = parseInt(searchParams.get("page")) || 1;
-    const pageSize = parseInt(searchParams.get("pageSize")) || 20;
+    const pageRaw = parseInt(searchParams.get("page"));
+    const page = Number.isNaN(pageRaw) ? 1 : pageRaw;
+    const pageSizeRaw = parseInt(searchParams.get("pageSize"));
+    const pageSize = Number.isNaN(pageSizeRaw) ? 20 : pageSizeRaw;
     const provider = searchParams.get("provider");
     const model = searchParams.get("model");
     const connectionId = searchParams.get("connectionId");

@@ -76,7 +76,13 @@ export function getCachedThinking(sessionKey) {
  * Store thinking content for a session key.
  */
 export function setCachedThinking(sessionKey, thinking) {
-  if (!sessionKey || !thinking || typeof thinking !== "string" || !thinking.trim()) return;
+  if (
+    !sessionKey ||
+    !thinking ||
+    typeof thinking !== "string" ||
+    !thinking.trim()
+  )
+    return;
   _evictExpired();
   _evictOldest();
   _cache.set(sessionKey, { thinking, updatedAt: Date.now() });
@@ -91,7 +97,9 @@ export function injectThinkingReplay(body, cachedThinking) {
   const contents = body.request?.contents || body.contents;
   if (!Array.isArray(contents) || contents.length === 0) return body;
 
-  const lastAssistantIdx = [...contents].map((c) => c.role).lastIndexOf("model");
+  const lastAssistantIdx = [...contents]
+    .map((c) => c.role)
+    .lastIndexOf("model");
   if (lastAssistantIdx < 0) return body;
 
   const lastAsst = contents[lastAssistantIdx];

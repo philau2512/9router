@@ -110,6 +110,27 @@ export const PATTERN_PRICING = [
 
   // --- Claude ---
   {
+    // claude-fable-5, claude-mythos-5: $10/$50 per MTok
+    pattern: "claude-fable-*",
+    pricing: {
+      input: 10.0,
+      output: 50.0,
+      cached: 1.0,
+      reasoning: 50.0,
+      cache_creation: 12.5,
+    },
+  },
+  {
+    pattern: "claude-mythos-*",
+    pricing: {
+      input: 10.0,
+      output: 50.0,
+      cached: 1.0,
+      reasoning: 50.0,
+      cache_creation: 12.5,
+    },
+  },
+  {
     pattern: "claude-opus-*",
     pricing: {
       input: 5.0,
@@ -152,13 +173,25 @@ export const PATTERN_PRICING = [
 
   // --- Gemini (specific first, generic last) ---
   {
+    // gemini-2.5-flash-lite: $0.10/$0.40 (updated 2026-07-07)
     pattern: "gemini-*-flash-lite",
     pricing: {
-      input: 0.15,
-      output: 1.25,
-      cached: 0.015,
-      reasoning: 1.875,
-      cache_creation: 0.15,
+      input: 0.10,
+      output: 0.40,
+      cached: 0.01,
+      reasoning: 0.60,
+      cache_creation: 0.10,
+    },
+  },
+  {
+    // gemini-3.5-flash and later: $1.50/$9.00
+    pattern: "gemini-3.*-flash",
+    pricing: {
+      input: 1.5,
+      output: 9.0,
+      cached: 0.15,
+      reasoning: 13.5,
+      cache_creation: 1.5,
     },
   },
   {
@@ -241,6 +274,61 @@ export const PATTERN_PRICING = [
       cached: 2.0,
       reasoning: 24.0,
       cache_creation: 4.0,
+    },
+  },
+  {
+    // gpt-5.5-pro and gpt-5.4-pro are $30/$180 — most specific first
+    pattern: "gpt-5.*-pro",
+    pricing: {
+      input: 30.0,
+      output: 180.0,
+      cached: 3.0,
+      reasoning: 270.0,
+      cache_creation: 30.0,
+    },
+  },
+  {
+    // gpt-5.5 variants: $5/$30
+    pattern: "gpt-5.5-*",
+    pricing: {
+      input: 5.0,
+      output: 30.0,
+      cached: 0.5,
+      reasoning: 45.0,
+      cache_creation: 5.0,
+    },
+  },
+  {
+    // gpt-5.4-mini variants: $0.75/$4.50
+    pattern: "gpt-5.4-mini*",
+    pricing: {
+      input: 0.75,
+      output: 4.5,
+      cached: 0.075,
+      reasoning: 6.75,
+      cache_creation: 0.75,
+    },
+  },
+  {
+    // gpt-5.4-nano variants: $0.20/$1.25
+    pattern: "gpt-5.4-nano*",
+    pricing: {
+      input: 0.20,
+      output: 1.25,
+      cached: 0.02,
+      reasoning: 1.875,
+      cache_creation: 0.20,
+    },
+  },
+  {
+    // gpt-5.4 generic variants: $2.50/$15
+    pattern: "gpt-5.4-*",
+    pricing: {
+      input: 2.5,
+      output: 15.0,
+      cached: 0.25,
+      reasoning: 22.5,
+      cache_creation: 2.5,
     },
   },
   {
@@ -340,11 +428,11 @@ export const PATTERN_PRICING = [
   {
     pattern: "mimo-v2-flash*",
     pricing: {
-      input: 0.10,
-      output: 0.30,
+      input: 0.1,
+      output: 0.3,
       cached: 0.01,
-      reasoning: 0.30,
-      cache_creation: 0.10,
+      reasoning: 0.3,
+      cache_creation: 0.1,
     },
   },
   {
@@ -529,6 +617,27 @@ export const PATTERN_PRICING = [
   },
 
   // --- Grok ---
+  {
+    // composer-2.5 (xAI Code API): $0.30/$1.20
+    pattern: "composer-*",
+    pricing: {
+      input: 0.3,
+      output: 1.2,
+      cached: 0.15,
+      reasoning: 1.8,
+      cache_creation: 0.3,
+    },
+  },
+  {
+    pattern: "grok-build-*",
+    pricing: {
+      input: 1.0,
+      output: 2.0,
+      cached: 0.5,
+      reasoning: 3.0,
+      cache_creation: 1.0,
+    },
+  },
   {
     pattern: "grok-code-*",
     pricing: {

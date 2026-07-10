@@ -99,6 +99,7 @@ export function getAdapterSync() {
 let workerInstance = null;
 
 export async function getObservabilityWorker() {
+  if (process.env.VITEST || process.env.NODE_ENV === "test") return null;
   if (workerInstance) return workerInstance;
 
   try {

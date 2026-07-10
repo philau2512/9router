@@ -117,6 +117,7 @@ export const MITM_TOOLS = {
       // Both need a mappable slot — otherwise getMappedModel returns null and the chat call
       // is passed through to AWS instead of being routed to the chosen provider.
       { id: "auto", name: "Auto (Kiro Agent)", alias: "auto" },
+      { id: "claude-sonnet-5", name: "Claude Sonnet 5", alias: "claude-sonnet-5" },
       {
         id: "claude-sonnet-4.5",
         name: "Claude Sonnet 4.5",
@@ -211,6 +212,15 @@ export const CLI_TOOLS = {
     image: "/providers/codex.png",
     color: "#10A37F",
     description: "OpenAI Codex CLI",
+    configType: "custom",
+  },
+  // Grok Build (Grok CLI) — device-code OAuth, cli-chat-proxy.grok.com. See upstream a11937cdd.
+  "grok-cli": {
+    id: "grok-cli",
+    name: "Grok Build (Grok CLI)",
+    image: "/providers/grok-cli.png",
+    color: "#1DA1F2",
+    description: "xAI Grok Build CLI via device-code OAuth",
     configType: "custom",
   },
   opencode: {

@@ -7,8 +7,13 @@ const fmt = (n) => new Intl.NumberFormat().format(n || 0);
 const fmtCost = (n) => `$${(n || 0).toFixed(2)}`;
 
 export default function OverviewCards({ stats }) {
+  const cachedPct =
+    stats.totalPromptTokens > 0
+      ? ((stats.totalCachedTokens / stats.totalPromptTokens) * 100).toFixed(1)
+      : null;
+
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4 sm:gap-4">
+    <div className="grid min-w-0 grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5">
       <Card className="flex min-w-0 flex-col gap-1 px-4 py-3">
         <span className="text-text-muted text-sm uppercase font-semibold">
           Total Requests
@@ -35,6 +40,19 @@ export default function OverviewCards({ stats }) {
       </Card>
       <Card className="flex min-w-0 flex-col gap-1 px-4 py-3">
         <span className="text-text-muted text-sm uppercase font-semibold">
+          Cached Tokens
+        </span>
+        <span className="truncate text-2xl font-bold text-blue-500 dark:text-blue-400">
+          {fmt(stats.totalCachedTokens)}
+        </span>
+        {cachedPct !== null && (
+          <span className="text-[10px] text-text-muted">
+            {cachedPct}% of input cached
+          </span>
+        )}
+      </Card>
+      <Card className="col-span-2 flex min-w-0 flex-col gap-1 px-4 py-3 md:col-span-4 lg:col-span-1">
+        <span className="text-text-muted text-sm uppercase font-semibold">
           Est. Cost
         </span>
         <span className="truncate text-2xl font-bold text-warning">
@@ -51,3 +69,4 @@ export default function OverviewCards({ stats }) {
 OverviewCards.propTypes = {
   stats: PropTypes.object.isRequired,
 };
+

@@ -204,7 +204,8 @@ export function openaiResponsesToOpenAIRequest(
   // Cleanup Responses API specific fields
   // Map Responses-only max_output_tokens to Chat max_tokens (avoid leaking unknown field upstream)
   if (result.max_output_tokens !== undefined) {
-    if (result.max_tokens === undefined) result.max_tokens = result.max_output_tokens;
+    if (result.max_tokens === undefined)
+      result.max_tokens = result.max_output_tokens;
     delete result.max_output_tokens;
   }
 
@@ -247,23 +248,30 @@ export function openaiToOpenAIResponsesRequest(
     store: false,
   };
 
-  // Extract system message as instructions
+  // Extract instruction-bearing messages as instructions
   let hasSystemMessage = false;
   const messages = body.messages || [];
 
   for (const msg of messages) {
-    if (msg.role === "system") {
-      // Use first system message as instructions
+    if (msg.role === "system" || msg.role === "developer") {
+      // Use the first instruction-bearing message as instructions (role=system or role=developer for GPT-5/Codex)
       if (!hasSystemMessage) {
         result.instructions =
           typeof msg.content === "string" ? msg.content : "";
         hasSystemMessage = true;
       }
-      continue; // Skip system messages in input
+      continue; // Skip instruction messages in input
     }
 
     // Convert user/assistant messages to input items
     if (msg.role === "user" || msg.role === "assistant") {
+      // reasoning_content → emit reasoning item before output_text (Responses API format)
+      if (msg.role === "assistant" && msg.reasoning_content) {
+        result.input.push({
+          type: "reasoning",
+          summary: [{ type: "summary_text", text: msg.reasoning_content }],
+        });
+      }
       const contentType = msg.role === "user" ? "input_text" : "output_text";
       const content =
         typeof msg.content === "string"

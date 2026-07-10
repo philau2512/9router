@@ -90,7 +90,10 @@ export async function POST(request) {
         !process.env.INITIAL_PASSWORD &&
         !isLocalRequest(request);
 
-      return NextResponse.json({ success: true, mustChangePassword }, { headers: NO_STORE_HEADERS });
+      return NextResponse.json(
+        { success: true, mustChangePassword },
+        { headers: NO_STORE_HEADERS },
+      );
     }
 
     const { remainingBeforeLock } = recordFail(ip);

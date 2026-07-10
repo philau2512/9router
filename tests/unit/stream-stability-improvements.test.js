@@ -42,7 +42,7 @@ describe("Stream Stability and Fault Tolerance Improvements", () => {
       timing,
       60000,
       "deepseek-reasoning", // reasoning model
-      "deepseek"
+      "deepseek",
     );
 
     const reader = stream.getReader();
@@ -53,9 +53,10 @@ describe("Stream Stability and Fault Tolerance Improvements", () => {
 
   it("buffers fragmented JSON strings in kiroToClaudeResponse", () => {
     const state = { parseBuffer: "" };
-    
+
     // First chunk: incomplete JSON string
-    const firstChunk = 'data: {"id": "chatcmpl-123", "choices": [{"delta": {"con';
+    const firstChunk =
+      'data: {"id": "chatcmpl-123", "choices": [{"delta": {"con';
     const result1 = kiroToClaudeResponse(firstChunk, state);
     expect(result1).toBeNull();
     expect(state.parseBuffer).toBe(firstChunk);

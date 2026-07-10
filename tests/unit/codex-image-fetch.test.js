@@ -37,7 +37,10 @@ function mockImageFetch(sizeBytes, mimeType = "image/jpeg") {
       getReader() {
         let sent = false;
         return {
-          read: async () => sent ? { done: true, value: undefined } : (sent = true, { done: false, value: bytes }),
+          read: async () =>
+            sent
+              ? { done: true, value: undefined }
+              : ((sent = true), { done: false, value: bytes }),
           cancel: async () => {},
         };
       },

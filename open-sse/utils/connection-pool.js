@@ -21,7 +21,13 @@ export async function getDirectAgent(targetUrl) {
 
   if (!directAgents.has(origin)) {
     // Pre-warm DNS cache via Google DNS for this origin (non-blocking)
-    try { const h = new URL("https://" + origin.replace(/^https?:\/\//, "")).hostname; resolveRealIP(h).catch(() => {}); } catch { /* ignore */ }
+    try {
+      const h = new URL("https://" + origin.replace(/^https?:\/\//, ""))
+        .hostname;
+      resolveRealIP(h).catch(() => {});
+    } catch {
+      /* ignore */
+    }
     // Evict oldest entry if max size reached
     if (directAgents.size >= MEMORY_CONFIG.directAgentsMaxSize) {
       const oldestKey = directAgents.keys().next().value;
@@ -45,7 +51,7 @@ export async function getDirectAgent(targetUrl) {
         keepAliveTimeout: 60_000,
         keepAliveMaxTimeout: 300_000,
         connections: 50,
-        pipelining: 0,  // H2 multiplexing (was 1 for H1 pipeline)
+        pipelining: 0, // H2 multiplexing (was 1 for H1 pipeline)
         allowH2: true,
         connect: {
           timeout: 30_000,
@@ -63,7 +69,6 @@ export async function getDirectAgent(targetUrl) {
   return directAgents.get(origin);
 }
 
-
 /**
  * Pre-create undici agents for all provider origins on server start.
  * Fire-and-forget — does not block startup.
@@ -75,12 +80,16 @@ export async function warmupProviderAgents(providers) {
   for (const cfg of Object.values(providers)) {
     const urls = cfg.baseUrls || (cfg.baseUrl ? [cfg.baseUrl] : []);
     for (const url of urls) {
-      try { origins.add(new URL(url).origin); } catch { /* skip invalid */ }
+      try {
+        origins.add(new URL(url).origin);
+      } catch {
+        /* skip invalid */
+      }
     }
   }
   const results = await Promise.allSettled(
-    [...origins].map(origin => getDirectAgent(origin))
+    [...origins].map((origin) => getDirectAgent(origin)),
   );
-  const ok = results.filter(r => r.status === "fulfilled" && r.value).length;
+  const ok = results.filter((r) => r.status === "fulfilled" && r.value).length;
   console.log(`[WARMUP] Pre-connected ${ok}/${origins.size} provider agents`);
 }

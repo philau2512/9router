@@ -9,13 +9,14 @@ const src = readFileSync(file, "utf8");
 const ANCHOR = "      return msg;\n    });\n}";
 const idx = src.lastIndexOf(ANCHOR);
 if (idx === -1) {
-  console.error("Anchor not found — combo.js may already be patched or differs from expected.");
+  console.error(
+    "Anchor not found — combo.js may already be patched or differs from expected.",
+  );
   process.exit(1);
 }
 
 // New block inserted before "return msg;"
-const insertion =
-`      if (Array.isArray(msg.content)) {
+const insertion = `      if (Array.isArray(msg.content)) {
         const hasToolUse = msg.content.some((c) => c.type === "tool_use");
         const hasToolResult = msg.content.some((c) => c.type === "tool_result");
         if (hasToolUse || hasToolResult) {

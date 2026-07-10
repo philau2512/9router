@@ -18,6 +18,10 @@ export function geminiToOpenAIResponse(chunk, state) {
     state.messageId = response.responseId || `msg_${Date.now()}`;
     state.model = response.modelVersion || "gemini";
     state.functionIndex = 0;
+    // Keep Gemini bookkeeping separate from the shared translator state.toolCalls map.
+    // The downstream OpenAI→Claude translator uses state.toolCalls for Claude block
+    // metadata; pre-populating it here makes Anthropic tool deltas lose index.
+    state.geminiToolCallCount = 0;
     results.push({
       id: `chatcmpl-${state.messageId}`,
       object: "chat.completion.chunk",
@@ -79,7 +83,9 @@ export function geminiToOpenAIResponse(chunk, state) {
             },
           };
 
-          state.toolCalls.set(toolCallIndex, toolCall);
+          // Track Gemini function calls separately — do NOT write to state.toolCalls,
+          // which the downstream openai-to-claude translator uses for Claude block metadata.
+          state.geminiToolCallCount = (state.geminiToolCallCount || 0) + 1;
 
           results.push({
             id: `chatcmpl-${state.messageId}`,
@@ -138,7 +144,9 @@ export function geminiToOpenAIResponse(chunk, state) {
           },
         };
 
-        state.toolCalls.set(toolCallIndex, toolCall);
+        // Track Gemini function calls separately — do NOT write to state.toolCalls,
+        // which the downstream openai-to-claude translator uses for Claude block metadata.
+        state.geminiToolCallCount = (state.geminiToolCallCount || 0) + 1;
 
         results.push({
           id: `chatcmpl-${state.messageId}`,
@@ -246,7 +254,7 @@ export function geminiToOpenAIResponse(chunk, state) {
   // Finish reason - include usage in final chunk
   if (candidate.finishReason) {
     let finishReason = candidate.finishReason.toLowerCase();
-    if (finishReason === "stop" && state.toolCalls.size > 0) {
+    if (finishReason === "stop" && state.geminiToolCallCount > 0) {
       finishReason = "tool_calls";
     }
 

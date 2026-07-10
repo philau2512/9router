@@ -3,7 +3,14 @@
 // Provider-specific application lives in thinkingUnified.js; this file is maps-only.
 
 // Discrete effort levels, ordered low→high.
-export const EFFORT_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"];
+export const EFFORT_LEVELS = [
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+];
 
 // Web-standard level → budget_tokens (Anthropic/Gemini docs).
 export const LEVEL_TO_BUDGET = {
@@ -52,7 +59,6 @@ export function budgetToEffort(budget) {
   return "high";
 }
 
-
 // auto → -1 sentinel (CLIProxyAPI canonical: auto=-1)
 export const LEVEL_TO_BUDGET_WITH_AUTO = { ...LEVEL_TO_BUDGET, auto: -1 };
 
@@ -60,16 +66,21 @@ export const LEVEL_TO_BUDGET_WITH_AUTO = { ...LEVEL_TO_BUDGET, auto: -1 };
 // value can be: level string (high/low/...), numeric budget, "none", "auto"
 // Returns { modelName, thinkingConfig: { mode, level?, budget? } | null }
 export function parseModelThinkingSuffix(modelName) {
-  if (!modelName || typeof modelName !== "string") return { modelName, thinkingConfig: null };
+  if (!modelName || typeof modelName !== "string")
+    return { modelName, thinkingConfig: null };
   const m = modelName.match(/^(.+?)\(([a-zA-Z0-9]+)\)$/);
   if (!m) return { modelName, thinkingConfig: null };
   const base = m[1];
   const raw = m[2].toLowerCase();
-  if (raw === "none") return { modelName: base, thinkingConfig: { mode: "none" } };
-  if (raw === "auto") return { modelName: base, thinkingConfig: { mode: "auto" } };
-  if (LEVEL_TO_BUDGET[raw] !== undefined) return { modelName: base, thinkingConfig: { mode: "level", level: raw } };
+  if (raw === "none")
+    return { modelName: base, thinkingConfig: { mode: "none" } };
+  if (raw === "auto")
+    return { modelName: base, thinkingConfig: { mode: "auto" } };
+  if (LEVEL_TO_BUDGET[raw] !== undefined)
+    return { modelName: base, thinkingConfig: { mode: "level", level: raw } };
   const budget = parseInt(raw, 10);
-  if (!isNaN(budget) && budget >= 0) return { modelName: base, thinkingConfig: { mode: "budget", budget } };
+  if (!isNaN(budget) && budget >= 0)
+    return { modelName: base, thinkingConfig: { mode: "budget", budget } };
   // Unrecognized suffix — treat as part of model name (defensive)
   return { modelName, thinkingConfig: null };
 }
@@ -78,23 +89,43 @@ export function parseModelThinkingSuffix(modelName) {
 // applierFn(body, config, capabilities) → body
 const _appliers = new Map();
 export function registerThinkingApplier(provider, applierFn) {
-  if (provider && typeof applierFn === "function") _appliers.set(provider, applierFn);
+  if (provider && typeof applierFn === "function")
+    _appliers.set(provider, applierFn);
 }
 export function applyThinking(provider, body, config, capabilities) {
   if (!config || !body) return body;
   const fn = _appliers.get(provider);
   if (!fn) return body;
-  try { return fn(body, config, capabilities) || body; } catch { return body; }
+  try {
+    return fn(body, config, capabilities) || body;
+  } catch {
+    return body;
+  }
 }
 
 // Register built-in appliers
 // openai / codex: reasoning_effort string
 function _applyOpenAI(body, config) {
   const b = { ...body };
-  if (config.mode === "none") { delete b.reasoning_effort; return b; }
-  if (config.mode === "auto") { b.reasoning_effort = "high"; return b; }
-  if (config.mode === "level") { b.reasoning_effort = config.level === "xhigh" || config.level === "max" ? "high" : config.level; return b; }
-  if (config.mode === "budget") { b.reasoning_effort = budgetToLevel(config.budget) || "medium"; return b; }
+  if (config.mode === "none") {
+    delete b.reasoning_effort;
+    return b;
+  }
+  if (config.mode === "auto") {
+    b.reasoning_effort = "high";
+    return b;
+  }
+  if (config.mode === "level") {
+    b.reasoning_effort =
+      config.level === "xhigh" || config.level === "max"
+        ? "high"
+        : config.level;
+    return b;
+  }
+  if (config.mode === "budget") {
+    b.reasoning_effort = budgetToLevel(config.budget) || "medium";
+    return b;
+  }
   return b;
 }
 registerThinkingApplier("openai", _applyOpenAI);
@@ -106,7 +137,10 @@ function _applyClaude(body, config, caps) {
   const fmt = caps?.thinkingFormat || "claude-budget";
   if (config.mode === "none") {
     if (caps?.thinkingCanDisable === false) {
-      b.thinking = { type: "enabled", budget_tokens: caps?.thinkingRange?.min || 512 };
+      b.thinking = {
+        type: "enabled",
+        budget_tokens: caps?.thinkingRange?.min || 512,
+      };
     } else {
       b.thinking = { type: "disabled" };
     }
@@ -116,8 +150,12 @@ function _applyClaude(body, config, caps) {
     b.thinking = { type: "enabled" };
     return b;
   }
-  const budget = config.mode === "budget" ? config.budget
-    : config.mode === "level" ? (LEVEL_TO_BUDGET[config.level] ?? 8192) : 8192;
+  const budget =
+    config.mode === "budget"
+      ? config.budget
+      : config.mode === "level"
+        ? (LEVEL_TO_BUDGET[config.level] ?? 8192)
+        : 8192;
   const clamped = caps?.thinkingRange
     ? Math.min(Math.max(budget, caps.thinkingRange.min), caps.thinkingRange.max)
     : budget;
@@ -135,7 +173,9 @@ function _applyGemini(body, config) {
   } else if (config.mode === "auto") {
     gc.thinkingConfig = { thinkingBudget: -1 };
   } else if (config.mode === "level") {
-    gc.thinkingConfig = { thinkingBudget: LEVEL_TO_BUDGET[config.level] ?? 8192 };
+    gc.thinkingConfig = {
+      thinkingBudget: LEVEL_TO_BUDGET[config.level] ?? 8192,
+    };
   } else if (config.mode === "budget") {
     gc.thinkingConfig = { thinkingBudget: config.budget };
   }
@@ -156,7 +196,8 @@ function _applyDeepSeek(body, config) {
   }
   b.extra_body = { ...(b.extra_body || {}), thinking: { type: "enabled" } };
   if (config.mode === "level") b.reasoning_effort = config.level;
-  else if (config.mode === "budget") b.reasoning_effort = budgetToLevel(config.budget) || "medium";
+  else if (config.mode === "budget")
+    b.reasoning_effort = budgetToLevel(config.budget) || "medium";
   else if (config.mode === "auto") b.reasoning_effort = "high";
   return b;
 }

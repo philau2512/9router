@@ -99,7 +99,8 @@ export function claudeToOpenAIRequest(model, body, stream) {
         type: "enabled",
         budget_tokens: thinkingConfig.budget,
       };
-      result.reasoning_effort = budgetToLevel(thinkingConfig.budget) || "medium";
+      result.reasoning_effort =
+        budgetToLevel(thinkingConfig.budget) || "medium";
     } else if (thinkingConfig.mode === "level") {
       result.reasoning_effort = thinkingConfig.level;
       result.thinking = {
@@ -183,11 +184,17 @@ function convertClaudeMessage(msg) {
     const parts = [];
     const toolCalls = [];
     const toolResults = [];
+    let reasoningContent = ""; // Accumulate thinking blocks → reasoning_content on output
 
     for (const block of msg.content) {
       switch (block.type) {
         case "text":
           parts.push({ type: "text", text: block.text });
+          break;
+
+        case "thinking":
+          // Thinking blocks → reasoning_content (preserved across OpenAI bridge)
+          reasoningContent += block.thinking || "";
           break;
 
         case "image":
@@ -257,6 +264,7 @@ function convertClaudeMessage(msg) {
             : parts;
       }
       result.tool_calls = toolCalls;
+      if (reasoningContent) result.reasoning_content = reasoningContent;
       return result;
     }
 
@@ -269,7 +277,9 @@ function convertClaudeMessage(msg) {
         : parts.length === 1 && parts[0].type === "text"
           ? parts[0].text
           : parts;
-      return { role, content: flatContent };
+      const out = { role, content: flatContent };
+      if (role === "assistant" && reasoningContent) out.reasoning_content = reasoningContent;
+      return out;
     }
 
     // Empty content array

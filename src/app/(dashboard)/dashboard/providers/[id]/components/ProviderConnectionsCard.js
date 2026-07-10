@@ -46,6 +46,8 @@ export default function ProviderConnectionsCard({
   handleToggleConnectionsSort,
   handleAutoPriorityVisibleConnections,
   onConfirmDeleteSelectedConnections,
+  onClearSelectedErrors,
+  hasErroredSelection,
   handleRunOneByOneTest,
   handleStopOneByOneTest,
   openBulkProxyModal,
@@ -97,6 +99,8 @@ export default function ProviderConnectionsCard({
           handleAutoPriorityVisibleConnections
         }
         onConfirmDeleteSelectedConnections={onConfirmDeleteSelectedConnections}
+        onClearSelectedErrors={onClearSelectedErrors}
+        hasErroredSelection={hasErroredSelection}
         oneByOneRunning={oneByOneRunning}
         oneByOneStopping={oneByOneStopping}
         handleRunOneByOneTest={handleRunOneByOneTest}

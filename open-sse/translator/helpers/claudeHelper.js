@@ -1,6 +1,7 @@
 // Claude helper functions for translator
 import { DEFAULT_THINKING_CLAUDE_SIGNATURE } from "../../config/defaultThinkingSignature.js";
-import { adjustMaxTokens } from "./maxTokensHelper.js";
+import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
+import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { applyCloaking } from "../../utils/claudeCloaking.js";
 import { deriveSessionId } from "../../utils/sessionManager.js";
 import { isValidClaudeSignature } from "../../utils/claudeSignature.js";
@@ -232,6 +233,20 @@ export function prepareClaudeRequest(
     }
   }
 
+  // Reconcile max_tokens vs thinking.budget_tokens AFTER applyThinking has set the budget.
+  // adjustMaxTokens ran earlier with model ceiling; now raise max_tokens if budget exceeds it,
+  // or shrink budget if it meets/exceeds the ceiling.
+  if (body.thinking?.type === "enabled" && body.thinking.budget_tokens) {
+    const ceiling =
+      getCapabilitiesForModel(provider, body.model).maxOutput || DEFAULT_MAX_TOKENS;
+    if (body.thinking.budget_tokens >= body.max_tokens) {
+      body.max_tokens = Math.min(body.thinking.budget_tokens + 1024, ceiling);
+      if (body.thinking.budget_tokens >= body.max_tokens) {
+        body.thinking.budget_tokens = Math.max(1024, body.max_tokens - 1024);
+      }
+    }
+  }
+
   // 3. Tools: filter built-in tools for non-Anthropic providers, then handle cache_control
   if (body.tools && Array.isArray(body.tools)) {
     // Strip built-in tools (e.g. web_search_20250305) and normalize to Anthropic-native shape
@@ -245,7 +260,10 @@ export function prepareClaudeRequest(
             return {
               name: tool.function.name,
               description: tool.function.description,
-              input_schema: tool.function.parameters ?? { type: "object", properties: {} },
+              input_schema: tool.function.parameters ?? {
+                type: "object",
+                properties: {},
+              },
             };
           }
           const { type, ...rest } = tool;

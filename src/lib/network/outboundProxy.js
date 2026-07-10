@@ -3,7 +3,14 @@ function normalizeString(value) {
   return String(value).trim();
 }
 
-const ALLOWED_PROXY_SCHEMES = ["http:", "https:", "socks5:", "socks4:", "socks5h:", "socks4a:"];
+const ALLOWED_PROXY_SCHEMES = [
+  "http:",
+  "https:",
+  "socks5:",
+  "socks4:",
+  "socks5h:",
+  "socks4a:",
+];
 
 // Validate proxy URL: reject shell metacharacters and non-allowed schemes.
 function validateProxyUrl(url) {

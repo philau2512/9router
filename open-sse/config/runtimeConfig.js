@@ -48,7 +48,8 @@ export const STREAM_SEMANTIC_STALL_TIMEOUT_MS =
 export const FETCH_CONNECT_TIMEOUT_MS = 60 * 1000;
 
 // Gemini native TTS fetch timeout: abort if Google does not return response headers in time.
-export const GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS = parseInt(process.env.GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS, 10) || 45 * 1000;
+export const GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS =
+  parseInt(process.env.GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS, 10) || 45 * 1000;
 
 // Proxy headers timeout: abort if proxy doesn't return response headers within this duration
 export const CONNECTION_PROXY_HEADERS_TIMEOUT_MS =
@@ -89,3 +90,9 @@ export function resolveRetryEntry(entry) {
 export const SKIP_PATTERNS = [
   "Please write a 5-10 word title for the following conversation:",
 ];
+
+// SearXNG endpoint used by the unauthenticated web-search provider.
+// Configure this for a separate Docker service or remote SearXNG instance.
+// See upstream fix e79f9eddb.
+export const SEARXNG_URL =
+  (process.env.SEARXNG_URL || "").trim() || "http://localhost:8888/search";

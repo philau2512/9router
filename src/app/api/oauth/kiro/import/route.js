@@ -10,7 +10,14 @@ import { createProviderConnection } from "@/models";
  */
 export async function POST(request) {
   try {
-    const { refreshToken, clientId, clientSecret, region, authMethod, profileArn } = await request.json();
+    const {
+      refreshToken,
+      clientId,
+      clientSecret,
+      region,
+      authMethod,
+      profileArn,
+    } = await request.json();
 
     if (!refreshToken || typeof refreshToken !== "string") {
       return NextResponse.json(
@@ -25,10 +32,18 @@ export async function POST(request) {
     // For IDC tokens, refresh via the regional OIDC endpoint with client credentials.
     // For social/builder-id tokens, use the standard social refresh endpoint.
     const providerSpecificData = isIdc
-      ? { clientId, clientSecret, region: region || "us-east-1", authMethod: "idc" }
+      ? {
+          clientId,
+          clientSecret,
+          region: region || "us-east-1",
+          authMethod: "idc",
+        }
       : {};
 
-    const tokenData = await kiroService.refreshToken(refreshToken.trim(), providerSpecificData);
+    const tokenData = await kiroService.refreshToken(
+      refreshToken.trim(),
+      providerSpecificData,
+    );
 
     const email = kiroService.extractEmailFromJWT(tokenData.accessToken);
     const resolvedAuthMethod = isIdc ? "idc" : "imported";
@@ -48,7 +63,9 @@ export async function POST(request) {
         profileArn: resolvedProfileArn,
         authMethod: resolvedAuthMethod,
         provider: providerLabel,
-        ...(isIdc ? { clientId, clientSecret, region: region || "us-east-1" } : {}),
+        ...(isIdc
+          ? { clientId, clientSecret, region: region || "us-east-1" }
+          : {}),
       },
       testStatus: "active",
     });

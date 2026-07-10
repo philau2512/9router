@@ -712,52 +712,57 @@ export async function refreshCopilotToken(githubAccessToken, log) {
 // matching the official CodeBuddy CLI. Response: { code: 0, data: <token> }.
 export async function refreshCodebuddyToken(refreshToken, log) {
   if (!refreshToken) return null;
-  return dedupRefresh("codebuddy-cn", refreshToken, async () => {
-    const p = PROVIDERS["codebuddy-cn"] || {};
-    const response = await proxyAwareFetch(p.refreshUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "User-Agent": p.refreshUserAgent || "CLI/2.63.2 CodeBuddy/2.63.2",
-        "X-Requested-With": "XMLHttpRequest",
-        "X-Domain": "copilot.tencent.com",
-        "X-Refresh-Token": refreshToken,
-        "X-Auth-Refresh-Source": "plugin",
-        "X-Product": "SaaS",
-      },
-      body: "{}",
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      log?.error?.("TOKEN_REFRESH", "Failed to refresh CodeBuddy token", {
-        status: response.status,
-        error: errorText,
+  return dedupRefresh(
+    "codebuddy-cn",
+    refreshToken,
+    async () => {
+      const p = PROVIDERS["codebuddy-cn"] || {};
+      const response = await proxyAwareFetch(p.refreshUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "User-Agent": p.refreshUserAgent || "CLI/2.63.2 CodeBuddy/2.63.2",
+          "X-Requested-With": "XMLHttpRequest",
+          "X-Domain": "copilot.tencent.com",
+          "X-Refresh-Token": refreshToken,
+          "X-Auth-Refresh-Source": "plugin",
+          "X-Product": "SaaS",
+        },
+        body: "{}",
       });
-      return null;
-    }
 
-    const data = await response.json();
-    if (data.code !== 0 || !data.data?.accessToken) {
-      log?.error?.(
-        "TOKEN_REFRESH",
-        "CodeBuddy token refresh returned no token",
-        { code: data.code, msg: data.msg },
-      );
-      return null;
-    }
+      if (!response.ok) {
+        const errorText = await response.text();
+        log?.error?.("TOKEN_REFRESH", "Failed to refresh CodeBuddy token", {
+          status: response.status,
+          error: errorText,
+        });
+        return null;
+      }
 
-    log?.info?.("TOKEN_REFRESH", "Successfully refreshed CodeBuddy token", {
-      hasNewAccessToken: !!data.data.accessToken,
-      hasNewRefreshToken: !!data.data.refreshToken,
-      expiresIn: data.data.expiresIn,
-    });
+      const data = await response.json();
+      if (data.code !== 0 || !data.data?.accessToken) {
+        log?.error?.(
+          "TOKEN_REFRESH",
+          "CodeBuddy token refresh returned no token",
+          { code: data.code, msg: data.msg },
+        );
+        return null;
+      }
 
-    return {
-      accessToken: data.data.accessToken,
-      refreshToken: data.data.refreshToken || refreshToken,
-      expiresIn: data.data.expiresIn,
-    };
-  }, log);
+      log?.info?.("TOKEN_REFRESH", "Successfully refreshed CodeBuddy token", {
+        hasNewAccessToken: !!data.data.accessToken,
+        hasNewRefreshToken: !!data.data.refreshToken,
+        expiresIn: data.data.expiresIn,
+      });
+
+      return {
+        accessToken: data.data.accessToken,
+        refreshToken: data.data.refreshToken || refreshToken,
+        expiresIn: data.data.expiresIn,
+      };
+    },
+    log,
+  );
 }

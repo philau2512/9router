@@ -8,8 +8,8 @@
  */
 
 const CODEX_WS_ENABLED = process.env.CODEX_WS_ENABLED === "true";
-const IDLE_TTL_MS = 5 * 60 * 1000;      // close idle connections after 5 min
-const MAX_POOL_SIZE = 10;                 // max connections per credential
+const IDLE_TTL_MS = 5 * 60 * 1000; // close idle connections after 5 min
+const MAX_POOL_SIZE = 10; // max connections per credential
 const MAX_RECONNECT_ATTEMPTS = 3;
 const REQUEST_TIMEOUT_MS = 60_000;
 
@@ -40,10 +40,11 @@ class CodexWSConnection {
   }
 
   async _doConnect() {
-    const wsUrl = this.baseUrl
-      .replace(/^https:/, "wss:")
-      .replace(/^http:/, "ws:")
-      .replace(/\/v1\/?$/, "") + "/v1/realtime";
+    const wsUrl =
+      this.baseUrl
+        .replace(/^https:/, "wss:")
+        .replace(/^http:/, "ws:")
+        .replace(/\/v1\/?$/, "") + "/v1/realtime";
 
     return new Promise((resolve, reject) => {
       try {
@@ -80,7 +81,8 @@ class CodexWSConnection {
   _handleMessage(data) {
     try {
       const msg = JSON.parse(data);
-      const responseId = msg?.response?.id || msg?.item?.response_id || msg?.response_id;
+      const responseId =
+        msg?.response?.id || msg?.item?.response_id || msg?.response_id;
       if (!responseId) return;
       const pending = this.pending.get(responseId);
       if (!pending) return;
@@ -102,7 +104,9 @@ class CodexWSConnection {
     }
   }
 
-  isHealthy() { return this._healthy && this.ws?.readyState === 1; }
+  isHealthy() {
+    return this._healthy && this.ws?.readyState === 1;
+  }
 
   async sendRequest(payload, signal) {
     if (!this.isHealthy()) throw new Error("Connection not healthy");
@@ -110,7 +114,8 @@ class CodexWSConnection {
 
     return new Promise((resolve, reject) => {
       let timeoutId;
-      const responseId = payload?.response_id || `wr_${Date.now().toString(36)}`;
+      const responseId =
+        payload?.response_id || `wr_${Date.now().toString(36)}`;
       const body = { ...payload, response_id: responseId };
 
       const cleanup = () => {
@@ -124,15 +129,25 @@ class CodexWSConnection {
       }, REQUEST_TIMEOUT_MS);
 
       if (signal) {
-        signal.addEventListener("abort", () => {
-          cleanup();
-          reject(new Error("AbortError"));
-        }, { once: true });
+        signal.addEventListener(
+          "abort",
+          () => {
+            cleanup();
+            reject(new Error("AbortError"));
+          },
+          { once: true },
+        );
       }
 
       this.pending.set(responseId, {
-        resolve: (chunks) => { cleanup(); resolve(chunks); },
-        reject: (err) => { cleanup(); reject(err); },
+        resolve: (chunks) => {
+          cleanup();
+          resolve(chunks);
+        },
+        reject: (err) => {
+          cleanup();
+          reject(err);
+        },
         chunks: [],
       });
 
@@ -147,7 +162,9 @@ class CodexWSConnection {
 
   close() {
     this._healthy = false;
-    try { this.ws?.close(); } catch {}
+    try {
+      this.ws?.close();
+    } catch {}
   }
 }
 
@@ -189,8 +206,9 @@ class CodexWSPool {
           return conn;
         } catch {
           attempts++;
-          if (attempts >= MAX_RECONNECT_ATTEMPTS) throw new Error("Codex WS: failed to connect after 3 attempts");
-          await new Promise(r => setTimeout(r, 500 * attempts));
+          if (attempts >= MAX_RECONNECT_ATTEMPTS)
+            throw new Error("Codex WS: failed to connect after 3 attempts");
+          await new Promise((r) => setTimeout(r, 500 * attempts));
         }
       }
     }
@@ -201,7 +219,7 @@ class CodexWSPool {
   _cleanup() {
     const now = Date.now();
     for (const [key, pool] of this.pools.entries()) {
-      const active = pool.filter(conn => {
+      const active = pool.filter((conn) => {
         if (now - conn.lastUsed > IDLE_TTL_MS && conn.pending.size === 0) {
           conn.close();
           return false;
@@ -246,7 +264,10 @@ export async function tryCodexWSRequest(auth, payload, signal) {
       headers: { "Content-Type": "text/event-stream" },
     });
   } catch (err) {
-    console.warn("[CODEX-WS] WS attempt failed, falling back to HTTP SSE:", err.message);
+    console.warn(
+      "[CODEX-WS] WS attempt failed, falling back to HTTP SSE:",
+      err.message,
+    );
     return null;
   }
 }

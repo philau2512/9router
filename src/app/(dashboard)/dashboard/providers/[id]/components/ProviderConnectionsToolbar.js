@@ -28,6 +28,8 @@ export default function ProviderConnectionsToolbar({
   handleToggleConnectionsSort,
   handleAutoPriorityVisibleConnections,
   onConfirmDeleteSelectedConnections,
+  onClearSelectedErrors,
+  hasErroredSelection,
   oneByOneRunning,
   oneByOneStopping,
   handleRunOneByOneTest,
@@ -205,6 +207,16 @@ export default function ProviderConnectionsToolbar({
                 className="text-red-500 hover:bg-red-500/10 hover:text-red-500"
               >
                 Delete selected
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon="clear_all"
+                onClick={onClearSelectedErrors}
+                disabled={!hasErroredSelection}
+                className="text-red-500 hover:bg-red-500/10 hover:text-red-500"
+              >
+                Clear Errors
               </Button>
               <Button
                 size="sm"

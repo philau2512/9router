@@ -252,7 +252,9 @@ export default function ModelSelectModal({
               value: `${alias}/${m.id}`,
             }));
           const hardcodedIds = new Set(hardcodedModels.map((m) => m.id));
-          const filteredAliases = aliasModels.filter((m) => !hardcodedIds.has(m.id));
+          const filteredAliases = aliasModels.filter(
+            (m) => !hardcodedIds.has(m.id),
+          );
           combined = [...hardcodedModels, ...filteredAliases];
         }
 
@@ -308,7 +310,10 @@ export default function ModelSelectModal({
             isCustom: true,
           }));
         const seen = new Set(nodeModels.map((m) => m.value));
-        const mergedModels = [...nodeModels, ...registeredCustom.filter((m) => !seen.has(m.value))];
+        const mergedModels = [
+          ...nodeModels,
+          ...registeredCustom.filter((m) => !seen.has(m.value)),
+        ];
 
         // Always show compatible providers that are connected, even with no aliases.
         // When no aliases exist, show a placeholder so users know it's available.
@@ -509,13 +514,15 @@ export default function ModelSelectModal({
     }
   };
 
+  const handleModalClose = useCallback(() => {
+    onClose();
+    setSearchQuery("");
+  }, [onClose]);
+
   return (
     <Modal
       isOpen={isOpen}
-      onClose={() => {
-        onClose();
-        setSearchQuery("");
-      }}
+      onClose={handleModalClose}
       title={title}
       size="md"
       className="p-4!"
@@ -630,6 +637,7 @@ export default function ModelSelectModal({
               {group.models.map((model) => {
                 const isSelected = selectedModel === model.value;
                 const isPlaceholder = model.isPlaceholder;
+                const isAdded = addedModelValues.includes(model.value);
                 return (
                   <button
                     key={model.value}
@@ -637,47 +645,61 @@ export default function ModelSelectModal({
                     title={
                       isPlaceholder
                         ? "Select to pre-fill, then edit model ID in the input"
-                        : undefined
+                        : model.value
                     }
                     className={`
-                      px-2 py-1 rounded-xl text-xs font-medium transition-all border hover:cursor-pointer
+                      px-3 py-1.5 rounded-xl text-xs font-medium transition-all border hover:cursor-pointer text-left flex items-start gap-1.5
                       ${
                         isPlaceholder
                           ? "border-dashed border-border text-text-muted hover:border-primary/50 hover:text-primary bg-surface italic"
                           : isSelected
                             ? "bg-primary text-white border-primary"
-                            : addedModelValues.includes(model.value)
+                            : isAdded
                               ? "bg-primary border-primary text-white hover:bg-primary-hover"
                               : "bg-surface border-border text-text-main hover:border-primary/50 hover:bg-primary/5"
                       }
                     `}
                   >
-                    <span className="flex items-center gap-1">
-                      {addedModelValues.includes(model.value) &&
-                        !isPlaceholder && (
-                          <span
-                            className="material-symbols-outlined leading-none"
-                            style={{ fontSize: "10px" }}
-                          >
-                            check
+                    {isAdded && !isPlaceholder && (
+                      <span
+                        className="material-symbols-outlined leading-none mt-0.5 shrink-0"
+                        style={{ fontSize: "10px" }}
+                      >
+                        check
+                      </span>
+                    )}
+                    <span className="flex flex-col min-w-0">
+                      <span className="truncate block font-semibold text-[11px] leading-tight">
+                        {isPlaceholder ? (
+                          <span className="flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[11px]">
+                              edit
+                            </span>
+                            {model.name}
                           </span>
+                        ) : (
+                          model.name
                         )}
-                      {isPlaceholder ? (
-                        <>
-                          <span className="material-symbols-outlined text-[11px]">
-                            edit
-                          </span>
-                          {model.name}
-                        </>
-                      ) : model.isCustom ? (
-                        <>
-                          {model.name}
-                          <span className="text-[9px] opacity-60 font-normal">
-                            custom
-                          </span>
-                        </>
-                      ) : (
-                        model.name
+                      </span>
+                      {!isPlaceholder && (
+                        <span
+                          className={`text-[9px] font-mono mt-0.5 block truncate leading-none ${
+                            isSelected || isAdded ? "text-white/70" : "text-text-muted"
+                          }`}
+                        >
+                          {model.id}
+                          {model.isCustom && (
+                            <span
+                              className={`ml-1 text-[8px] px-1 py-0.2 rounded font-sans uppercase font-bold ${
+                                isSelected || isAdded
+                                  ? "bg-white/20 text-white"
+                                  : "bg-black/5 dark:bg-white/5 text-text-muted"
+                              }`}
+                            >
+                              custom
+                            </span>
+                          )}
+                        </span>
                       )}
                     </span>
                   </button>

@@ -17,7 +17,7 @@ import { getGitHubUsage } from "./usage/github.js";
 import { getGeminiUsage } from "./usage/gemini.js";
 import { getAntigravityUsage } from "./usage/antigravity.js";
 import { getClaudeUsage } from "./usage/claude.js";
-import { getCodexUsage } from "./usage/codex.js";
+import { getCodexUsage, getCodexRateLimitResetCredits } from "./usage/codex.js";
 import { getKiroUsage } from "./usage/kiro.js";
 import { getMiniMaxUsage } from "./usage/minimax.js";
 import {
@@ -28,6 +28,7 @@ import {
 } from "./usage/misc.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { getCodeBuddyCnUsage } from "./usage/codebuddy-cn.js";
+import { getGrokCliUsage } from "./usage/grok-cli.js";
 
 // Vercel AI Gateway credits endpoint
 // Returns { balance: "95.50", total_used: "4.50" } (USD as decimal strings).
@@ -98,6 +99,10 @@ export async function getUsageForProvider(connection, proxyOptions = null) {
         providerSpecificData,
         proxyOptions,
       );
+    case "grok-cli":
+    case "gcli":
+      // See upstream a11937cdd.
+      return await getGrokCliUsage(accessToken, providerSpecificData, proxyOptions);
     default:
       return { message: `Usage API not implemented for ${provider}` };
   }

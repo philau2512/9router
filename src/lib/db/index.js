@@ -116,6 +116,7 @@ export {
   getRequestDetails,
   getRequestDetailsList,
   getRequestDetailById,
+  getDistinctProviders,
 } from "./repos/requestDetailsRepo.js";
 
 // Export/import full DB

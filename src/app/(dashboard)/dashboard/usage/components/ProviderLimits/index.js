@@ -7,6 +7,7 @@ import Toggle from "@/shared/components/Toggle";
 import { parseQuotaData, calculatePercentage } from "./utils";
 import Card from "@/shared/components/Card";
 import { EditConnectionModal } from "@/shared/components";
+import Tooltip from "@/shared/components/Tooltip";
 import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
 
 function getConnectionLabel(connection) {
@@ -230,6 +231,30 @@ const CONNECTIONS_PAGE_SIZE = 20;
 const ACCOUNT_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 const ACCOUNT_PAGE_SIZE_MAX = 500;
 
+function formatCreditDate(value) {
+  if (!value) return "N/A";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "N/A";
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatTimeRemaining(value) {
+  if (!value) return "N/A";
+  const diffMs = new Date(value).getTime() - Date.now();
+  if (!Number.isFinite(diffMs)) return "N/A";
+  if (diffMs <= 0) return "Expired";
+  const totalHours = Math.ceil(diffMs / (60 * 60 * 1000));
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  return days > 0 ? `${days}d ${hours}h` : `${hours}h`;
+}
+
 export default function ProviderLimits() {
   const [connections, setConnections] = useState([]);
   const [quotaData, setQuotaData] = useState({});
@@ -243,6 +268,7 @@ export default function ProviderLimits() {
   const [connectionsLoading, setConnectionsLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
+  const [resetCreditsState, setResetCreditsState] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedConnection, setSelectedConnection] = useState(null);
   const [proxyPools, setProxyPools] = useState([]);
@@ -448,6 +474,26 @@ export default function ProviderLimits() {
     },
     [fetchConnections, page],
   );
+
+  const handleViewCodexResetCredits = useCallback(async (connection) => {
+    setResetCreditsState({ connection, loading: true, error: null, data: null });
+    try {
+      const response = await fetch(`/api/usage/${connection.id}/codex-reset-credits`, { cache: "no-store" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error || result.message || "Failed to load Codex reset credits");
+      }
+      const credits = Array.isArray(result.credits) ? [...result.credits] : [];
+      credits.sort((a, b) => {
+        const aTime = a.expiresAt ? new Date(a.expiresAt).getTime() : Number.POSITIVE_INFINITY;
+        const bTime = b.expiresAt ? new Date(b.expiresAt).getTime() : Number.POSITIVE_INFINITY;
+        return aTime - bTime;
+      });
+      setResetCreditsState({ connection, loading: false, error: null, data: { ...result, credits } });
+    } catch (error) {
+      setResetCreditsState({ connection, loading: false, error: error.message || "Failed to load Codex reset credits", data: null });
+    }
+  }, []);
 
   const handleToggleConnectionActive = useCallback(
     async (id, isActive) => {
@@ -1056,6 +1102,19 @@ export default function ProviderLimits() {
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0">
+                      {conn.provider === "codex" && (
+                        <Tooltip text="View Codex reset credit expiry">
+                          <button
+                            type="button"
+                            onClick={() => handleViewCodexResetCredits(conn)}
+                            disabled={isLoading || rowBusy}
+                            aria-label="View Codex reset credit expiry"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-black/10 text-text-muted transition-colors hover:bg-black/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/5"
+                          >
+                            <span className="material-symbols-outlined text-[17px]">schedule</span>
+                          </button>
+                        </Tooltip>
+                      )}
                       <button
                         type="button"
                         onClick={() => refreshProvider(conn.id, conn.provider)}
@@ -1149,6 +1208,25 @@ export default function ProviderLimits() {
                     />
                   )}
                 </div>
+
+                {conn.lastError && (
+                  <div className="px-3 pb-2.5">
+                    <div className="p-2 rounded-lg bg-red-500/5 border border-red-500/10 text-xs text-red-600 dark:text-red-400 flex items-start gap-1.5 break-words">
+                      <span className="material-symbols-outlined text-[14px] shrink-0 mt-0.5">
+                        error
+                      </span>
+                      <div className="min-w-0">
+                        <span className="font-semibold">Last Error: </span>
+                        {conn.lastError}
+                        {conn.lastErrorAt && (
+                          <span className="text-[10px] text-text-muted dark:text-text-muted/80 block mt-0.5">
+                            {new Date(conn.lastErrorAt).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </Card>
             );
           })}
@@ -1301,6 +1379,53 @@ export default function ProviderLimits() {
           </div>
         </div>
       </div>
+
+      {resetCreditsState && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setResetCreditsState(null)}>
+          <div className="relative w-full max-w-md rounded-xl border border-black/10 bg-white p-5 shadow-xl dark:border-white/10 dark:bg-[#1a1a1a]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-text-primary">Codex Reset Credits</h3>
+              <button type="button" onClick={() => setResetCreditsState(null)} className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-text-muted">
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+            {resetCreditsState.loading && (
+              <div className="flex items-center justify-center py-8 text-text-muted text-sm gap-2">
+                <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+                Loading...
+              </div>
+            )}
+            {resetCreditsState.error && (
+              <div className="text-sm text-red-600 dark:text-red-400 py-4 text-center">{resetCreditsState.error}</div>
+            )}
+            {resetCreditsState.data && (
+              <div>
+                <p className="text-xs text-text-muted mb-3">
+                  Available: <span className="font-semibold text-text-primary">{resetCreditsState.data.availableCount}</span>
+                </p>
+                {resetCreditsState.data.credits.length === 0 ? (
+                  <p className="text-xs text-text-muted text-center py-4">No credits found.</p>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {resetCreditsState.data.credits.map((credit, i) => (
+                      <div key={i} className="rounded-lg border border-black/10 dark:border-white/10 px-3 py-2 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`font-medium capitalize ${credit.status === "active" ? "text-green-600 dark:text-green-400" : "text-text-muted"}`}>{credit.status}</span>
+                          <span className="text-text-muted">{formatTimeRemaining(credit.expiresAt)}</span>
+                        </div>
+                        <div className="mt-1 text-text-muted space-y-0.5">
+                          <div>Granted: {formatCreditDate(credit.grantedAt)}</div>
+                          <div>Expires: {formatCreditDate(credit.expiresAt)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <EditConnectionModal
         isOpen={showEditModal}

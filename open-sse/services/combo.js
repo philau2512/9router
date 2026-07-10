@@ -30,10 +30,13 @@ export function detectRequiredCapabilities(body) {
   const scanBlock = (b) => {
     if (!b || typeof b !== "object") return;
     const t = b.type;
-    if (t === "image_url" || t === "image" || t === "input_image") required.add("vision");
-    if (t === "file" || t === "document" || t === "input_file") required.add("pdf");
+    if (t === "image_url" || t === "image" || t === "input_image")
+      required.add("vision");
+    if (t === "file" || t === "document" || t === "input_file")
+      required.add("pdf");
     const mime = b.inlineData?.mimeType || b.fileData?.mimeType;
-    if (typeof mime === "string" && mime.startsWith("image/")) required.add("vision");
+    if (typeof mime === "string" && mime.startsWith("image/"))
+      required.add("vision");
     if (mime === "application/pdf") required.add("pdf");
   };
 
@@ -62,7 +65,13 @@ export function detectRequiredCapabilities(body) {
  * Falls back to original order when capabilities registry unavailable.
  */
 export function reorderByCapabilities(models, required) {
-  if (!required || required.size === 0 || !Array.isArray(models) || models.length <= 1) return models;
+  if (
+    !required ||
+    required.size === 0 ||
+    !Array.isArray(models) ||
+    models.length <= 1
+  )
+    return models;
 
   // Try to load capabilities — gracefully skip reorder if registry not available
   let getCapabilities;
@@ -348,13 +357,23 @@ function flattenToolHistory(messages) {
     .filter((msg) => msg)
     .map((msg) => {
       if (msg.role === "tool" || msg.role === "function") {
-        return { role: "assistant", content: `${TOOL_RESULT_PREFIX}${extractTextContent(msg.content) || String(msg.content ?? "")}]` };
+        return {
+          role: "assistant",
+          content: `${TOOL_RESULT_PREFIX}${extractTextContent(msg.content) || String(msg.content ?? "")}]`,
+        };
       }
       if (msg.role === "assistant" && Array.isArray(msg.tool_calls)) {
         const { tool_calls, ...rest } = msg;
-        const names = tool_calls.map((c) => c?.function?.name || c?.name || "tool").join(", ");
-        const base = extractTextContent(rest.content) || (typeof rest.content === "string" ? rest.content : "");
-        return { ...rest, content: `${base}${base ? "\n" : ""}${TOOL_CALL_PREFIX}${names}]` };
+        const names = tool_calls
+          .map((c) => c?.function?.name || c?.name || "tool")
+          .join(", ");
+        const base =
+          extractTextContent(rest.content) ||
+          (typeof rest.content === "string" ? rest.content : "");
+        return {
+          ...rest,
+          content: `${base}${base ? "\n" : ""}${TOOL_CALL_PREFIX}${names}]`,
+        };
       }
       if (Array.isArray(msg.content)) {
         const hasToolUse = msg.content.some((c) => c.type === "tool_use");
@@ -367,7 +386,10 @@ function flattenToolHistory(messages) {
             if (block.type === "text" && block.text) textParts.push(block.text);
             if (block.type === "tool_use") toolNames.push(block.name || "tool");
             if (block.type === "tool_result")
-              toolResults.push(extractTextContent(block.content) || String(block.content ?? ""));
+              toolResults.push(
+                extractTextContent(block.content) ||
+                  String(block.content ?? ""),
+              );
           }
           const { ...rest } = msg;
           let newContent = textParts.join("\n");
@@ -395,7 +417,8 @@ function extractPanelText(json) {
     const msg = choice.message ?? choice.delta ?? {};
     const t = extractTextContent(msg.content);
     if (t.trim()) return t;
-    if (typeof choice.text === "string" && choice.text.trim()) return choice.text;
+    if (typeof choice.text === "string" && choice.text.trim())
+      return choice.text;
   }
   const claudeText = extractTextContent(json.content);
   if (claudeText.trim()) return claudeText;
@@ -406,7 +429,9 @@ function extractPanelText(json) {
   }
   if (Array.isArray(json.output)) {
     const t = json.output
-      .flatMap((o) => (Array.isArray(o.content) ? o.content.map((c) => c?.text || "") : []))
+      .flatMap((o) =>
+        Array.isArray(o.content) ? o.content.map((c) => c?.text || "") : [],
+      )
       .join("");
     if (t.trim()) return t;
   }
@@ -433,7 +458,9 @@ function appendUserTurn(body, text) {
  * Judge analyzes consensus/contradictions/blind-spots then writes one answer.
  */
 function buildJudgePrompt(answers) {
-  const panel = answers.map((a, i) => `[Source ${i + 1}]\n${a.text}`).join("\n\n");
+  const panel = answers
+    .map((a, i) => `[Source ${i + 1}]\n${a.text}`)
+    .join("\n\n");
   return [
     `You are the JUDGE in a model-fusion panel. ${answers.length} expert models independently answered the user's most recent request. Their responses are below, anonymized by source.`,
     "",
@@ -451,8 +478,8 @@ function buildJudgePrompt(answers) {
 
 // Fusion tuning — overridable per-combo via settings.comboStrategies[name].
 const FUSION_DEFAULTS = {
-  minPanel: 2,               // answers needed before stragglers get a grace window
-  stragglerGraceMs: 8000,    // wait this long for laggards once quorum is reached
+  minPanel: 2, // answers needed before stragglers get a grace window
+  stragglerGraceMs: 8000, // wait this long for laggards once quorum is reached
   panelHardTimeoutMs: 90000, // absolute cap so one hung model can't stall forever
 };
 
@@ -461,8 +488,14 @@ function withTimeout(promise, ms) {
   return new Promise((resolve) => {
     const t = setTimeout(() => resolve({ __timeout: true }), ms);
     Promise.resolve(promise)
-      .then((v) => { clearTimeout(t); resolve(v); })
-      .catch((e) => { clearTimeout(t); resolve({ __error: e }); });
+      .then((v) => {
+        clearTimeout(t);
+        resolve(v);
+      })
+      .catch((e) => {
+        clearTimeout(t);
+        resolve({ __error: e });
+      });
   });
 }
 
@@ -470,10 +503,16 @@ function withTimeout(promise, ms) {
  * Collect panel responses with quorum-grace: wait for minPanel successes,
  * then give stragglers a short grace window before proceeding.
  */
-function collectPanel(calls, { minPanel, stragglerGraceMs, panelHardTimeoutMs }) {
+function collectPanel(
+  calls,
+  { minPanel, stragglerGraceMs, panelHardTimeoutMs },
+) {
   return new Promise((resolve) => {
     const out = new Array(calls.length);
-    let settled = 0, ok = 0, finished = false, graceTimer = null;
+    let settled = 0,
+      ok = 0,
+      finished = false,
+      graceTimer = null;
     const finish = () => {
       if (finished) return;
       finished = true;
@@ -484,13 +523,18 @@ function collectPanel(calls, { minPanel, stragglerGraceMs, panelHardTimeoutMs })
     const hardTimer = setTimeout(finish, panelHardTimeoutMs);
     calls.forEach((p, i) => {
       Promise.resolve(p)
-        .then((v) => { out[i] = v; })
-        .catch((e) => { out[i] = { __error: e }; })
+        .then((v) => {
+          out[i] = v;
+        })
+        .catch((e) => {
+          out[i] = { __error: e };
+        })
         .finally(() => {
           settled++;
           if (out[i] && out[i].ok) ok++;
           if (settled === calls.length) return finish();
-          if (ok >= minPanel && !graceTimer) graceTimer = setTimeout(finish, stragglerGraceMs);
+          if (ok >= minPanel && !graceTimer)
+            graceTimer = setTimeout(finish, stragglerGraceMs);
         });
     });
   });
@@ -513,12 +557,20 @@ function collectPanel(calls, { minPanel, stragglerGraceMs, panelHardTimeoutMs })
  * @param {Object} [options.tuning] - Override FUSION_DEFAULTS
  * @returns {Promise<Response>}
  */
-export async function handleFusionChat({ body, models, handleSingleModel, log, comboName, judgeModel, tuning }) {
+export async function handleFusionChat({
+  body,
+  models,
+  handleSingleModel,
+  log,
+  comboName,
+  judgeModel,
+  tuning,
+}) {
   const panel = Array.isArray(models) ? models.filter(Boolean) : [];
   if (panel.length === 0) {
     return new Response(
       JSON.stringify({ error: { message: "Fusion combo has no models" } }),
-      { status: 400, headers: { "Content-Type": "application/json" } }
+      { status: 400, headers: { "Content-Type": "application/json" } },
     );
   }
 
@@ -528,7 +580,10 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   const cfg = { ...FUSION_DEFAULTS, ...(tuning || {}) };
   const minPanel = Math.min(Math.max(2, cfg.minPanel), panel.length);
   const judge = judgeModel && judgeModel.trim() ? judgeModel.trim() : panel[0];
-  log.info("FUSION", `Combo "${comboName}" | panel=${panel.length} [${panel.join(", ")}] | judge=${judge} | quorum=${minPanel}`);
+  log.info(
+    "FUSION",
+    `Combo "${comboName}" | panel=${panel.length} [${panel.join(", ")}] | judge=${judge} | quorum=${minPanel}`,
+  );
 
   // 1. Fan out: non-streaming, tools stripped, tool history flattened.
   const { tools, tool_choice, ...rest } = body;
@@ -540,7 +595,9 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   }
 
   const t0 = Date.now();
-  const calls = panel.map((m) => withTimeout(handleSingleModel(panelBody, m, true), cfg.panelHardTimeoutMs));
+  const calls = panel.map((m) =>
+    withTimeout(handleSingleModel(panelBody, m, true), cfg.panelHardTimeoutMs),
+  );
   const settled = await collectPanel(calls, { ...cfg, minPanel });
   log.info("FUSION", `fan-out collected in ${Date.now() - t0}ms`);
 
@@ -549,10 +606,24 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   for (let i = 0; i < settled.length; i++) {
     const res = settled[i];
     const model = panel[i];
-    if (!res) { log.warn("FUSION", `Panel ${model} dropped (straggler/timeout)`); continue; }
-    if (res.__timeout) { log.warn("FUSION", `Panel ${model} timed out`); continue; }
-    if (res.__error) { log.warn("FUSION", `Panel ${model} threw`, { error: res.__error?.message || String(res.__error) }); continue; }
-    if (!res.ok) { log.warn("FUSION", `Panel ${model} failed`, { status: res.status }); continue; }
+    if (!res) {
+      log.warn("FUSION", `Panel ${model} dropped (straggler/timeout)`);
+      continue;
+    }
+    if (res.__timeout) {
+      log.warn("FUSION", `Panel ${model} timed out`);
+      continue;
+    }
+    if (res.__error) {
+      log.warn("FUSION", `Panel ${model} threw`, {
+        error: res.__error?.message || String(res.__error),
+      });
+      continue;
+    }
+    if (!res.ok) {
+      log.warn("FUSION", `Panel ${model} failed`, { status: res.status });
+      continue;
+    }
     try {
       const json = await res.clone().json();
       const text = extractPanelText(json);
@@ -563,7 +634,9 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
         log.warn("FUSION", `Panel ${model} returned empty content`);
       }
     } catch (e) {
-      log.warn("FUSION", `Panel ${model} unparseable`, { error: e.message || String(e) });
+      log.warn("FUSION", `Panel ${model} unparseable`, {
+        error: e.message || String(e),
+      });
     }
   }
 
@@ -572,11 +645,14 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
     log.warn("FUSION", "All panel models failed");
     return new Response(
       JSON.stringify({ error: { message: "All fusion panel models failed" } }),
-      { status: 503, headers: { "Content-Type": "application/json" } }
+      { status: 503, headers: { "Content-Type": "application/json" } },
     );
   }
   if (answers.length === 1) {
-    log.info("FUSION", `Only ${answers[0].model} succeeded — answering directly (no fusion)`);
+    log.info(
+      "FUSION",
+      `Only ${answers[0].model} succeeded — answering directly (no fusion)`,
+    );
     return handleSingleModel(body, answers[0].model);
   }
 

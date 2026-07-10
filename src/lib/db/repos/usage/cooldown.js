@@ -12,7 +12,14 @@ const EXPIRE_AFTER_MS = 60 * 60 * 1000; // 1 hour past expiry before cleanup
  * Upsert a cooldown record. Fire-and-forget safe.
  * @param {{ provider, authId, model?, nextRetryAfter, reason?, status? }} record
  */
-export async function upsertCooldown({ provider, authId, model = "", nextRetryAfter, reason = null, status = null }) {
+export async function upsertCooldown({
+  provider,
+  authId,
+  model = "",
+  nextRetryAfter,
+  reason = null,
+  status = null,
+}) {
   if (!provider || !authId || !nextRetryAfter) return;
   try {
     const db = await getAdapter();
@@ -59,7 +66,7 @@ export async function loadActiveCooldowns() {
        WHERE next_retry_after > ?`,
       [now],
     );
-    return rows.map(r => ({
+    return rows.map((r) => ({
       provider: r.provider,
       authId: r.auth_id,
       model: r.model,
@@ -79,6 +86,8 @@ export async function expireOldCooldowns() {
   try {
     const db = await getAdapter();
     const cutoff = Date.now() - EXPIRE_AFTER_MS;
-    db.run(`DELETE FROM provider_cooldowns WHERE next_retry_after < ?`, [cutoff]);
+    db.run(`DELETE FROM provider_cooldowns WHERE next_retry_after < ?`, [
+      cutoff,
+    ]);
   } catch {}
 }

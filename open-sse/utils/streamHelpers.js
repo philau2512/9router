@@ -20,7 +20,11 @@ export function parseSSELine(line, format = null) {
   // Raw NDJSON (Ollama/provider raw lines): JSON object without data: prefix
   const trimmedLine = line.trim();
   if (trimmedLine.startsWith("{")) {
-    try { return JSON.parse(trimmedLine); } catch { return null; }
+    try {
+      return JSON.parse(trimmedLine);
+    } catch {
+      return null;
+    }
   }
 
   // Standard SSE format: "data: {...}"
