@@ -2,6 +2,7 @@ import { PROVIDERS } from "../config/providers.js";
 import { OAUTH_ENDPOINTS, GITHUB_COPILOT } from "../config/appConstants.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { dedupRefresh, classifyOAuthRefreshError } from "./refresh-dedup.js";
+import { buildExternalIdpRefreshParams } from "../../src/lib/oauth/kiroExternalIdp.js";
 
 // xAI refresh — wraps the class method from src/lib/oauth/services/xai.js so
 // the token-refresh switches below can stay flat (one function per provider).
@@ -438,6 +439,72 @@ export async function refreshKiroToken(
       const clientId = providerSpecificData?.clientId;
       const clientSecret = providerSpecificData?.clientSecret;
       const region = providerSpecificData?.region;
+
+      // Enterprise / Microsoft Entra (external_idp) — refresh against the
+      // account's own Microsoft token endpoint (form-urlencoded, no secret).
+      // Must run BEFORE the AWS/social branches: these tokens have a clientId
+      // but no clientSecret, so they'd otherwise fall through to the social
+      // path (kiro.dev/refreshToken) and fail with 401 "Bad credentials".
+      if (authMethod === "external_idp") {
+        let refreshRequest;
+        try {
+          refreshRequest = buildExternalIdpRefreshParams(
+            refreshToken,
+            providerSpecificData,
+          );
+        } catch (error) {
+          log?.warn?.(
+            "TOKEN_REFRESH",
+            `Invalid Kiro external_idp refresh config: ${error.message}`,
+          );
+          return null;
+        }
+
+        const response = await proxyAwareFetch(
+          refreshRequest.tokenEndpoint,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+              Accept: "application/json",
+            },
+            body: refreshRequest.body,
+          },
+          proxyOptions,
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          log?.error?.(
+            "TOKEN_REFRESH",
+            "Failed to refresh Kiro external_idp token",
+            {
+              status: response.status,
+              error: errorText,
+            },
+          );
+          return null;
+        }
+
+        const tokens = await response.json();
+
+        log?.info?.(
+          "TOKEN_REFRESH",
+          "Successfully refreshed Kiro external_idp token",
+          {
+            hasNewAccessToken: !!tokens.access_token,
+            hasNewRefreshToken: !!tokens.refresh_token,
+            expiresIn: tokens.expires_in,
+          },
+        );
+
+        return {
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token || refreshToken,
+          expiresIn: tokens.expires_in,
+          providerSpecificData: refreshRequest.providerSpecificData,
+        };
+      }
 
       // AWS SSO OIDC (Builder ID or IDC)
       // If clientId and clientSecret exist, assume AWS SSO OIDC (default to builder-id if authMethod not specified)
