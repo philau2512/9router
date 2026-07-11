@@ -1,110 +1,48 @@
-// Provider definitions
-import REGISTRY from "open-sse/providers/registry/index.js";
-import { RISK_NOTICE } from "@/shared/constants/providersDisplay";
+/**
+ * Provider definitions — barrel re-export.
+ *
+ * This file was auto-split into sub-modules under ./providers/.
+ * Consumer imports remain unchanged — this barrel re-exports everything.
+ */
 
-const MEDIA_ENTRY_KEYS = [
-  "serviceKinds", "ttsConfig", "sttConfig", "embeddingConfig",
-  "imageConfig", "imageToTextConfig", "videoConfig", "musicConfig",
-  "searchViaChat", "searchConfig", "fetchConfig",
-  "modelsFetcher", "mediaPriority", "hiddenKinds",
-];
+// Re-export sub-module data
+export { THINKING_CONFIG } from "./providers/thinking-config.js";
+export { FREE_PROVIDERS } from "./providers/free-providers.js";
+export { FREE_TIER_PROVIDERS } from "./providers/free-tier-providers.js";
+export { OAUTH_PROVIDERS } from "./providers/oauth-providers.js";
+export { APIKEY_PROVIDERS } from "./providers/apikey-providers.js";
+export { WEB_COOKIE_PROVIDERS } from "./providers/web-cookie-providers.js";
+export { MEDIA_PROVIDER_KINDS } from "./providers/media-provider-kinds.js";
+export {
+  USAGE_SUPPORTED_PROVIDERS,
+  USAGE_APIKEY_PROVIDERS,
+} from "./providers/usage-constants.js";
 
-// Build provider UI object from registry entry
-function buildProviderEntry(r) {
-  const mediaFields = {};
-  if (r.media) Object.assign(mediaFields, r.media);
-  for (const k of MEDIA_ENTRY_KEYS) {
-    if (r[k] !== undefined) mediaFields[k] = r[k];
-  }
-  const display = { ...(r.display || {}) };
-  if (display.deprecationNotice === "RISK_NOTICE") display.deprecationNotice = RISK_NOTICE;
-  return {
-    ...display,
-    id: r.id,
-    alias: r.uiAlias || r.alias,
-    ...(r.hidden ? { hidden: true } : {}),
-    ...mediaFields,
-    ...(r.priority !== undefined ? { priority: r.priority } : {}),
-    ...(r.hasFree ? { hasFree: true } : {}),
-    ...(r.thinkingConfig ? { thinkingConfig: r.thinkingConfig } : {}),
-    ...(r.regions ? { regions: r.regions, defaultRegion: r.defaultRegion } : {}),
-    ...(r.hasProviderSpecificData ? { hasProviderSpecificData: true } : {}),
-    ...(r.noAuth ? { noAuth: true } : {}),
-    ...(r.passthroughModels ? { passthroughModels: true } : {}),
-    ...(r.hasOAuth ? { hasOAuth: true } : {}),
-    ...(r.authModes ? { authModes: r.authModes } : {}),
-    ...(r.authType ? { authType: r.authType } : {}),
-    ...(r.authHint ? { authHint: r.authHint } : {}),
-  };
-}
+// Re-export helpers (no AI_PROVIDERS dependency)
+export {
+  OPENAI_COMPATIBLE_PREFIX,
+  ANTHROPIC_COMPATIBLE_PREFIX,
+  CUSTOM_EMBEDDING_PREFIX,
+  isOpenAICompatibleProvider,
+  isAnthropicCompatibleProvider,
+  isCustomEmbeddingProvider,
+  AUTH_METHODS,
+} from "./providers/helpers.js";
 
-const byCategory = (cat) => Object.fromEntries(
-  REGISTRY.filter(r => r.category === cat).map(r => [r.id, buildProviderEntry(r)])
-);
-
-export const FREE_PROVIDERS = byCategory("free");
-export const FREE_TIER_PROVIDERS = byCategory("freeTier");
-
-// Thinking config definitions
-// options: list of selectable modes ("auto" = no override from server)
-// defaultMode: fallback when user hasn't configured
-// extended: claude-style thinking (thinking.type + budget_tokens) — used by most providers
-// effort: openai-style reasoning_effort — only openai + codex
-export const THINKING_CONFIG = {
-  extended: {
-    options: ["auto", "on", "off"],
-    defaultMode: "auto",
-    defaultBudgetTokens: 10000
-  },
-  effort: {
-    options: ["auto", "none", "low", "medium", "high"],
-    defaultMode: "auto"
-  }
-};
-
-export const OAUTH_PROVIDERS = byCategory("oauth");
-export const APIKEY_PROVIDERS = byCategory("apikey");
-
-// Web Cookie Providers (use browser session cookie instead of API key)
-export const WEB_COOKIE_PROVIDERS = byCategory("webCookie");
-
-// Media provider kinds — each kind maps to a route and endpoint config
-export const MEDIA_PROVIDER_KINDS = [
-  { id: "embedding",   label: "Embedding",      icon: "data_array",        endpoint: { method: "POST", path: "/v1/embeddings" } },
-  { id: "image",       label: "Text to Image",  icon: "brush",             endpoint: { method: "POST", path: "/v1/images/generations" } },
-  { id: "imageToText", label: "Image to Text",  icon: "image_search",      endpoint: { method: "POST", path: "/v1/images/understanding" } },
-  { id: "tts",         label: "Text To Speech", icon: "record_voice_over", endpoint: { method: "POST", path: "/v1/audio/speech" } },
-  { id: "stt",         label: "Speech To Text", icon: "mic",               endpoint: { method: "POST", path: "/v1/audio/transcriptions" } },
-  { id: "webSearch",   label: "Web Search",     icon: "travel_explore",    endpoint: { method: "POST", path: "/v1/search" } },
-  { id: "webFetch",    label: "Web Fetch",      icon: "language",          endpoint: { method: "POST", path: "/v1/web/fetch" } },
-  { id: "video",       label: "Video",          icon: "movie",             endpoint: { method: "POST", path: "/v1/video/generations" } },
-  { id: "music",       label: "Music",          icon: "music_note",        endpoint: { method: "POST", path: "/v1/audio/music" } },
-];
-
-export const OPENAI_COMPATIBLE_PREFIX = "openai-compatible-";
-export const ANTHROPIC_COMPATIBLE_PREFIX = "anthropic-compatible-";
-export const CUSTOM_EMBEDDING_PREFIX = "custom-embedding-";
-
-export function isOpenAICompatibleProvider(providerId) {
-  return typeof providerId === "string" && providerId.startsWith(OPENAI_COMPATIBLE_PREFIX);
-}
-
-export function isAnthropicCompatibleProvider(providerId) {
-  return typeof providerId === "string" && providerId.startsWith(ANTHROPIC_COMPATIBLE_PREFIX);
-}
-
-export function isCustomEmbeddingProvider(providerId) {
-  return typeof providerId === "string" && providerId.startsWith(CUSTOM_EMBEDDING_PREFIX);
-}
+// Compose AI_PROVIDERS from all provider categories
+import { FREE_PROVIDERS } from "./providers/free-providers.js";
+import { FREE_TIER_PROVIDERS } from "./providers/free-tier-providers.js";
+import { OAUTH_PROVIDERS } from "./providers/oauth-providers.js";
+import { APIKEY_PROVIDERS } from "./providers/apikey-providers.js";
+import { WEB_COOKIE_PROVIDERS } from "./providers/web-cookie-providers.js";
 
 // All providers (combined)
-export const AI_PROVIDERS = { ...FREE_PROVIDERS, ...FREE_TIER_PROVIDERS, ...OAUTH_PROVIDERS, ...APIKEY_PROVIDERS, ...WEB_COOKIE_PROVIDERS };
-
-// Auth methods
-export const AUTH_METHODS = {
-  oauth: { id: "oauth" },
-  apikey: { id: "apikey" },
-  cookie: { id: "cookie" },
+export const AI_PROVIDERS = {
+  ...FREE_PROVIDERS,
+  ...FREE_TIER_PROVIDERS,
+  ...OAUTH_PROVIDERS,
+  ...APIKEY_PROVIDERS,
+  ...WEB_COOKIE_PROVIDERS,
 };
 
 // Helper: Get provider by alias
@@ -152,14 +90,5 @@ export function getProvidersByKind(kind) {
       if (p.hiddenKinds?.includes(kind)) return false;
       return true;
     })
-    .sort((a, b) => (a.priority ?? a.mediaPriority ?? 999) - (b.priority ?? b.mediaPriority ?? 999));
+    .sort((a, b) => (a.mediaPriority ?? 100) - (b.mediaPriority ?? 100));
 }
-
-// Derive từ registry features flags
-export const USAGE_SUPPORTED_PROVIDERS = REGISTRY
-  .filter(r => r.features?.usage)
-  .map(r => r.id);
-
-export const USAGE_APIKEY_PROVIDERS = REGISTRY
-  .filter(r => r.features?.usageApikey)
-  .map(r => r.id);

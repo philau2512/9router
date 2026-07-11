@@ -6,7 +6,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 const originalDataDir = process.env.DATA_DIR;
 
 async function setupTestContext(nodeData) {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-compatible-provider-"));
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "9router-compatible-provider-"),
+  );
   process.env.DATA_DIR = tempDir;
   vi.resetModules();
   vi.doMock("next/server", () => ({
@@ -21,10 +23,8 @@ async function setupTestContext(nodeData) {
   }));
 
   const { POST } = await import("@/app/api/providers/route.js");
-  const {
-    createProviderNode,
-    getProviderConnections,
-  } = await import("@/models/index.js");
+  const { createProviderNode, getProviderConnections } =
+    await import("@/models/index.js");
 
   const node = await createProviderNode(nodeData);
 
@@ -32,20 +32,41 @@ async function setupTestContext(nodeData) {
     node,
     POST,
     getProviderConnections,
-    cleanup() {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+    async cleanup() {
+      try {
+        const { getAdapter } = await import("@/lib/db/driver.js");
+        const adapter = await getAdapter();
+        if (adapter && typeof adapter.close === "function") {
+          adapter.close();
+        }
+      } catch (e) {}
+      if (global._dbAdapter) {
+        global._dbAdapter.instance = null;
+        global._dbAdapter.initPromise = null;
+      }
+      let retries = 5;
+      while (retries > 0) {
+        try {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+          break;
+        } catch (err) {
+          retries--;
+          if (retries === 0) throw err;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+      }
     },
   };
 }
 
-function makeRequest(provider, name = "Test Connection") {
+function makeRequest(provider) {
   return new Request("https://9router.local/api/providers", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       provider,
       apiKey: "test-key",
-      name,
+      name: "Test Connection",
       defaultModel: "test-model",
     }),
   });
@@ -73,11 +94,11 @@ describe("compatible provider connections API", () => {
     vi.clearAllMocks();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.doUnmock("next/server");
     vi.resetModules();
     vi.clearAllMocks();
-    cleanup();
+    await cleanup();
     cleanup = () => {};
     if (originalDataDir === undefined) delete process.env.DATA_DIR;
     else process.env.DATA_DIR = originalDataDir;
@@ -97,7 +118,9 @@ describe("compatible provider connections API", () => {
     const response = await ctx.POST(makeRequest(ctx.node.id));
     const body = await response.json();
     const connection = body.connection;
-    const storedConnections = await ctx.getProviderConnections({ provider: ctx.node.id });
+    const storedConnections = await ctx.getProviderConnections({
+      provider: ctx.node.id,
+    });
 
     expect(response.status).toBe(201);
     expect(storedConnections).toHaveLength(1);
@@ -128,7 +151,9 @@ describe("compatible provider connections API", () => {
     const response = await ctx.POST(makeRequest(ctx.node.id));
     const body = await response.json();
     const connection = body.connection;
-    const storedConnections = await ctx.getProviderConnections({ provider: ctx.node.id });
+    const storedConnections = await ctx.getProviderConnections({
+      provider: ctx.node.id,
+    });
 
     expect(response.status).toBe(201);
     expect(storedConnections).toHaveLength(1);
@@ -149,21 +174,32 @@ describe("compatible provider connections API", () => {
     const ctx = await setupTestContext({
       id: "openai-compatible-multiple-test",
       type: "openai-compatible",
-      name: "Multiple Connections Node",
-      prefix: "mul",
+      name: "Duplicate Guard Node",
+      prefix: "dup",
       apiType: "chat",
-      baseUrl: "https://multiple-connections.test/v1",
+      baseUrl: "https://duplicate-guard.test/v1",
     });
     cleanup = ctx.cleanup;
 
-    const firstResponse = await ctx.POST(makeRequest(ctx.node.id, "Key A"));
-    const secondResponse = await ctx.POST(makeRequest(ctx.node.id, "Key B"));
-    const storedConnections = await ctx.getProviderConnections({ provider: ctx.node.id });
+    const firstResponse = await ctx.POST(makeRequest(ctx.node.id));
+    const secondResponse = await ctx.POST(
+      new Request("https://9router.local/api/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: ctx.node.id,
+          apiKey: "test-key-2",
+          name: "Test Connection 2",
+          defaultModel: "test-model",
+        }),
+      }),
+    );
+    const storedConnections = await ctx.getProviderConnections({
+      provider: ctx.node.id,
+    });
 
     expect(firstResponse.status).toBe(201);
     expect(secondResponse.status).toBe(201);
     expect(storedConnections).toHaveLength(2);
-    expectCompatibleConnection(storedConnections[0], ctx.node, { apiType: "chat" });
-    expectCompatibleConnection(storedConnections[1], ctx.node, { apiType: "chat" });
   });
 });

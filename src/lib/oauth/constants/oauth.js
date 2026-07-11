@@ -1,9 +1,7 @@
 /**
- * OAuth Configuration Constants — static data lives in registry, re-exported here for consumers.
+ * OAuth Configuration Constants
  */
 import { platform, arch } from "os";
-import { ANTIGRAVITY_OAUTH_CLIENT, GOOGLE_OAUTH_CLIENT } from "open-sse/providers/shared.js";
-import { PROVIDER_OAUTH, PROVIDERS as REGISTRY_PROVIDERS } from "open-sse/providers/index.js";
 
 /**
  * Get the platform enum value based on the current OS.
@@ -19,35 +17,107 @@ function getOAuthPlatformEnum() {
 }
 
 // Claude OAuth Configuration (Authorization Code Flow with PKCE)
-export const CLAUDE_CONFIG = { ...PROVIDER_OAUTH["claude"] };
+export const CLAUDE_CONFIG = {
+  clientId: "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
+  authorizeUrl: "https://claude.ai/oauth/authorize",
+  tokenUrl: "https://api.anthropic.com/v1/oauth/token",
+  scopes: ["org:create_api_key", "user:profile", "user:inference"],
+  codeChallengeMethod: "S256",
+};
 
 // Codex (OpenAI) OAuth Configuration (Authorization Code Flow with PKCE)
-export const CODEX_CONFIG = { ...PROVIDER_OAUTH["codex"] };
+export const CODEX_CONFIG = {
+  clientId: "app_EMoamEEZ73f0CkXaXp7hrann",
+  authorizeUrl: "https://auth.openai.com/oauth/authorize",
+  tokenUrl: "https://auth.openai.com/oauth/token",
+  scope: "openid profile email offline_access",
+  codeChallengeMethod: "S256",
+  // Additional OpenAI-specific params
+  extraParams: {
+    id_token_add_organizations: "true",
+    codex_cli_simplified_flow: "true",
+    originator: "codex_cli_rs",
+  },
+};
 
 // Gemini (Google) OAuth Configuration (Standard OAuth2)
-// clientId/clientSecret from GOOGLE_OAUTH_CLIENT (shared.js) — not stored in registry
-export const GEMINI_CONFIG = { ...GOOGLE_OAUTH_CLIENT, ...PROVIDER_OAUTH["gemini-cli"] };
+export const GEMINI_CONFIG = {
+  clientId:
+    "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com",
+  clientSecret: "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",
+  authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+  tokenUrl: "https://oauth2.googleapis.com/token",
+  userInfoUrl: "https://www.googleapis.com/oauth2/v1/userinfo",
+  scopes: [
+    "https://www.googleapis.com/auth/cloud-platform",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+  ],
+};
 
 // Qwen OAuth Configuration (Device Code Flow with PKCE)
-export const QWEN_CONFIG = { ...PROVIDER_OAUTH["qwen"] };
+export const QWEN_CONFIG = {
+  clientId: "f0304373b74a44d2b584a3fb70ca9e56",
+  deviceCodeUrl: "https://chat.qwen.ai/api/v1/oauth2/device/code",
+  tokenUrl: "https://chat.qwen.ai/api/v1/oauth2/token",
+  scope: "openid profile email model.completion",
+  codeChallengeMethod: "S256",
+};
 
-// Qoder OAuth Configuration (Device Token Flow with PKCE).
-// Device tokens are long-lived (~30 days for access, ~360 for refresh).
-// The upstream refresh endpoint at center.qoder.sh returns 403 for our
-// flow — we accept that and surface it to the user as "re-login" instead
-// of attempting to silently rotate.
-export const QODER_CONFIG = { ...PROVIDER_OAUTH["qoder"] };
+// Qoder OAuth Configuration (Device Token Flow)
+export const QODER_CONFIG = {
+  apiBaseUrl: "https://api2.qoder.sh",
+  deviceTokenUrl: "https://api2.qoder.sh/api/v1/deviceToken/poll",
+  deviceRefreshUrl: "https://api2.qoder.sh/api/v1/deviceToken/refresh",
+  refreshUrl: "https://api2.qoder.sh/api/v3/user/refresh_token",
+  userInfoUrl: "https://api2.qoder.sh/api/v1/userinfo",
+  statusUrl: "https://api2.qoder.sh/api/v3/user/status",
+  loginUrl: "https://qoder.com/login",
+};
 
 // iFlow OAuth Configuration (Authorization Code)
-export const IFLOW_CONFIG = { ...PROVIDER_OAUTH["iflow"] };
+export const IFLOW_CONFIG = {
+  clientId: "10009311001",
+  clientSecret: "4Z3YjXycVsQvyGF1etiNlIBB4RsqSDtW",
+  authorizeUrl: "https://iflow.cn/oauth",
+  tokenUrl: "https://iflow.cn/oauth/token",
+  userInfoUrl: "https://iflow.cn/api/oauth/getUserInfo",
+  extraParams: {
+    loginMethod: "phone",
+    type: "phone",
+  },
+};
 
 // Antigravity OAuth Configuration (Standard OAuth2 with Google)
-// clientId/clientSecret from ANTIGRAVITY_OAUTH_CLIENT (shared.js) — not stored in registry
-// loadCodeAssistClientMetadata is dynamic (runtime platform detection)
 export const ANTIGRAVITY_CONFIG = {
-  ...ANTIGRAVITY_OAUTH_CLIENT,
-  ...PROVIDER_OAUTH["antigravity"],
-  loadCodeAssistClientMetadata: JSON.stringify({ ideType: 9, platform: getOAuthPlatformEnum(), pluginType: 2 }),
+  clientId:
+    "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com",
+  clientSecret: "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",
+  authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+  tokenUrl: "https://oauth2.googleapis.com/token",
+  userInfoUrl: "https://www.googleapis.com/oauth2/v1/userinfo",
+  scopes: [
+    "https://www.googleapis.com/auth/cloud-platform",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+    "https://www.googleapis.com/auth/cclog",
+    "https://www.googleapis.com/auth/experimentsandconfigs",
+  ],
+  // Antigravity specific
+  apiEndpoint: "https://cloudcode-pa.googleapis.com",
+  apiVersion: "v1internal",
+  loadCodeAssistEndpoint:
+    "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
+  onboardUserEndpoint:
+    "https://cloudcode-pa.googleapis.com/v1internal:onboardUser",
+  loadCodeAssistUserAgent: "google-api-nodejs-client/9.15.1",
+  loadCodeAssistApiClient: "google-cloud-sdk vscode_cloudshelleditor/0.1",
+  // Numeric enums matching Antigravity binary ClientMetadata (see getOAuthClientMetadata below)
+  loadCodeAssistClientMetadata: JSON.stringify({
+    ideType: 9,
+    platform: getOAuthPlatformEnum(),
+    pluginType: 2,
+  }),
 };
 
 /**
@@ -59,13 +129,64 @@ export function getOAuthClientMetadata() {
 }
 
 // OpenAI OAuth Configuration (Authorization Code Flow with PKCE)
-export const OPENAI_CONFIG = { ...PROVIDER_OAUTH["openai"] };
+export const OPENAI_CONFIG = {
+  clientId: "app_EMoamEEZ73f0CkXaXp7hrann",
+  authorizeUrl: "https://auth.openai.com/oauth/authorize",
+  tokenUrl: "https://auth.openai.com/oauth/token",
+  scope: "openid profile email offline_access",
+  codeChallengeMethod: "S256",
+  extraParams: {
+    id_token_add_organizations: "true",
+    originator: "openai_native",
+  },
+};
 
 // GitHub Copilot OAuth Configuration (Device Code Flow)
-export const GITHUB_CONFIG = { ...PROVIDER_OAUTH["github"] };
+export const GITHUB_CONFIG = {
+  clientId: "Iv1.b507a08c87ecfe98",
+  deviceCodeUrl: "https://github.com/login/device/code",
+  tokenUrl: "https://github.com/login/oauth/access_token",
+  userInfoUrl: "https://api.github.com/user",
+  scopes: "read:user",
+  apiVersion: "2022-11-28", // Updated to supported version
+  copilotTokenUrl: "https://api.github.com/copilot_internal/v2/token",
+  userAgent: "GitHubCopilotChat/0.26.7",
+  editorVersion: "vscode/1.85.0",
+  editorPluginVersion: "copilot-chat/0.26.7",
+};
 
-// Kiro OAuth Configuration (multi-method: AWS Builder ID / IDC / Social / Import Token)
-export const KIRO_CONFIG = { ...PROVIDER_OAUTH["kiro"] };
+// Kiro OAuth Configuration
+// Supports multiple auth methods:
+// 1. AWS Builder ID (Device Code Flow)
+// 2. AWS IAM Identity Center/IDC (Device Code Flow with custom startUrl/region)
+// 3. Google/GitHub Social Login (Authorization Code Flow - manual callback)
+// 4. Import Token (paste refresh token from Kiro IDE)
+export const KIRO_CONFIG = {
+  // AWS SSO OIDC endpoints for Builder ID/IDC (Device Code Flow)
+  ssoOidcEndpoint: "https://oidc.us-east-1.amazonaws.com",
+  registerClientUrl: "https://oidc.us-east-1.amazonaws.com/client/register",
+  deviceAuthUrl: "https://oidc.us-east-1.amazonaws.com/device_authorization",
+  tokenUrl: "https://oidc.us-east-1.amazonaws.com/token",
+  // AWS Builder ID default start URL
+  startUrl: "https://view.awsapps.com/start",
+  // Client registration params
+  clientName: "kiro-oauth-client",
+  clientType: "public",
+  scopes: [
+    "codewhisperer:completions",
+    "codewhisperer:analysis",
+    "codewhisperer:conversations",
+  ],
+  grantTypes: ["urn:ietf:params:oauth:grant-type:device_code", "refresh_token"],
+  issuerUrl: "https://identitycenter.amazonaws.com/ssoins-722374e8c3c8e6c6",
+  // Social auth endpoints (Google/GitHub via AWS Cognito)
+  socialAuthEndpoint: "https://prod.us-east-1.auth.desktop.kiro.dev",
+  socialLoginUrl: "https://prod.us-east-1.auth.desktop.kiro.dev/login",
+  socialTokenUrl: "https://prod.us-east-1.auth.desktop.kiro.dev/oauth/token",
+  socialRefreshUrl: "https://prod.us-east-1.auth.desktop.kiro.dev/refreshToken",
+  // Auth methods
+  authMethods: ["builder-id", "idc", "google", "github", "import"],
+};
 
 // AWS region allowlist pattern — prevents SSRF via region injection into upstream URLs (GHSA-6mwv-4mrm-5p3m)
 export const AWS_REGION_PATTERN = /^[a-z]{2}-[a-z]+-\d{1,2}$/;
@@ -79,47 +200,102 @@ export function assertValidAwsRegion(region) {
 }
 
 // Cursor OAuth Configuration (Import Token from Cursor IDE)
-// tokenStoragePaths: user-reference only, not stored in registry
+// Cursor stores credentials in SQLite database: state.vscdb
+// Keys: cursorAuth/accessToken, storage.serviceMachineId
 export const CURSOR_CONFIG = {
-  ...PROVIDER_OAUTH["cursor"],
+  // API endpoints
+  apiEndpoint: "https://api2.cursor.sh",
+  chatEndpoint: "/aiserver.v1.ChatService/StreamUnifiedChatWithTools",
+  modelsEndpoint: "/aiserver.v1.AiService/GetDefaultModelNudgeData",
+  // Additional endpoints
+  api3Endpoint: "https://api3.cursor.sh", // Telemetry
+  agentEndpoint: "https://agent.api5.cursor.sh", // Privacy mode
+  agentNonPrivacyEndpoint: "https://agentn.api5.cursor.sh", // Non-privacy mode
+  // Client metadata
+  clientVersion: "3.1.0",
+  clientType: "ide",
+  // Token storage locations (for user reference)
   tokenStoragePaths: {
     linux: "~/.config/Cursor/User/globalStorage/state.vscdb",
-    macos: "/Users/<user>/Library/Application Support/Cursor/User/globalStorage/state.vscdb",
+    macos:
+      "/Users/<user>/Library/Application Support/Cursor/User/globalStorage/state.vscdb",
     windows: "%APPDATA%\\Cursor\\User\\globalStorage\\state.vscdb",
+  },
+  // Database keys
+  dbKeys: {
+    accessToken: "cursorAuth/accessToken",
+    machineId: "storage.serviceMachineId",
   },
 };
 
 // Kimi Coding OAuth Configuration (Device Code Flow)
-// clientId uses env override — dynamic, not stored in registry
 export const KIMI_CODING_CONFIG = {
-  ...PROVIDER_OAUTH["kimi-coding"],
-  clientId: process.env.KIMI_CODING_OAUTH_CLIENT_ID || REGISTRY_PROVIDERS["kimi-coding"]?.clientId,
+  clientId:
+    process.env.KIMI_CODING_OAUTH_CLIENT_ID ||
+    "17e5f671-d194-4dfb-9706-5516cb48c098",
+  deviceCodeUrl: "https://auth.kimi.com/api/oauth/device_authorization",
+  tokenUrl: "https://auth.kimi.com/api/oauth/token",
 };
 
 // KiloCode OAuth Configuration (Custom Device Auth Flow)
-export const KILOCODE_CONFIG = { ...PROVIDER_OAUTH["kilocode"] };
+export const KILOCODE_CONFIG = {
+  apiBaseUrl: "https://api.kilo.ai",
+  initiateUrl: "https://api.kilo.ai/api/device-auth/codes",
+  pollUrlBase: "https://api.kilo.ai/api/device-auth/codes",
+};
 
 // Cline OAuth Configuration (Local Callback Flow via app.cline.bot)
-export const CLINE_CONFIG = { ...PROVIDER_OAUTH["cline"] };
+export const CLINE_CONFIG = {
+  appBaseUrl: "https://app.cline.bot",
+  apiBaseUrl: "https://api.cline.bot",
+  authorizeUrl: "https://api.cline.bot/api/v1/auth/authorize",
+  tokenExchangeUrl: "https://api.cline.bot/api/v1/auth/token",
+  refreshUrl: "https://api.cline.bot/api/v1/auth/refresh",
+};
 
 // ClinePass OAuth Configuration (shares Cline's OAuth endpoints)
-export const CLINEPASS_CONFIG = { ...PROVIDER_OAUTH["clinepass"] };
+export const CLINEPASS_CONFIG = { ...CLINE_CONFIG };
 
 // GitLab Duo OAuth Configuration (Authorization Code Flow with PKCE)
-export const GITLAB_CONFIG = { ...PROVIDER_OAUTH["gitlab"] };
+// Supports both OAuth (PKCE) and Personal Access Token (PAT) modes
+export const GITLAB_CONFIG = {
+  defaultBaseUrl: "https://gitlab.com",
+  authorizeUrlPath: "/oauth/authorize",
+  tokenUrlPath: "/oauth/token",
+  userInfoUrlPath: "/api/v4/user",
+  scope: "api read_user",
+  codeChallengeMethod: "S256",
+};
 
 // CodeBuddy (Tencent) OAuth Configuration (Browser OAuth Polling Flow)
-export const CODEBUDDY_CONFIG = { ...PROVIDER_OAUTH["codebuddy-cn"] };
-
-// Kimchi OAuth Configuration (Browser token callback flow)
-export const KIMCHI_CONFIG = { ...PROVIDER_OAUTH["kimchi"] };
-
-// Grok CLI / Grok Build OAuth Configuration (Device Code Flow)
-// Endpoint: cli-chat-proxy.grok.com — same client_id as xai, different flow + scopes
-export const GROK_CLI_CONFIG = { ...PROVIDER_OAUTH["grok-cli"] };
+// Step 1: POST /v2/plugin/auth/state?platform=CLI → get { state, authUrl }
+// Step 2: Open authUrl in browser
+// Step 3: Poll POST /v2/plugin/auth/token with state until success
+export const CODEBUDDY_CONFIG = {
+  baseUrl: "https://copilot.tencent.com",
+  stateUrl: "https://copilot.tencent.com/v2/plugin/auth/state",
+  tokenUrl: "https://copilot.tencent.com/v2/plugin/auth/token",
+  refreshUrl: "https://copilot.tencent.com/v2/plugin/auth/token/refresh",
+  userAgent: "CLI/2.63.2 CodeBuddy/2.63.2",
+  platform: "CLI",
+  pollInterval: 5000,
+};
 
 // OAuth timeout (5 minutes)
 export const OAUTH_TIMEOUT = 300000;
+
+// Grok CLI / Grok Build OAuth Configuration (Device Code Flow to auth.x.ai).
+// Same client_id as xAI PKCE flow; different grant + scopes. See upstream a11937cdd.
+export const GROK_CLI_CONFIG = {
+  clientId: "b1a00492-073a-47ea-816f-4c329264a828",
+  deviceCodeUrl: "https://auth.x.ai/oauth2/device/code",
+  tokenUrl: "https://auth.x.ai/oauth2/token",
+  // Scope from HAR capture of official grok-shell/grok-pager — matches registry/grok-cli.js
+  scope:
+    "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write",
+  referrer: "grok-build",
+  pollInterval: 5000,
+};
 
 // Provider list
 export const PROVIDERS = {
@@ -140,6 +316,5 @@ export const PROVIDERS = {
   CLINEPASS: "clinepass",
   GITLAB: "gitlab",
   CODEBUDDY: "codebuddy-cn",
-  KIMCHI: "kimchi",
   GROK_CLI: "grok-cli",
 };

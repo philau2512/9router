@@ -51,11 +51,26 @@ export function kiroToClaudeResponse(chunk, state) {
   // by attempting a parse (defensive — the direct path is always objects).
   let data = chunk;
   if (typeof chunk === "string") {
-    const trimmed = chunk.trim();
+    let trimmed = chunk.trim();
     if (!trimmed || trimmed === "[DONE]") return null;
+
+    if (state && state.parseBuffer) {
+      trimmed = state.parseBuffer + trimmed;
+    }
+
     try {
-      data = JSON.parse(trimmed.startsWith("data:") ? trimmed.slice(5).trim() : trimmed);
+      data = JSON.parse(
+        trimmed.startsWith("data:") ? trimmed.slice(5).trim() : trimmed,
+      );
+      if (state) state.parseBuffer = ""; // Reset buffer on success
     } catch {
+      if (state) {
+        if (trimmed.length < 50000) {
+          state.parseBuffer = trimmed; // Buffering for next chunk
+        } else {
+          state.parseBuffer = ""; // Prevent memory bloat
+        }
+      }
       return null;
     }
   }
@@ -69,7 +84,9 @@ export function kiroToClaudeResponse(chunk, state) {
   // Track usage if present on the chunk.
   if (data.usage && typeof data.usage === "object") {
     const promptTokens =
-      typeof data.usage.prompt_tokens === "number" ? data.usage.prompt_tokens : 0;
+      typeof data.usage.prompt_tokens === "number"
+        ? data.usage.prompt_tokens
+        : 0;
     const outputTokens =
       typeof data.usage.completion_tokens === "number"
         ? data.usage.completion_tokens
@@ -171,7 +188,7 @@ export function kiroToClaudeResponse(chunk, state) {
         if (toolInfo) {
           state.toolArgBuffers.set(
             idx,
-            (state.toolArgBuffers.get(idx) || "") + tc.function.arguments
+            (state.toolArgBuffers.get(idx) || "") + tc.function.arguments,
           );
         }
       }
@@ -193,7 +210,10 @@ export function kiroToClaudeResponse(chunk, state) {
             delta: { type: "input_json_delta", partial_json: buffered },
           });
         }
-        results.push({ type: "content_block_stop", index: toolInfo.blockIndex });
+        results.push({
+          type: "content_block_stop",
+          index: toolInfo.blockIndex,
+        });
       }
     }
 

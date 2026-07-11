@@ -8,14 +8,15 @@ const CLI_TOKEN_SALT = "9r-cli-auth";
 
 let cachedCliToken = null;
 async function getCliToken() {
-  if (!cachedCliToken) cachedCliToken = await getConsistentMachineId(CLI_TOKEN_SALT);
+  if (!cachedCliToken)
+    cachedCliToken = await getConsistentMachineId(CLI_TOKEN_SALT);
   return cachedCliToken;
 }
 
 async function hasValidCliToken(request) {
   const token = request.headers.get(CLI_TOKEN_HEADER);
   if (!token) return false;
-  return token === await getCliToken();
+  return token === (await getCliToken());
 }
 
 // Public API paths — no auth required (LLM API has its own key auth inside handler).
@@ -32,17 +33,19 @@ const PUBLIC_API_PATHS = [
 ];
 
 // Public top-level prefixes (LLM API endpoints with their own API key auth).
-const PUBLIC_PREFIXES = ["/v1", "/v1beta", "/api/v1", "/api/v1beta", "/codex"];
+const PUBLIC_PREFIXES = ["/v1", "/v1beta", "/api/v1", "/api/v1beta"];
 
-// Always require JWT token regardless of requireLogin setting
+// Always require JWT token regardless of requireLogin setting.
 const ALWAYS_PROTECTED = [
   "/api/shutdown",
   "/api/settings/database",
-  "/api/version/shutdown",
   "/api/version/update",
   "/api/oauth/cursor/auto-import",
   "/api/oauth/kiro/auto-import",
 ];
+
+// Shutdown terminates the process and is reserved for the machine-bound CLI flow.
+const CLI_TOKEN_ONLY_PATHS = ["/api/version/shutdown"];
 
 // Require auth, but allow through if requireLogin is disabled
 const PROTECTED_API_PATHS = [
@@ -78,17 +81,16 @@ const LOCAL_ONLY_PATHS = [
   "/api/tunnel/disable",
   "/api/oauth/cursor/auto-import",
   "/api/oauth/kiro/auto-import",
-  "/api/auth/reset-password",
-  "/api/headroom/start",
-  "/api/headroom/stop",
-  "/api/headroom/proxy",
 ];
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 function isLoopbackHostname(h) {
   if (!h) return false;
-  const name = h.split(":")[0].replace(/^\[|\]$/g, "").toLowerCase();
+  const name = h
+    .split(":")[0]
+    .replace(/^\[|\]$/g, "")
+    .toLowerCase();
   return LOOPBACK_HOSTS.has(name);
 }
 
@@ -97,34 +99,28 @@ export function isLocalRequest(request) {
   // a reverse proxy, so the loopback socket is the proxy hop, not the end-user.
   if (request.headers.get("x-9r-via-proxy")) return false;
   // Trusted peer IP from TCP socket (custom-server.js); unspoofable. Primary anchor for "local".
-  const realIp = request.headers.get("x-9r-real-ip");
-  if (realIp) {
-    if (!isLoopbackHostname(realIp)) return false;
-  } else if (!isLoopbackHostname(request.headers.get("host"))) {
-    // Fallback for bare server.js (dev) without custom-server: legacy Host-based check.
-    return false;
-  }
+  if (!isLoopbackHostname(request.headers.get("host"))) return false;
   const origin = request.headers.get("origin");
   if (origin) {
     try {
       if (!isLoopbackHostname(new URL(origin).hostname)) return false;
-    } catch { return false; }
+    } catch {
+      return false;
+    }
   }
   return true;
 }
 
 function isPublicLlmApi(pathname) {
-  return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  return PUBLIC_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
+  );
 }
 
 function extractApiKey(request) {
   const authHeader = request.headers.get("Authorization");
   if (authHeader?.startsWith("Bearer ")) return authHeader.slice(7);
-  const apiKeyHeader = request.headers.get("x-api-key");
-  if (apiKeyHeader) return apiKeyHeader;
-  const googleApiKeyHeader = request.headers.get("x-goog-api-key");
-  if (googleApiKeyHeader) return googleApiKeyHeader;
-  return request.nextUrl.searchParams?.get("key") || null;
+  return request.headers.get("x-api-key");
 }
 
 async function hasValidApiKey(request) {
@@ -142,7 +138,7 @@ async function canAccessPublicLlmApi(request) {
 async function canAccessLocalOnlyRoute(request) {
   if (await hasValidCliToken(request)) return true;
   // Browser on host: loopback Host + Origin (blocks tunnel/CSRF) + auth (JWT or requireLogin=false)
-  if (isLocalRequest(request) && await isAuthenticated(request)) return true;
+  if (isLocalRequest(request) && (await isAuthenticated(request))) return true;
   return false;
 }
 
@@ -169,7 +165,9 @@ async function isAuthenticated(request) {
 
 function isPublicApi(pathname) {
   if (isPublicLlmApi(pathname)) return true;
-  return PUBLIC_API_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  return PUBLIC_API_PATHS.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
+  );
 }
 
 export const __test__ = {
@@ -186,26 +184,38 @@ export async function proxy(request) {
   // Local-only gate for spawn-capable / host-secret routes.
   if (LOCAL_ONLY_PATHS.some((p) => pathname.startsWith(p))) {
     if (!(await canAccessLocalOnlyRoute(request))) {
-      return NextResponse.json({ error: "Local only: CLI token required" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Local only: CLI token required" },
+        { status: 403 },
+      );
     }
+  }
+
+  // Process shutdown requires the machine-bound CLI token, not browser JWT auth.
+  if (CLI_TOKEN_ONLY_PATHS.some((p) => pathname.startsWith(p))) {
+    if (await hasValidCliToken(request)) return NextResponse.next();
+    return NextResponse.json({ error: "CLI token required" }, { status: 401 });
   }
 
   // Always protected - require valid JWT or local CLI token (machineId-based)
   if (ALWAYS_PROTECTED.some((p) => pathname.startsWith(p))) {
-    if (await hasValidCliToken(request) || await hasValidToken(request))
+    if ((await hasValidCliToken(request)) || (await hasValidToken(request)))
       return NextResponse.next();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   if (isPublicLlmApi(pathname)) {
     if (await canAccessPublicLlmApi(request)) return NextResponse.next();
-    return NextResponse.json({ error: "API key required for remote API access" }, { status: 401 });
+    return NextResponse.json(
+      { error: "API key required for remote API access" },
+      { status: 401 },
+    );
   }
 
   // Deny-by-default for /api/* — public allow-list bypasses, everything else requires auth.
   if (pathname.startsWith("/api/")) {
     if (isPublicApi(pathname)) return NextResponse.next();
-    if (await hasValidCliToken(request) || await isAuthenticated(request))
+    if ((await hasValidCliToken(request)) || (await isAuthenticated(request)))
       return NextResponse.next();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -223,10 +233,19 @@ export async function proxy(request) {
 
         // Block tunnel/tailscale access if disabled (redirect to login)
         if (!tunnelDashboardAccess) {
-          const host = (request.headers.get("host") || "").split(":")[0].toLowerCase();
-          const tunnelHost = settings.tunnelUrl ? new URL(settings.tunnelUrl).hostname.toLowerCase() : "";
-          const tailscaleHost = settings.tailscaleUrl ? new URL(settings.tailscaleUrl).hostname.toLowerCase() : "";
-          if ((tunnelHost && host === tunnelHost) || (tailscaleHost && host === tailscaleHost)) {
+          const host = (request.headers.get("host") || "")
+            .split(":")[0]
+            .toLowerCase();
+          const tunnelHost = settings.tunnelUrl
+            ? new URL(settings.tunnelUrl).hostname.toLowerCase()
+            : "";
+          const tailscaleHost = settings.tailscaleUrl
+            ? new URL(settings.tailscaleUrl).hostname.toLowerCase()
+            : "";
+          if (
+            (tunnelHost && host === tunnelHost) ||
+            (tailscaleHost && host === tailscaleHost)
+          ) {
             return NextResponse.redirect(new URL("/login", request.url));
           }
         }

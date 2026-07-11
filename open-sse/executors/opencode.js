@@ -2,7 +2,8 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 
-// Models that use /zen/v1/messages (claude format)
+// Models that use /zen/v1/messages (claude format) — currently empty;
+// kept for future use if any model requires the messages path.
 const MESSAGES_MODELS = new Set();
 
 export class OpenCodeExecutor extends BaseExecutor {
@@ -15,7 +16,7 @@ export class OpenCodeExecutor extends BaseExecutor {
   }
 
   buildUrl(model) {
-    const base = this.config.baseUrl;
+    const base = "https://opencode.ai";
     return MESSAGES_MODELS.has(model)
       ? `${base}/zen/v1/messages`
       : `${base}/zen/v1/chat/completions`;
@@ -24,9 +25,9 @@ export class OpenCodeExecutor extends BaseExecutor {
   buildHeaders() {
     return {
       "Content-Type": "application/json",
-      "Authorization": "Bearer public",
+      Authorization: "Bearer public",
       "x-opencode-client": "desktop",
-      "Accept": "text/event-stream"
+      Accept: "text/event-stream",
     };
   }
 }

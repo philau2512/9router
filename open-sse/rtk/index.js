@@ -4,9 +4,19 @@ import { RAW_CAP, MIN_COMPRESS_SIZE } from "./constants.js";
 import { autoDetectFilter } from "./autodetect.js";
 import { safeApply } from "./applyFilter.js";
 
+let _rtkEnabled = false;
+export function setRtkEnabled(v) {
+  _rtkEnabled = !!v;
+}
+export function isRtkEnabled() {
+  return _rtkEnabled;
+}
+
 // Compress tool_result content in-place. Returns stats or null if disabled/failed.
 export function compressMessages(body, enabled) {
-  if (!enabled) return null;
+  const _enabled = enabled !== undefined ? enabled : _rtkEnabled;
+  if (!_enabled) return null;
+  enabled = _enabled;
   if (!body) return null;
 
   // Kiro format: conversationState.history + conversationState.currentMessage
@@ -15,9 +25,11 @@ export function compressMessages(body, enabled) {
   }
 
   // Support both OpenAI/Claude "messages" and OpenAI Responses "input"
-  const items = Array.isArray(body.messages) ? body.messages
-    : Array.isArray(body.input) ? body.input
-    : null;
+  const items = Array.isArray(body.messages)
+    ? body.messages
+    : Array.isArray(body.input)
+      ? body.input
+      : null;
   if (!items) return null;
 
   const stats = { bytesBefore: 0, bytesAfter: 0, hits: [] };
@@ -29,12 +41,24 @@ export function compressMessages(body, enabled) {
       // Shape 4: OpenAI Responses — top-level { type:"function_call_output", output: string | [{type:"input_text", text}] }
       if (msg.type === "function_call_output") {
         if (typeof msg.output === "string") {
-          msg.output = compressText(msg.output, stats, "openai-responses-string");
+          msg.output = compressText(
+            msg.output,
+            stats,
+            "openai-responses-string",
+          );
         } else if (Array.isArray(msg.output)) {
           for (let k = 0; k < msg.output.length; k++) {
             const part = msg.output[k];
-            if (part && part.type === "input_text" && typeof part.text === "string") {
-              part.text = compressText(part.text, stats, "openai-responses-array");
+            if (
+              part &&
+              part.type === "input_text" &&
+              typeof part.text === "string"
+            ) {
+              part.text = compressText(
+                part.text,
+                stats,
+                "openai-responses-array",
+              );
             }
           }
         }
@@ -92,11 +116,14 @@ function compressKiroFormat(body, enabled) {
   const stats = { bytesBefore: 0, bytesAfter: 0, hits: [] };
   try {
     const state = body.conversationState;
-    const allMessages = [...(Array.isArray(state?.history) ? state.history : [])];
+    const allMessages = [
+      ...(Array.isArray(state?.history) ? state.history : []),
+    ];
     if (state?.currentMessage) allMessages.push(state.currentMessage);
 
     for (const msg of allMessages) {
-      const toolResults = msg?.userInputMessage?.userInputMessageContext?.toolResults;
+      const toolResults =
+        msg?.userInputMessage?.userInputMessageContext?.toolResults;
       if (!Array.isArray(toolResults)) continue;
 
       for (const tr of toolResults) {
@@ -141,7 +168,11 @@ function compressText(text, stats, shape) {
   }
 
   stats.bytesAfter += out.length;
-  stats.hits.push({ shape, filter: fn.filterName || fn.name, saved: bytesIn - out.length });
+  stats.hits.push({
+    shape,
+    filter: fn.filterName || fn.name,
+    saved: bytesIn - out.length,
+  });
   return out;
 }
 
@@ -149,7 +180,12 @@ function compressText(text, stats, shape) {
 export function formatRtkLog(stats) {
   if (!stats || !stats.hits || stats.hits.length === 0) return null;
   const saved = stats.bytesBefore - stats.bytesAfter;
-  const pct = stats.bytesBefore > 0 ? ((saved / stats.bytesBefore) * 100).toFixed(1) : "0";
-  const filters = Array.from(new Set(stats.hits.map(h => h.filter))).join(",");
+  const pct =
+    stats.bytesBefore > 0
+      ? ((saved / stats.bytesBefore) * 100).toFixed(1)
+      : "0";
+  const filters = Array.from(new Set(stats.hits.map((h) => h.filter))).join(
+    ",",
+  );
   return `[RTK] saved ${saved}B / ${stats.bytesBefore}B (${pct}%) via [${filters}] hits=${stats.hits.length}`;
 }

@@ -1,9 +1,5 @@
-// ⚠️ AGENT/DEV: Bump this by +1 EVERY TIME you change the schema below
-// (add/remove/alter a table, column, or index in TABLES). It drives the
-// pre-change safety backup in migrate.js: when the stored version is lower,
-// one lightweight DB backup is taken before applying schema changes. Forgetting
-// to bump only skips that backup — it does NOT break the additive auto-sync.
-export const SCHEMA_VERSION = 1;
+// Latest schema version — bumped when a migration is added in ./migrations/
+export const SCHEMA_VERSION = 3;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -86,6 +82,21 @@ export const TABLES = {
     },
     indexes: ["CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)"],
   },
+  apiKeyLimits: {
+    columns: {
+      id: "TEXT PRIMARY KEY",
+      apiKeyId: "TEXT UNIQUE NOT NULL",
+      metricType: "TEXT NOT NULL",
+      periodType: "TEXT NOT NULL",
+      limitValue: "REAL NOT NULL",
+      createdAt: "TEXT NOT NULL",
+      updatedAt: "TEXT NOT NULL",
+    },
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_akl_apiKeyId ON apiKeyLimits(apiKeyId)",
+      "CREATE INDEX IF NOT EXISTS idx_akl_metric_period ON apiKeyLimits(metricType, periodType)",
+    ],
+  },
   combos: {
     columns: {
       id: "TEXT PRIMARY KEY",
@@ -143,13 +154,21 @@ export const TABLES = {
       model: "TEXT",
       connectionId: "TEXT",
       status: "TEXT",
+      latency_json: "TEXT",
+      tokens_json: "TEXT",
       data: "TEXT NOT NULL",
     },
     indexes: [
+      // Single-column indexes (backward compat)
       "CREATE INDEX IF NOT EXISTS idx_rd_ts ON requestDetails(timestamp DESC)",
       "CREATE INDEX IF NOT EXISTS idx_rd_provider ON requestDetails(provider)",
       "CREATE INDEX IF NOT EXISTS idx_rd_model ON requestDetails(model)",
       "CREATE INDEX IF NOT EXISTS idx_rd_conn ON requestDetails(connectionId)",
+      // Composite indexes for common filter patterns
+      "CREATE INDEX IF NOT EXISTS idx_rd_ts_provider ON requestDetails(timestamp DESC, provider)",
+      "CREATE INDEX IF NOT EXISTS idx_rd_ts_status ON requestDetails(timestamp DESC, status)",
+      "CREATE INDEX IF NOT EXISTS idx_rd_provider_ts ON requestDetails(provider, timestamp DESC)",
+      "CREATE INDEX IF NOT EXISTS idx_rd_status_ts ON requestDetails(status, timestamp DESC)",
     ],
   },
 };

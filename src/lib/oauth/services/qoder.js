@@ -58,7 +58,9 @@ export class QoderService {
    */
   generatePkcePair() {
     const verifier = base64Url(crypto.randomBytes(32));
-    const challenge = base64Url(crypto.createHash("sha256").update(verifier).digest());
+    const challenge = base64Url(
+      crypto.createHash("sha256").update(verifier).digest(),
+    );
     return { verifier, challenge };
   }
 
@@ -120,7 +122,8 @@ export class QoderService {
       let message = `Qoder device token poll failed: HTTP ${response.status}`;
       try {
         const body = JSON.parse(text);
-        if (body.message) message = `Qoder device token poll failed: ${body.message}`;
+        if (body.message)
+          message = `Qoder device token poll failed: ${body.message}`;
       } catch {}
       throw new Error(message);
     }
@@ -129,7 +132,9 @@ export class QoderService {
     try {
       body = JSON.parse(text);
     } catch (err) {
-      throw new Error(`Qoder device token poll: invalid JSON response (${err.message})`);
+      throw new Error(
+        `Qoder device token poll: invalid JSON response (${err.message})`,
+      );
     }
 
     // Defensive: 200 + empty token means the upstream changed shape.
@@ -192,7 +197,11 @@ export class QoderService {
    * Static so callers (and tests) can use it without instantiating.
    */
   static parseExpiry(expiresAt, expiresInSeconds) {
-    if (typeof expiresAt === "number" && Number.isFinite(expiresAt) && expiresAt > 0) {
+    if (
+      typeof expiresAt === "number" &&
+      Number.isFinite(expiresAt) &&
+      expiresAt > 0
+    ) {
       return expiresAt;
     }
     const trimmed = typeof expiresAt === "string" ? expiresAt.trim() : "";
@@ -208,7 +217,11 @@ export class QoderService {
     }
     // expiresInSeconds === 0 means "already expired"; honor that by returning
     // the current time rather than fabricating a 30-day default.
-    if (typeof expiresInSeconds === "number" && Number.isFinite(expiresInSeconds) && expiresInSeconds >= 0) {
+    if (
+      typeof expiresInSeconds === "number" &&
+      Number.isFinite(expiresInSeconds) &&
+      expiresInSeconds >= 0
+    ) {
       return Date.now() + expiresInSeconds * 1000;
     }
     return Date.now() + 30 * 24 * 60 * 60 * 1000;

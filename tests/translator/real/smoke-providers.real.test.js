@@ -18,7 +18,9 @@ const MAX_TOKENS = 32;
 const TIMEOUT_MS = 90000;
 // Optional comma-separated filter: REAL_PROVIDERS=kiro,codex,antigravity
 const PROVIDER_FILTER = (process.env.REAL_PROVIDERS || "")
-  .split(",").map((s) => s.trim()).filter(Boolean);
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 // Pick the first plain llm model for a provider (skip image/tts/embedding/etc).
 function firstLlmModel(providerId) {
@@ -54,14 +56,18 @@ describe.skipIf(!RUN_REAL).concurrent("REAL provider smoke", () => {
   });
 
   // One concurrent test per provider; resolved lazily inside the test.
-  for (const providerId of (RUN_REAL ? targetProviders() : [])) {
+  for (const providerId of RUN_REAL ? targetProviders() : []) {
     it.concurrent(
       `${providerId}: responds to a short prompt`,
       async () => {
         const model = firstLlmModel(providerId);
         if (!model) return expect(true).toBe(true); // no llm model → skip silently
 
-        const credentials = await getProviderCredentials(providerId, new Set(), model);
+        const credentials = await getProviderCredentials(
+          providerId,
+          new Set(),
+          model,
+        );
         if (!credentials || credentials.allRateLimited) {
           console.warn(`[skip] ${providerId}: no usable credential`);
           return expect(true).toBe(true);
@@ -73,7 +79,9 @@ describe.skipIf(!RUN_REAL).concurrent("REAL provider smoke", () => {
             model: `${providerId}/${model}`,
             stream: true,
             max_tokens: MAX_TOKENS,
-            messages: [{ role: "user", content: "Reply with the single word: hi" }],
+            messages: [
+              { role: "user", content: "Reply with the single word: hi" },
+            ],
           },
           modelInfo: { provider: providerId, model },
           credentials: refreshed,
@@ -82,20 +90,29 @@ describe.skipIf(!RUN_REAL).concurrent("REAL provider smoke", () => {
 
         if (!result.success) {
           // Account/quota/auth problems are credential issues, not translation bugs → skip.
-          const credIssue = [401, 402, 403, 429].includes(Number(result.status));
+          const credIssue = [401, 402, 403, 429].includes(
+            Number(result.status),
+          );
           if (credIssue) {
-            console.warn(`[skip] ${providerId}: ${result.status} (credential/quota)`);
+            console.warn(
+              `[skip] ${providerId}: ${result.status} (credential/quota)`,
+            );
             return expect(true).toBe(true);
           }
-          throw new Error(`${providerId} failed: ${result.status} ${result.error}`);
+          throw new Error(
+            `${providerId} failed: ${result.status} ${result.error}`,
+          );
         }
 
         const raw = await drainSSE(result.response);
         // Minimal sanity: got SSE data and a terminal signal or content.
         expect(raw.length, `${providerId}: empty response`).toBeGreaterThan(0);
-        expect(/data:|finish_reason|"delta"|"content"|event:/.test(raw), `${providerId}: not SSE`).toBe(true);
+        expect(
+          /data:|finish_reason|"delta"|"content"|event:/.test(raw),
+          `${providerId}: not SSE`,
+        ).toBe(true);
       },
-      TIMEOUT_MS
+      TIMEOUT_MS,
     );
   }
 });
@@ -112,10 +129,15 @@ function targetProviders() {
       ? path.join(process.env.DATA_DIR, "db", "data.sqlite")
       : path.join(os.homedir(), ".9router", "db", "data.sqlite");
     const db = new Database(dbPath, { readonly: true });
-    const rows = db.prepare("SELECT DISTINCT provider FROM providerConnections WHERE isActive = 1").all();
+    const rows = db
+      .prepare(
+        "SELECT DISTINCT provider FROM providerConnections WHERE isActive = 1",
+      )
+      .all();
     db.close();
     let list = rows.map((r) => r.provider).sort();
-    if (PROVIDER_FILTER.length) list = list.filter((p) => PROVIDER_FILTER.includes(p));
+    if (PROVIDER_FILTER.length)
+      list = list.filter((p) => PROVIDER_FILTER.includes(p));
     return list;
   } catch {
     return [];

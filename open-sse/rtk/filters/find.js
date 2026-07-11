@@ -3,13 +3,14 @@
 import { FIND_PER_DIR_MAX, FIND_TOTAL_DIR_MAX } from "../constants.js";
 
 export function find(input) {
-  const lines = input.split("\n").filter(l => l.trim());
+  const lines = input.split("\n").filter((l) => l.trim());
   if (lines.length === 0) return input;
 
   const byDir = new Map();
 
   for (const path of lines) {
-    // Accept both Unix ("/a/b") and Windows ("C:\a\b") separators
+    // Accept both Unix ("/a/b") and Windows ("C:\a\b") separators.
+    // See upstream fix d75471bbb.
     const lastSep = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
     let dir;
     let basename;
@@ -32,16 +33,16 @@ export function find(input) {
   const showDirs = dirs.slice(0, FIND_TOTAL_DIR_MAX);
   for (const dir of showDirs) {
     const files = byDir.get(dir);
-    const dirLabel = dir.replace(/\\/g, "/");
-    out += `${dirLabel}/  (${files.length})\n`;
+    out += `${dir}/ (${files.length}):\n`;
     const showFiles = files.slice(0, FIND_PER_DIR_MAX);
     for (const f of showFiles) out += `  ${f}\n`;
     if (files.length > FIND_PER_DIR_MAX) {
       out += `  +${files.length - FIND_PER_DIR_MAX}\n`;
     }
+    out += "\n";
   }
   if (dirs.length > FIND_TOTAL_DIR_MAX) {
-    out += `\n+${dirs.length - FIND_TOTAL_DIR_MAX} more dirs\n`;
+    out += `+${dirs.length - FIND_TOTAL_DIR_MAX} more dirs\n`;
   }
 
   return out;

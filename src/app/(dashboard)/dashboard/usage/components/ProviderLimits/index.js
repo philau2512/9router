@@ -4,98 +4,232 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import QuotaTable from "./QuotaTable";
 import Toggle from "@/shared/components/Toggle";
-import Tooltip from "@/shared/components/Tooltip";
-import {
-  parseQuotaData,
-  calculatePercentage,
-  getConnectionLabel,
-  getConnectionQuotaRemaining,
-  sortVisibleConnections,
-  buildLoadingState,
-  filterQuotaStateByConnections,
-  getConnectionsEmptyMessage,
-  getPageSizeLabel,
-  getConnectionsPaginationSummary,
-  getSafePagination,
-  getSafeTotals,
-  shouldResetPage,
-  getPaginationPageValue,
-  getProviderOptions,
-  reconcileConnectionsPage,
-  getQuotaCache,
-  setQuotaCache,
-  QUOTA_CACHE_KEY,
-  REFRESH_INTERVAL_MS,
-  CLAUDE_REFRESH_INTERVAL_MS,
-  DEPLETED_QUOTA_THRESHOLD,
-  AUTO_REFRESH_STORAGE_KEY,
-  CONNECTIONS_PAGE_SIZE,
-  ACCOUNT_PAGE_SIZE_OPTIONS,
-  ACCOUNT_PAGE_SIZE_MAX,
-  ACCOUNT_FILTER_OPTIONS,
-  QUOTA_SORT_OPTIONS,
-} from "./utils";
+import { parseQuotaData, calculatePercentage } from "./utils";
 import Card from "@/shared/components/Card";
-import { ConfirmModal, EditConnectionModal } from "@/shared/components";
+import { EditConnectionModal } from "@/shared/components";
+import Tooltip from "@/shared/components/Tooltip";
 import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
-import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 
-// Maps the stored providerSpecificData.authMethod to a human label for Kiro.
-// Values come from the Kiro connect flows: builder-id/idc (device code),
-// google/github (social), imported (refresh-token paste), api_key (headless).
-const KIRO_METHOD_LABELS = {
-  "builder-id": "AWS Builder ID",
-  idc: "IAM Identity Center",
-  google: "Google",
-  github: "GitHub",
-  imported: "Imported Token",
-  api_key: "API Key",
-};
-
-const AUTO_PING_SETTINGS_KEYS = {
-  claude: "claudeAutoPing",
-  codex: "codexAutoPing",
-};
-
-const AUTO_PING_TOOLTIPS = {
-  claude: "When your 5h quota runs out, auto-sends a request the moment it resets so a new window starts right away.",
-  codex: "Auto-starts the next 5h Codex window after reset by sending a tiny gpt-5.5 request. Consumes a small amount of quota.",
-};
-
-function kiroMethodLabel(conn) {
-  const m = conn.providerSpecificData?.authMethod;
-  if (m && KIRO_METHOD_LABELS[m]) return KIRO_METHOD_LABELS[m];
-  return conn.authType === "api_key" ? "API Key" : "OAuth";
+function getConnectionLabel(connection) {
+  const isEmail = (value) =>
+    typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  if (isEmail(connection.email)) return connection.email;
+  if (isEmail(connection.name)) return connection.name;
+  return connection.name;
 }
 
-function getConnectionSecondaryLabel(connection) {
-  if (connection.name?.trim() && connection.email?.trim() && connection.name.trim() !== connection.email.trim()) {
-    return connection.email.trim();
+function getConnectionQuotaRemaining(connection, quotaData) {
+  const quota = quotaData[connection.id]?.quotas?.[0];
+  if (!quota) return Number.POSITIVE_INFINITY;
+  if (typeof quota.remaining === "number") return quota.remaining;
+  return Number.POSITIVE_INFINITY;
+}
+
+function sortVisibleConnections(
+  connections,
+  quotaData,
+  expiringFirst,
+  providerFilter,
+  quotaSortMode,
+) {
+  if (providerFilter === "codex" && quotaSortMode !== "default") {
+    return [...connections].sort((a, b) => {
+      const remainingA = getConnectionQuotaRemaining(a, quotaData);
+      const remainingB = getConnectionQuotaRemaining(b, quotaData);
+      const remainingDiff =
+        quotaSortMode === "remaining-asc"
+          ? remainingA - remainingB
+          : remainingB - remainingA;
+
+      if (remainingDiff !== 0) return remainingDiff;
+      return (getConnectionLabel(a) || "").localeCompare(
+        getConnectionLabel(b) || "",
+      );
+    });
   }
 
-  if (connection.name?.trim() && connection.displayName?.trim() && connection.name.trim() !== connection.displayName.trim()) {
-    return connection.displayName.trim();
+  if (!expiringFirst) {
+    return [...connections].sort((a, b) => {
+      const priorityA = a.priority ?? Number.MAX_SAFE_INTEGER;
+      const priorityB = b.priority ?? Number.MAX_SAFE_INTEGER;
+      if (priorityA !== priorityB) return priorityA - priorityB;
+      return (
+        (a.provider || "").localeCompare(b.provider || "") ||
+        (getConnectionLabel(a) || "").localeCompare(getConnectionLabel(b) || "")
+      );
+    });
   }
 
-  return null;
+  const getEarliestResetTime = (connection) => {
+    const resetTimes = (quotaData[connection.id]?.quotas || [])
+      .map((quota) =>
+        quota.resetAt
+          ? new Date(quota.resetAt).getTime()
+          : Number.POSITIVE_INFINITY,
+      )
+      .filter((time) => Number.isFinite(time));
+    return resetTimes.length > 0
+      ? Math.min(...resetTimes)
+      : Number.POSITIVE_INFINITY;
+  };
+
+  return [...connections].sort((a, b) => {
+    const expiryDiff = getEarliestResetTime(a) - getEarliestResetTime(b);
+    if (expiryDiff !== 0) return expiryDiff;
+    return (
+      (a.provider || "").localeCompare(b.provider || "") ||
+      (getConnectionLabel(a) || "").localeCompare(getConnectionLabel(b) || "")
+    );
+  });
 }
 
-// Region is stored for builder-id/idc/api_key flows; social and imported flows
-// omit it, so fall back to the region segment of the profileArn
-// (arn:aws:codewhisperer:<region>:...).
-function kiroRegion(conn) {
-  const r = conn.providerSpecificData?.region;
-  if (r) return r;
-  const arn = conn.providerSpecificData?.profileArn;
-  const seg = typeof arn === "string" ? arn.split(":")[3] : "";
-  return seg || "";
+function buildLoadingState(connections) {
+  const nextLoadingState = {};
+  connections.forEach((connection) => {
+    nextLoadingState[connection.id] = true;
+  });
+  return nextLoadingState;
 }
 
-function getCodexResetCreditCount(quota) {
-  const value = quota?.raw?.resetCredits?.availableCount;
-  const count = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(count) ? Math.max(0, count) : 0;
+function filterQuotaStateByConnections(state, connections) {
+  const visibleIds = new Set(connections.map((connection) => connection.id));
+  return Object.fromEntries(
+    Object.entries(state).filter(([id]) => visibleIds.has(id)),
+  );
 }
+
+function getConnectionsPageRange(pagination) {
+  if (!pagination.total) {
+    return { start: 0, end: 0 };
+  }
+
+  const start = (pagination.page - 1) * pagination.pageSize + 1;
+  const end = Math.min(pagination.page * pagination.pageSize, pagination.total);
+  return { start, end };
+}
+
+function getConnectionsEmptyMessage(totals, providerFilter, accountFilter) {
+  if (!totals.eligibleConnections) {
+    return {
+      icon: "cloud_off",
+      title: "No Providers Connected",
+      description:
+        "Connect to providers with OAuth to track your API quota limits and usage.",
+    };
+  }
+
+  if (!totals.providerFilteredConnections) {
+    return {
+      icon: "filter_alt_off",
+      title: "No Accounts Match Current Filters",
+      description:
+        providerFilter === "all"
+          ? "Try changing the account status filter to see more quota trackers."
+          : `No ${accountFilter === "inactive" ? "turned off" : accountFilter === "active" ? "active" : "matching"} accounts found for ${providerFilter}.`,
+    };
+  }
+
+  return {
+    icon: "filter_alt_off",
+    title: "No Accounts On This Page",
+    description:
+      "Try moving to another page or refreshing the current filters.",
+  };
+}
+
+function sortRequestFromExpiringFirst(expiringFirst) {
+  return expiringFirst ? "expiring" : "priority";
+}
+
+function getPageSizeLabel(pageSize, isCustomPageSize) {
+  return isCustomPageSize ? `Custom: ${pageSize} / page` : `${pageSize} / page`;
+}
+
+function getConnectionsPaginationSummary(pagination) {
+  const { start, end } = getConnectionsPageRange(pagination);
+  return `Showing ${start}-${end} of ${pagination.total}`;
+}
+
+function getSafePagination(pagination, fallbackPageSize) {
+  return (
+    pagination || {
+      page: 1,
+      pageSize: fallbackPageSize,
+      total: 0,
+      totalPages: 1,
+    }
+  );
+}
+
+function getSafeTotals(totals, fallbackTotal = 0) {
+  return (
+    totals || {
+      eligibleConnections: fallbackTotal,
+      providerFilteredConnections: fallbackTotal,
+    }
+  );
+}
+
+function shouldResetPage(previousValue, nextValue) {
+  return previousValue !== nextValue;
+}
+
+function getPaginationPageValue(dataPagination, fallbackPage) {
+  return dataPagination?.page || fallbackPage;
+}
+
+function getProviderOptions(dataProviderOptions) {
+  return dataProviderOptions || [];
+}
+
+async function reconcileConnectionsPage(fetchConnections, targetPage) {
+  const nextConnections = await fetchConnections(targetPage);
+  return nextConnections;
+}
+
+const QUOTA_CACHE_KEY = "quotaCacheData";
+
+function getQuotaCache() {
+  if (typeof window === "undefined") return {};
+  try {
+    const cached = window.localStorage.getItem(QUOTA_CACHE_KEY);
+    return cached ? JSON.parse(cached) : {};
+  } catch (error) {
+    console.error("Error reading quota cache:", error);
+    return {};
+  }
+}
+
+function setQuotaCache(connectionId, quotaEntry) {
+  if (typeof window === "undefined") return;
+  try {
+    const cache = getQuotaCache();
+    cache[connectionId] = {
+      ...quotaEntry,
+      cachedAt: new Date().toISOString(),
+    };
+    window.localStorage.setItem(QUOTA_CACHE_KEY, JSON.stringify(cache));
+  } catch (error) {
+    console.error("Error writing quota cache:", error);
+  }
+}
+
+const REFRESH_INTERVAL_MS = 60000; // 60 seconds
+const DEPLETED_QUOTA_THRESHOLD = 5; // percent
+const AUTO_REFRESH_STORAGE_KEY = "quotaAutoRefresh";
+const ACCOUNT_FILTER_OPTIONS = [
+  { value: "all", label: "All accounts" },
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Turned off" },
+];
+const QUOTA_SORT_OPTIONS = [
+  { value: "default", label: "Default quota order" },
+  { value: "remaining-asc", label: "% quota: low to high" },
+  { value: "remaining-desc", label: "% quota: high to low" },
+];
+const CONNECTIONS_PAGE_SIZE = 20;
+const ACCOUNT_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+const ACCOUNT_PAGE_SIZE_MAX = 500;
 
 function formatCreditDate(value) {
   if (!value) return "N/A";
@@ -122,13 +256,11 @@ function formatTimeRemaining(value) {
 }
 
 export default function ProviderLimits() {
-  const { copied, copy } = useCopyToClipboard();
   const [connections, setConnections] = useState([]);
   const [quotaData, setQuotaData] = useState({});
   const [loading, setLoading] = useState({});
   const [errors, setErrors] = useState({});
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [autoPingMaps, setAutoPingMaps] = useState({ claude: {}, codex: {} });
   const [lastUpdated, setLastUpdated] = useState(null);
   const [hasHydratedAutoRefresh, setHasHydratedAutoRefresh] = useState(false);
   const [refreshingAll, setRefreshingAll] = useState(false);
@@ -136,8 +268,6 @@ export default function ProviderLimits() {
   const [connectionsLoading, setConnectionsLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
-  const [resettingLimitId, setResettingLimitId] = useState(null);
-  const [resetConfirmState, setResetConfirmState] = useState(null);
   const [resetCreditsState, setResetCreditsState] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedConnection, setSelectedConnection] = useState(null);
@@ -167,7 +297,6 @@ export default function ProviderLimits() {
 
   const intervalRef = useRef(null);
   const countdownRef = useRef(null);
-  const tickCountRef = useRef(0);
 
   const fetchConnections = useCallback(
     async (targetPage = page) => {
@@ -208,7 +337,7 @@ export default function ProviderLimits() {
         return [];
       }
     },
-    [accountFilter, expiringFirst, page, pageSize, providerFilter],
+    [accountFilter, page, pageSize, providerFilter],
   );
 
   // Fetch quota for a specific connection
@@ -297,52 +426,6 @@ export default function ProviderLimits() {
     [fetchQuota],
   );
 
-  const handleResetCodexLimit = useCallback(
-    async (connectionId, provider) => {
-      if (provider !== "codex" || resettingLimitId) return;
-
-      setResettingLimitId(connectionId);
-      setErrors((prev) => ({ ...prev, [connectionId]: null }));
-
-      try {
-        const response = await fetch(`/api/usage/${connectionId}/codex-reset-credits`, { method: "POST" });
-        const result = await response.json().catch(() => ({}));
-
-        if (!response.ok) {
-          throw new Error(result.message || result.error || result.code || "Failed to reset Codex limit");
-        }
-
-        await fetchQuota(connectionId, provider);
-        setLastUpdated(new Date());
-      } catch (error) {
-        setErrors((prev) => ({ ...prev, [connectionId]: error.message || "Failed to reset Codex limit" }));
-      } finally {
-        setResettingLimitId(null);
-      }
-    },
-    [fetchQuota, resettingLimitId],
-  );
-
-  const handleViewCodexResetCredits = useCallback(async (connection) => {
-    setResetCreditsState({ connection, loading: true, error: null, data: null });
-    try {
-      const response = await fetch(`/api/usage/${connection.id}/codex-reset-credits`, { cache: "no-store" });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(result.error || result.message || "Failed to load Codex reset credits");
-      }
-      const credits = Array.isArray(result.credits) ? [...result.credits] : [];
-      credits.sort((a, b) => {
-        const aTime = a.expiresAt ? new Date(a.expiresAt).getTime() : Number.POSITIVE_INFINITY;
-        const bTime = b.expiresAt ? new Date(b.expiresAt).getTime() : Number.POSITIVE_INFINITY;
-        return aTime - bTime;
-      });
-      setResetCreditsState({ connection, loading: false, error: null, data: { ...result, credits } });
-    } catch (error) {
-      setResetCreditsState({ connection, loading: false, error: error.message || "Failed to load Codex reset credits", data: null });
-    }
-  }, []);
-
   const handleDeleteConnection = useCallback(
     async (id) => {
       if (!confirm("Delete this connection?")) return;
@@ -391,6 +474,52 @@ export default function ProviderLimits() {
     },
     [fetchConnections, page],
   );
+
+  const handleViewCodexResetCredits = useCallback(async (connection) => {
+    setResetCreditsState({
+      connection,
+      loading: true,
+      error: null,
+      data: null,
+    });
+    try {
+      const response = await fetch(
+        `/api/usage/${connection.id}/codex-reset-credits`,
+        { cache: "no-store" },
+      );
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          result.error ||
+            result.message ||
+            "Failed to load Codex reset credits",
+        );
+      }
+      const credits = Array.isArray(result.credits) ? [...result.credits] : [];
+      credits.sort((a, b) => {
+        const aTime = a.expiresAt
+          ? new Date(a.expiresAt).getTime()
+          : Number.POSITIVE_INFINITY;
+        const bTime = b.expiresAt
+          ? new Date(b.expiresAt).getTime()
+          : Number.POSITIVE_INFINITY;
+        return aTime - bTime;
+      });
+      setResetCreditsState({
+        connection,
+        loading: false,
+        error: null,
+        data: { ...result, credits },
+      });
+    } catch (error) {
+      setResetCreditsState({
+        connection,
+        loading: false,
+        error: error.message || "Failed to load Codex reset credits",
+        data: null,
+      });
+    }
+  }, []);
 
   const handleToggleConnectionActive = useCallback(
     async (id, isActive) => {
@@ -458,17 +587,11 @@ export default function ProviderLimits() {
     };
   }, []);
 
-  const refreshAll = useCallback(async (force = false) => {
+  const refreshAll = useCallback(async () => {
     if (refreshingAll) return;
 
     setRefreshingAll(true);
     setCountdown(60);
-
-    // Throttle Claude: poll its quota every Nth auto-tick (manual force bypasses)
-    const tick = (tickCountRef.current += 1);
-    const claudeEvery = Math.round(CLAUDE_REFRESH_INTERVAL_MS / REFRESH_INTERVAL_MS);
-    const shouldFetch = (conn) =>
-      force || conn.provider !== "claude" || tick % claudeEvery === 0;
 
     try {
       const visibleConnections = await fetchConnections(page);
@@ -482,9 +605,7 @@ export default function ProviderLimits() {
       );
 
       await Promise.all(
-        visibleConnections
-          .filter(shouldFetch)
-          .map((conn) => fetchQuota(conn.id, conn.provider)),
+        visibleConnections.map((conn) => fetchQuota(conn.id, conn.provider)),
       );
 
       setLastUpdated(new Date());
@@ -501,19 +622,62 @@ export default function ProviderLimits() {
       const visibleConnections = await fetchConnections(page);
       setConnectionsLoading(false);
 
-      // Always fetch fresh quota on mount, no cache display
-      setLoading(buildLoadingState(visibleConnections));
-      setErrors((prev) =>
-        filterQuotaStateByConnections(prev, visibleConnections),
-      );
-      setQuotaData((prev) =>
-        filterQuotaStateByConnections(prev, visibleConnections),
-      );
+      const cache = getQuotaCache();
+      const nextLoading = {};
+      const cachedQuotas = {};
+      const connectionsToFetch = [];
+      let latestCachedAt = null;
 
-      await Promise.all(
-        visibleConnections.map((conn) => fetchQuota(conn.id, conn.provider)),
-      );
-      setLastUpdated(new Date());
+      visibleConnections.forEach((conn) => {
+        const cachedEntry = cache[conn.id];
+        if (cachedEntry) {
+          nextLoading[conn.id] = false;
+          cachedQuotas[conn.id] = {
+            quotas: cachedEntry.quotas,
+            plan: cachedEntry.plan,
+            message: cachedEntry.message,
+            raw: cachedEntry.raw,
+          };
+          if (cachedEntry.cachedAt) {
+            const cachedTime = new Date(cachedEntry.cachedAt);
+            if (!latestCachedAt || cachedTime > latestCachedAt) {
+              latestCachedAt = cachedTime;
+            }
+          }
+        } else {
+          nextLoading[conn.id] = true;
+          connectionsToFetch.push(conn);
+        }
+      });
+
+      setLoading(nextLoading);
+      setErrors((prev) => {
+        const nextErrors = filterQuotaStateByConnections(
+          prev,
+          visibleConnections,
+        );
+        visibleConnections.forEach((conn) => {
+          if (cache[conn.id]) {
+            nextErrors[conn.id] = null;
+          }
+        });
+        return nextErrors;
+      });
+      setQuotaData((prev) => ({
+        ...filterQuotaStateByConnections(prev, visibleConnections),
+        ...cachedQuotas,
+      }));
+
+      if (latestCachedAt) {
+        setLastUpdated(latestCachedAt);
+      }
+
+      if (connectionsToFetch.length > 0) {
+        await Promise.all(
+          connectionsToFetch.map((conn) => fetchQuota(conn.id, conn.provider)),
+        );
+        setLastUpdated(new Date());
+      }
     };
 
     initializeData();
@@ -531,39 +695,6 @@ export default function ProviderLimits() {
     if (typeof window === "undefined" || !hasHydratedAutoRefresh) return;
     window.localStorage.setItem(AUTO_REFRESH_STORAGE_KEY, String(autoRefresh));
   }, [autoRefresh, hasHydratedAutoRefresh]);
-
-  // Load auto-ping per-connection maps
-  useEffect(() => {
-    fetch("/api/settings", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : {}))
-      .then((s) => setAutoPingMaps({
-        claude: s?.claudeAutoPing?.connections || {},
-        codex: s?.codexAutoPing?.connections || {},
-      }))
-      .catch(() => {});
-  }, []);
-
-  const toggleAutoPing = useCallback(async (connectionId, provider, on) => {
-    const settingsKey = AUTO_PING_SETTINGS_KEYS[provider];
-    if (!settingsKey) return;
-
-    const previous = autoPingMaps;
-    const nextProviderMap = { ...(autoPingMaps[provider] || {}), [connectionId]: on };
-    const nextMaps = { ...autoPingMaps, [provider]: nextProviderMap };
-    setAutoPingMaps(nextMaps);
-    try {
-      const r = await fetch("/api/settings", { cache: "no-store" });
-      const s = r.ok ? await r.json() : {};
-      const cfg = { ...(s[settingsKey] || {}), connections: nextProviderMap };
-      await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [settingsKey]: cfg }),
-      });
-    } catch {
-      setAutoPingMaps(previous);
-    }
-  }, [autoPingMaps]);
 
   // Auto-refresh interval
   useEffect(() => {
@@ -612,7 +743,7 @@ export default function ProviderLimits() {
         }
       } else if (autoRefresh && hasHydratedAutoRefresh) {
         // Resume auto-refresh when tab becomes visible
-        intervalRef.current = setInterval(() => refreshAll(), REFRESH_INTERVAL_MS);
+        intervalRef.current = setInterval(refreshAll, REFRESH_INTERVAL_MS);
         countdownRef.current = setInterval(() => {
           setCountdown((prev) => (prev <= 1 ? 60 : prev - 1));
         }, 1000);
@@ -711,24 +842,6 @@ export default function ProviderLimits() {
           <p className="mt-2 text-sm text-text-muted max-w-md mx-auto">
             Connect to providers with OAuth to track your API quota limits and
             usage.
-          </p>
-        </div>
-      </Card>
-    );
-  }
-
-  if (!connectionsLoading && !hasVisibleConnections) {
-    return (
-      <Card padding="lg">
-        <div className="text-center py-12">
-          <span className="material-symbols-outlined text-[64px] text-text-muted opacity-20">
-            {emptyState.icon}
-          </span>
-          <h3 className="mt-4 text-lg font-semibold text-text-primary">
-            {emptyState.title}
-          </h3>
-          <p className="mt-2 text-sm text-text-muted max-w-md mx-auto">
-            {emptyState.description}
           </p>
         </div>
       </Card>
@@ -935,11 +1048,10 @@ export default function ProviderLimits() {
             )}
           </button>
 
-
           {/* Refresh all button */}
           <button
             type="button"
-            onClick={() => refreshAll(true)}
+            onClick={refreshAll}
             disabled={refreshingAll}
             className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-black/10 px-2 text-xs text-text-primary transition-colors hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/5 disabled:opacity-50"
             title="Refresh all"
@@ -961,127 +1073,62 @@ export default function ProviderLimits() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {sortedConnections.map((conn) => {
-          const quota = quotaData[conn.id];
-          const isLoading = loading[conn.id];
-          const error = errors[conn.id];
+      {hasVisibleConnections ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {sortedConnections.map((conn) => {
+            const quota = quotaData[conn.id];
+            const isLoading = loading[conn.id];
+            const error = errors[conn.id];
 
-          // Use table layout for all providers
-          const isInactive = conn.isActive === false;
-          const isCodex = conn.provider === "codex";
-          const resetCreditCount = getCodexResetCreditCount(quota);
-          const isResettingLimit = resettingLimitId === conn.id;
-          const rowBusy = deletingId === conn.id || togglingId === conn.id || isResettingLimit;
+            // Use table layout for all providers
+            const isInactive = conn.isActive === false;
+            const rowBusy = deletingId === conn.id || togglingId === conn.id;
 
-          return (
-            <Card
-              key={conn.id}
-              padding="none"
-              className={`min-w-0 ${isInactive ? "opacity-60" : ""}`}
-            >
-              <div className="px-3 py-2 border-b border-black/10 dark:border-white/10">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-8 h-8 shrink-0 rounded-md flex items-center justify-center overflow-hidden">
-                      <ProviderIcon
-                        src={`/providers/${conn.provider}.png`}
-                        alt={conn.provider}
-                        size={32}
-                        className="object-contain"
-                        fallbackText={
-                          conn.provider?.slice(0, 2).toUpperCase() || "PR"
-                        }
-                      />
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="text-sm font-semibold text-text-primary capitalize truncate">
-                        {conn.provider}
-                      </h3>
-                      {getConnectionLabel(conn) ? (
-                        <p className="text-xs text-text-muted truncate">
-                          {getConnectionLabel(conn)}
-                        </p>
-                      ) : null}
-                      {getConnectionSecondaryLabel(conn) ? (
-                        <p className="text-[11px] text-text-muted/80 truncate">
-                          {getConnectionSecondaryLabel(conn)}
-                        </p>
-                      ) : null}
-                      {conn.provider === "kiro" && (
-                        <div className="mt-1 flex flex-wrap items-center gap-1">
-                          <span className="rounded-full bg-brand-500/10 px-2 py-0.5 text-[10px] font-semibold text-brand-600 dark:text-brand-300">
-                            {kiroMethodLabel(conn)}
-                          </span>
-                          {kiroRegion(conn) && (
-                            <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400">
-                              {kiroRegion(conn)}
-                            </span>
-                          )}
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                              isInactive
-                                ? "bg-surface-2 text-text-muted"
-                                : conn.testStatus === "active" || conn.testStatus === "success"
-                                  ? "bg-green-500/10 text-green-600 dark:text-green-400"
-                                  : conn.testStatus === "error" || conn.testStatus === "expired" || conn.testStatus === "unavailable"
-                                    ? "bg-red-500/10 text-red-600 dark:text-red-400"
-                                    : "bg-surface-2 text-text-muted"
-                            }`}
-                          >
-                            {isInactive ? "disabled" : conn.testStatus || "unknown"}
-                          </span>
-                          {conn.providerSpecificData?.profileArn && (
-                            <button
-                              type="button"
-                              onClick={() => copy(conn.providerSpecificData.profileArn, conn.id)}
-                              title={conn.providerSpecificData.profileArn}
-                              className="inline-flex max-w-full items-center gap-1 rounded-full border border-border-subtle px-2 py-0.5 text-[10px] text-text-muted transition-colors hover:text-primary"
-                            >
-                              <span className="material-symbols-outlined text-[12px]">
-                                {copied === conn.id ? "check" : "content_copy"}
-                              </span>
-                              <code className="truncate font-mono">
-                                {conn.providerSpecificData.profileArn}
-                              </code>
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1 shrink-0">
-                    {isCodex && (
-                      <>
-                        <Tooltip
-                          text={
-                            resetCreditCount > 0
-                              ? `Use one Codex reset credit. Available: ${resetCreditCount}`
-                              : "No Codex reset credits available"
+            return (
+              <Card
+                key={conn.id}
+                padding="none"
+                className={`min-w-0 ${isInactive ? "opacity-60" : ""}`}
+              >
+                <div className="px-3 py-2 border-b border-black/10 dark:border-white/10">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-8 h-8 shrink-0 rounded-md flex items-center justify-center overflow-hidden">
+                        <ProviderIcon
+                          src={`/providers/${conn.provider}.png`}
+                          alt={conn.provider}
+                          size={32}
+                          className="object-contain"
+                          fallbackText={
+                            conn.provider?.slice(0, 2).toUpperCase() || "PR"
                           }
-                        >
-                          <button
-                            type="button"
-                            onClick={() => setResetConfirmState({ connection: conn, resetCreditCount })}
-                            disabled={resetCreditCount <= 0 || isLoading || rowBusy}
-                            aria-label={
-                              resetCreditCount > 0
-                                ? `Use one Codex reset credit. ${resetCreditCount} available.`
-                                : "No Codex reset credits available"
-                            }
-                            className={`flex h-8 min-w-10 items-center justify-center gap-1 rounded-lg border px-2 text-[11px] font-medium tabular-nums transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary/60 disabled:cursor-not-allowed disabled:opacity-60 ${
-                              resetCreditCount > 0
-                                ? "border-primary/30 bg-primary/5 text-primary hover:bg-primary/10"
-                                : "border-black/10 bg-black/[0.02] text-text-muted dark:border-white/10 dark:bg-white/[0.03]"
-                            }`}
-                          >
-                            <span className={`material-symbols-outlined text-[15px] ${isResettingLimit ? "animate-spin" : ""}`}>
-                              {isResettingLimit ? "progress_activity" : "restart_alt"}
-                            </span>
-                            <span>{resetCreditCount}</span>
-                          </button>
-                        </Tooltip>
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <h3 className="text-sm font-semibold text-text-primary capitalize truncate">
+                            {conn.provider}
+                          </h3>
+                          {conn.priority !== undefined &&
+                            conn.priority !== null && (
+                              <span
+                                className="shrink-0 rounded bg-black/5 px-1.5 py-0.5 text-[10px] font-medium text-text-muted dark:bg-white/5"
+                                title={`Priority: ${conn.priority}`}
+                              >
+                                #{conn.priority}
+                              </span>
+                            )}
+                        </div>
+                        {getConnectionLabel(conn) ? (
+                          <p className="text-xs text-text-muted truncate">
+                            {getConnectionLabel(conn)}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {conn.provider === "codex" && (
                         <Tooltip text="View Codex reset credit expiry">
                           <button
                             type="button"
@@ -1090,30 +1137,19 @@ export default function ProviderLimits() {
                             aria-label="View Codex reset credit expiry"
                             className="flex h-8 w-8 items-center justify-center rounded-lg border border-black/10 text-text-muted transition-colors hover:bg-black/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/5"
                           >
-                            <span className="material-symbols-outlined text-[17px]">schedule</span>
+                            <span className="material-symbols-outlined text-[17px]">
+                              schedule
+                            </span>
                           </button>
                         </Tooltip>
-                      </>
-                    )}
-                    {AUTO_PING_SETTINGS_KEYS[conn.provider] && conn.authType === "oauth" && (
-                      <Tooltip text={AUTO_PING_TOOLTIPS[conn.provider]}>
-                        <button
-                          type="button"
-                          onClick={() => toggleAutoPing(conn.id, conn.provider, !(autoPingMaps[conn.provider]?.[conn.id] === true))}
-                          aria-label="Toggle auto-ping"
-                          className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${autoPingMaps[conn.provider]?.[conn.id] === true ? "text-primary" : "text-text-muted"}`}
-                        >
-                          <span className="material-symbols-outlined text-[18px]">bolt</span>
-                        </button>
-                      </Tooltip>
-                    )}
-                    <Tooltip text="Refresh quota">
+                      )}
                       <button
                         type="button"
                         onClick={() => refreshProvider(conn.id, conn.provider)}
                         disabled={isLoading || rowBusy}
                         aria-label="Refresh quota"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors disabled:opacity-50"
+                        className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors disabled:opacity-50"
+                        title="Refresh quota"
                       >
                         <span
                           className={`material-symbols-outlined text-[18px] text-text-muted ${isLoading ? "animate-spin" : ""}`}
@@ -1121,8 +1157,6 @@ export default function ProviderLimits() {
                           refresh
                         </span>
                       </button>
-                    </Tooltip>
-                    <Tooltip text="Edit connection">
                       <button
                         type="button"
                         onClick={() => {
@@ -1131,20 +1165,20 @@ export default function ProviderLimits() {
                         }}
                         disabled={rowBusy}
                         aria-label="Edit connection"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-text-muted hover:text-primary transition-colors disabled:opacity-50"
+                        className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-text-muted hover:text-primary transition-colors disabled:opacity-50"
+                        title="Edit connection"
                       >
                         <span className="material-symbols-outlined text-[18px]">
                           edit
                         </span>
                       </button>
-                    </Tooltip>
-                    <Tooltip text="Delete connection">
                       <button
                         type="button"
                         onClick={() => handleDeleteConnection(conn.id)}
                         disabled={rowBusy}
                         aria-label="Delete connection"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-red-500/10 text-red-500 transition-colors disabled:opacity-50"
+                        className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500 transition-colors disabled:opacity-50"
+                        title="Delete connection"
                       >
                         <span
                           className={`material-symbols-outlined text-[18px] ${deletingId === conn.id ? "animate-pulse" : ""}`}
@@ -1152,273 +1186,307 @@ export default function ProviderLimits() {
                           delete
                         </span>
                       </button>
-                    </Tooltip>
-                    <div
-                      className="inline-flex items-center pl-0.5"
-                      title={
-                        (conn.isActive ?? true)
-                          ? "Disable connection"
-                          : "Enable connection"
-                      }
-                    >
-                      <Toggle
-                        size="sm"
-                        checked={conn.isActive ?? true}
-                        disabled={rowBusy}
-                        onChange={(nextActive) =>
-                          handleToggleConnectionActive(conn.id, nextActive)
+                      <div
+                        className="inline-flex items-center pl-0.5"
+                        title={
+                          (conn.isActive ?? true)
+                            ? "Disable connection"
+                            : "Enable connection"
                         }
-                      />
+                      >
+                        <Toggle
+                          size="sm"
+                          checked={conn.isActive ?? true}
+                          disabled={rowBusy}
+                          onChange={(nextActive) =>
+                            handleToggleConnectionActive(conn.id, nextActive)
+                          }
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="px-2 py-1.5">
-                {isLoading ? (
-                  <div className="text-center py-5 text-text-muted">
-                    <span className="material-symbols-outlined text-[28px] animate-spin">
-                      progress_activity
-                    </span>
+                <div className="px-2 py-1.5">
+                  {isLoading ? (
+                    <div className="text-center py-5 text-text-muted">
+                      <span className="material-symbols-outlined text-[28px] animate-spin">
+                        progress_activity
+                      </span>
+                    </div>
+                  ) : error ? (
+                    <div className="text-center py-5">
+                      <span className="material-symbols-outlined text-[28px] text-red-500">
+                        error
+                      </span>
+                      <p className="mt-1.5 text-xs text-text-muted">{error}</p>
+                    </div>
+                  ) : quota?.message ? (
+                    <div className="text-center py-5">
+                      <p className="text-xs text-text-muted">{quota.message}</p>
+                    </div>
+                  ) : (
+                    <QuotaTable
+                      quotas={quota?.quotas}
+                      compact
+                      sortMode="default"
+                      showSortLabel={
+                        conn.provider === "codex" && quotaSortMode !== "default"
+                      }
+                    />
+                  )}
+                </div>
+
+                {conn.lastError && (
+                  <div className="px-3 pb-2.5">
+                    <div className="p-2 rounded-lg bg-red-500/5 border border-red-500/10 text-xs text-red-600 dark:text-red-400 flex items-start gap-1.5 break-words">
+                      <span className="material-symbols-outlined text-[14px] shrink-0 mt-0.5">
+                        error
+                      </span>
+                      <div className="min-w-0">
+                        <span className="font-semibold">Last Error: </span>
+                        {conn.lastError}
+                        {conn.lastErrorAt && (
+                          <span className="text-[10px] text-text-muted dark:text-text-muted/80 block mt-0.5">
+                            {new Date(conn.lastErrorAt).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                ) : error ? (
-                  <div className="text-center py-5">
-                    <span className="material-symbols-outlined text-[28px] text-red-500">
-                      error
-                    </span>
-                    <p className="mt-1.5 text-xs text-text-muted">{error}</p>
-                  </div>
-                ) : quota?.message ? (
-                  <div className="text-center py-5">
-                    <p className="text-xs text-text-muted">{quota.message}</p>
-                  </div>
-                ) : (
-                  <QuotaTable
-                    quotas={quota?.quotas}
-                    compact
-                    sortMode="default"
-                    showSortLabel={
-                      conn.provider === "codex" && quotaSortMode !== "default"
-                    }
-                  />
                 )}
-              </div>
-            </Card>
-          );
-        })}
-      </div>
+              </Card>
+            );
+          })}
+        </div>
+      ) : (
+        <Card padding="lg">
+          <div className="text-center py-12">
+            <span className="material-symbols-outlined text-[64px] text-text-muted opacity-20">
+              {emptyState.icon}
+            </span>
+            <h3 className="mt-4 text-lg font-semibold text-text-primary">
+              {emptyState.title}
+            </h3>
+            <p className="mt-2 text-sm text-text-muted max-w-md mx-auto">
+              {emptyState.description}
+            </p>
+          </div>
+        </Card>
+      )}
 
       <div className="rounded-xl border border-black/10 bg-black/[0.02] px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs text-text-muted">{connectionsPageSummary}</span>
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={isCustomPageSize ? "custom" : String(pageSize)}
-                onChange={(event) => {
-                  const nextValue = event.target.value;
-                  if (nextValue === "custom") return;
-                  const nextPageSize = Number.parseInt(nextValue, 10);
-                  if (Number.isFinite(nextPageSize)) {
-                    setPage(1);
-                    setPageSize(nextPageSize);
-                    setCustomPageSizeInput(String(nextPageSize));
-                  }
-                }}
-                className="h-8 rounded-lg border border-black/10 bg-black/[0.02] px-2 text-xs text-text-primary outline-none transition-colors hover:bg-black/5 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/10"
-                aria-label="Accounts per page"
-              >
-                {ACCOUNT_PAGE_SIZE_OPTIONS.map((option) => (
-                  <option key={option} value={String(option)}>
-                    {option} / page
-                  </option>
-                ))}
-                <option value="custom">Custom</option>
-              </select>
-              <input
-                type="number"
-                min="1"
-                max={String(ACCOUNT_PAGE_SIZE_MAX)}
-                inputMode="numeric"
-                value={customPageSizeInput}
-                onChange={(event) => setCustomPageSizeInput(event.target.value)}
-                onBlur={() => {
-                  const parsedValue = Number.parseInt(customPageSizeInput, 10);
-                  if (!Number.isFinite(parsedValue)) {
-                    setCustomPageSizeInput(String(pageSize));
-                    return;
-                  }
-                  const nextPageSize = Math.min(ACCOUNT_PAGE_SIZE_MAX, Math.max(1, parsedValue));
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-text-muted">
+            {connectionsPageSummary}
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={isCustomPageSize ? "custom" : String(pageSize)}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                if (nextValue === "custom") return;
+                const nextPageSize = Number.parseInt(nextValue, 10);
+                if (Number.isFinite(nextPageSize)) {
                   setPage(1);
                   setPageSize(nextPageSize);
                   setCustomPageSizeInput(String(nextPageSize));
-                }}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter") return;
-                  const parsedValue = Number.parseInt(customPageSizeInput, 10);
-                  if (!Number.isFinite(parsedValue)) {
-                    setCustomPageSizeInput(String(pageSize));
-                    return;
-                  }
-                  const nextPageSize = Math.min(ACCOUNT_PAGE_SIZE_MAX, Math.max(1, parsedValue));
-                  setPage(1);
-                  setPageSize(nextPageSize);
-                  setCustomPageSizeInput(String(nextPageSize));
-                }}
-                className="h-8 w-20 rounded-lg border border-black/10 bg-black/[0.02] px-2 text-xs text-text-primary outline-none transition-colors hover:bg-black/5 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/10"
-                aria-label="Custom accounts per page"
-                placeholder="Custom"
-              />
-              <span className="text-xs text-text-muted">Page {pagination.page} / {pagination.totalPages}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setPage(1)}
-                disabled={
-                  pagination.page <= 1 || connectionsLoading || refreshingAll
                 }
-                className="flex h-8 items-center rounded-lg border border-black/10 px-3 text-xs text-text-primary transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5"
-              >
-                First Page
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setPage((currentPage) => Math.max(1, currentPage - 1))
+              }}
+              className="h-8 rounded-lg border border-black/10 bg-black/[0.02] px-2 text-xs text-text-primary outline-none transition-colors hover:bg-black/5 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/10"
+              aria-label="Accounts per page"
+            >
+              {ACCOUNT_PAGE_SIZE_OPTIONS.map((option) => (
+                <option key={option} value={String(option)}>
+                  {option} / page
+                </option>
+              ))}
+              <option value="custom">Custom</option>
+            </select>
+            <input
+              type="number"
+              min="1"
+              max={String(ACCOUNT_PAGE_SIZE_MAX)}
+              inputMode="numeric"
+              value={customPageSizeInput}
+              onChange={(event) => setCustomPageSizeInput(event.target.value)}
+              onBlur={() => {
+                const parsedValue = Number.parseInt(customPageSizeInput, 10);
+                if (!Number.isFinite(parsedValue)) {
+                  setCustomPageSizeInput(String(pageSize));
+                  return;
                 }
-                disabled={
-                  pagination.page <= 1 || connectionsLoading || refreshingAll
+                const nextPageSize = Math.min(
+                  ACCOUNT_PAGE_SIZE_MAX,
+                  Math.max(1, parsedValue),
+                );
+                setPage(1);
+                setPageSize(nextPageSize);
+                setCustomPageSizeInput(String(nextPageSize));
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                const parsedValue = Number.parseInt(customPageSizeInput, 10);
+                if (!Number.isFinite(parsedValue)) {
+                  setCustomPageSizeInput(String(pageSize));
+                  return;
                 }
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-black/10 text-text-primary transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5"
-                aria-label="Previous accounts page"
-              >
-                <span className="material-symbols-outlined text-[16px]">
-                  chevron_left
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setPage((currentPage) =>
-                    Math.min(pagination.totalPages, currentPage + 1),
-                  )
-                }
-                disabled={
-                  pagination.page >= pagination.totalPages ||
-                  connectionsLoading ||
-                  refreshingAll
-                }
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-black/10 text-text-primary transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5"
-                aria-label="Next accounts page"
-              >
-                <span className="material-symbols-outlined text-[16px]">
-                  chevron_right
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setPage(pagination.totalPages)}
-                disabled={
-                  pagination.page >= pagination.totalPages ||
-                  connectionsLoading ||
-                  refreshingAll
-                }
-                className="flex h-8 items-center rounded-lg border border-black/10 px-3 text-xs text-text-primary transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5"
-              >
-                Last Page
-              </button>
-            </div>
+                const nextPageSize = Math.min(
+                  ACCOUNT_PAGE_SIZE_MAX,
+                  Math.max(1, parsedValue),
+                );
+                setPage(1);
+                setPageSize(nextPageSize);
+                setCustomPageSizeInput(String(nextPageSize));
+              }}
+              className="h-8 w-20 rounded-lg border border-black/10 bg-black/[0.02] px-2 text-xs text-text-primary outline-none transition-colors hover:bg-black/5 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/10"
+              aria-label="Custom accounts per page"
+              placeholder="Custom"
+            />
+            <span className="text-xs text-text-muted">
+              Page {pagination.page} / {pagination.totalPages}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setPage(1)}
+              disabled={
+                pagination.page <= 1 || connectionsLoading || refreshingAll
+              }
+              className="flex h-8 items-center rounded-lg border border-black/10 px-3 text-xs text-text-primary transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5"
+            >
+              First Page
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setPage((currentPage) => Math.max(1, currentPage - 1))
+              }
+              disabled={
+                pagination.page <= 1 || connectionsLoading || refreshingAll
+              }
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-black/10 text-text-primary transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5"
+              aria-label="Previous accounts page"
+            >
+              <span className="material-symbols-outlined text-[16px]">
+                chevron_left
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setPage((currentPage) =>
+                  Math.min(pagination.totalPages, currentPage + 1),
+                )
+              }
+              disabled={
+                pagination.page >= pagination.totalPages ||
+                connectionsLoading ||
+                refreshingAll
+              }
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-black/10 text-text-primary transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5"
+              aria-label="Next accounts page"
+            >
+              <span className="material-symbols-outlined text-[16px]">
+                chevron_right
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage(pagination.totalPages)}
+              disabled={
+                pagination.page >= pagination.totalPages ||
+                connectionsLoading ||
+                refreshingAll
+              }
+              className="flex h-8 items-center rounded-lg border border-black/10 px-3 text-xs text-text-primary transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5"
+            >
+              Last Page
+            </button>
           </div>
         </div>
-
-      <ConfirmModal
-        isOpen={Boolean(resetConfirmState)}
-        onClose={() => {
-          if (!resettingLimitId) setResetConfirmState(null);
-        }}
-        onConfirm={async () => {
-          const connection = resetConfirmState?.connection;
-          if (!connection) return;
-          await handleResetCodexLimit(connection.id, connection.provider);
-          setResetConfirmState(null);
-        }}
-        title="Reset Codex limit?"
-        message={`Use 1 Codex reset credit for ${getConnectionLabel(resetConfirmState?.connection || {}) || "this account"}. This cannot be undone. Remaining credits: ${resetConfirmState?.resetCreditCount ?? 0}.`}
-        confirmText="Reset limit"
-        cancelText="Cancel"
-        variant="danger"
-        loading={Boolean(resettingLimitId)}
-      />
+      </div>
 
       {resetCreditsState && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-black/15 bg-white shadow-2xl ring-1 ring-black/10 dark:border-white/15 dark:bg-neutral-950 dark:ring-white/10">
-            <div className="flex items-start justify-between gap-3 border-b border-black/10 bg-black/[0.03] px-4 py-3 dark:border-white/10 dark:bg-white/[0.04]">
-              <div className="min-w-0">
-                <h3 className="text-base font-semibold text-text-primary">Codex Reset Credit Expiry</h3>
-                <p className="mt-0.5 truncate text-xs text-text-muted">
-                  {getConnectionLabel(resetCreditsState.connection) || "Codex account"}
-                </p>
-              </div>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => setResetCreditsState(null)}
+        >
+          <div
+            className="relative w-full max-w-md rounded-xl border border-black/10 bg-white p-5 shadow-xl dark:border-white/10 dark:bg-[#1a1a1a]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-text-primary">
+                Codex Reset Credits
+              </h3>
               <button
                 type="button"
                 onClick={() => setResetCreditsState(null)}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-black/5 hover:text-text-primary dark:hover:bg-white/5"
-                aria-label="Close reset credit expiry modal"
+                className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-text-muted"
               >
-                <span className="material-symbols-outlined text-[18px]">close</span>
+                <span className="material-symbols-outlined text-[18px]">
+                  close
+                </span>
               </button>
             </div>
-
-            <div className="max-h-[70vh] overflow-auto bg-white p-4 dark:bg-neutral-950">
-              {resetCreditsState.loading ? (
-                <div className="flex items-center justify-center gap-2 py-10 text-sm text-text-muted">
-                  <span className="material-symbols-outlined animate-spin text-[20px]">progress_activity</span>
-                  Loading reset credits...
-                </div>
-              ) : resetCreditsState.error ? (
-                <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">
-                  {resetCreditsState.error}
-                </div>
-              ) : resetCreditsState.data?.credits?.length ? (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between rounded-xl border border-black/10 bg-black/[0.02] px-3 py-2 text-xs text-text-muted dark:border-white/10 dark:bg-white/[0.03]">
-                    <span>{resetCreditsState.data.credits.length} reset credit{resetCreditsState.data.credits.length === 1 ? "" : "s"}</span>
-                    <span>{resetCreditsState.data.availableCount ?? 0} available</span>
+            {resetCreditsState.loading && (
+              <div className="flex items-center justify-center py-8 text-text-muted text-sm gap-2">
+                <span className="material-symbols-outlined text-[18px] animate-spin">
+                  progress_activity
+                </span>
+                Loading...
+              </div>
+            )}
+            {resetCreditsState.error && (
+              <div className="text-sm text-red-600 dark:text-red-400 py-4 text-center">
+                {resetCreditsState.error}
+              </div>
+            )}
+            {resetCreditsState.data && (
+              <div>
+                <p className="text-xs text-text-muted mb-3">
+                  Available:{" "}
+                  <span className="font-semibold text-text-primary">
+                    {resetCreditsState.data.availableCount}
+                  </span>
+                </p>
+                {resetCreditsState.data.credits.length === 0 ? (
+                  <p className="text-xs text-text-muted text-center py-4">
+                    No credits found.
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {resetCreditsState.data.credits.map((credit, i) => (
+                      <div
+                        key={i}
+                        className="rounded-lg border border-black/10 dark:border-white/10 px-3 py-2 text-xs"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span
+                            className={`font-medium capitalize ${credit.status === "active" ? "text-green-600 dark:text-green-400" : "text-text-muted"}`}
+                          >
+                            {credit.status}
+                          </span>
+                          <span className="text-text-muted">
+                            {formatTimeRemaining(credit.expiresAt)}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-text-muted space-y-0.5">
+                          <div>
+                            Granted: {formatCreditDate(credit.grantedAt)}
+                          </div>
+                          <div>
+                            Expires: {formatCreditDate(credit.expiresAt)}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="overflow-x-auto rounded-xl border border-black/10 dark:border-white/10">
-                    <table className="w-full min-w-[560px] text-left text-sm">
-                      <thead className="bg-black/[0.03] text-xs uppercase tracking-wide text-text-muted dark:bg-white/[0.04]">
-                        <tr>
-                          <th className="px-3 py-2 font-medium">Status</th>
-                          <th className="px-3 py-2 font-medium">Granted At</th>
-                          <th className="px-3 py-2 font-medium">Expires At</th>
-                          <th className="px-3 py-2 font-medium">Remaining</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {resetCreditsState.data.credits.map((credit, index) => (
-                          <tr key={`${credit.status}-${credit.expiresAt || index}`} className="border-t border-black/5 dark:border-white/5">
-                            <td className="px-3 py-2">
-                              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                                {credit.status || "unknown"}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2 text-text-muted">{formatCreditDate(credit.grantedAt)}</td>
-                            <td className="px-3 py-2 text-text-primary">{formatCreditDate(credit.expiresAt)}</td>
-                            <td className="px-3 py-2 font-medium text-text-primary">{formatTimeRemaining(credit.expiresAt)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-black/10 bg-black/[0.02] px-3 py-8 text-center text-sm text-text-muted dark:border-white/10 dark:bg-white/[0.03]">
-                  No reset credit details returned for this account.
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

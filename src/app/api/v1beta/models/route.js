@@ -8,8 +8,8 @@ export async function OPTIONS() {
     headers: {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, OPTIONS",
-      "Access-Control-Allow-Headers": "*"
-    }
+      "Access-Control-Allow-Headers": "*",
+    },
   });
 }
 
@@ -19,44 +19,28 @@ export async function OPTIONS() {
  */
 export async function GET() {
   try {
+    // Collect all models from all providers
     const models = [];
-    const seen = new Set();
 
-    function addModel({ name, displayName, description, methods = ["generateContent"] }) {
-      if (seen.has(name)) return;
-      seen.add(name);
-      models.push({
-        name,
-        displayName,
-        description,
-        supportedGenerationMethods: methods,
-        inputTokenLimit: 128000,
-        outputTokenLimit: 8192,
-      });
-    }
-    
     for (const [provider, providerModels] of Object.entries(PROVIDER_MODELS)) {
       for (const model of providerModels) {
-        addModel({
+        models.push({
           name: `models/${provider}/${model.id}`,
           displayName: model.name || model.id,
           description: `${provider} model: ${model.name || model.id}`,
+          supportedGenerationMethods: ["generateContent"],
+          inputTokenLimit: 128000,
+          outputTokenLimit: 8192,
         });
-
-        if (provider === "gemini") {
-          addModel({
-            name: `models/${model.id}`,
-            displayName: model.name || model.id,
-            description: `Gemini model: ${model.name || model.id}`,
-            methods: ["generateContent", "streamGenerateContent"],
-          });
-        }
       }
     }
 
     return Response.json({ models });
   } catch (error) {
     console.log("Error fetching models:", error);
-    return Response.json({ error: { message: error.message } }, { status: 500 });
+    return Response.json(
+      { error: { message: error.message } },
+      { status: 500 },
+    );
   }
 }

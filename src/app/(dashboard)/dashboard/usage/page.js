@@ -2,7 +2,12 @@
 
 import { Suspense, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { UsageStats, RequestLogger, CardSkeleton, SegmentedControl } from "@/shared/components";
+import {
+  UsageStats,
+  RequestLogger,
+  CardSkeleton,
+  SegmentedControl,
+} from "@/shared/components";
 import RequestDetailsTab from "./components/RequestDetailsTab";
 
 const PERIODS = [
@@ -11,6 +16,10 @@ const PERIODS = [
   { value: "7d", label: "7D" },
   { value: "30d", label: "30D" },
   { value: "60d", label: "60D" },
+  { value: "90d", label: "90D" },
+  { value: "180d", label: "180D" },
+  { value: "365d", label: "365D" },
+  { value: "all", label: "All Time" },
 ];
 
 export default function UsagePage() {
@@ -27,13 +36,23 @@ function UsageContent() {
 
   const [period, setPeriod] = useState("today");
 
-  const tabFromUrl = searchParams.get("tab");
-  const activeTab = tabFromUrl && ["overview", "logs", "details"].includes(tabFromUrl)
-    ? tabFromUrl
-    : "overview";
+  const tab = searchParams.get("tab");
+  const targetTab =
+    tab && ["overview", "logs", "details"].includes(tab) ? tab : "overview";
+
+  // Local state for active tab to guarantee reactive re-renders in production build
+  const [activeTab, setActiveTab] = useState(targetTab);
+  const [prevTab, setPrevTab] = useState(targetTab);
+
+  // Sync state if URL search parameters change (e.g. back/forward navigation) during render
+  if (targetTab !== prevTab) {
+    setPrevTab(targetTab);
+    setActiveTab(targetTab);
+  }
 
   const handleTabChange = (value) => {
     if (value === activeTab) return;
+    setActiveTab(value);
     const params = new URLSearchParams(searchParams);
     params.set("tab", value);
     router.push(`/dashboard/usage?${params.toString()}`, { scroll: false });
@@ -65,7 +84,11 @@ function UsageContent() {
 
       {activeTab === "overview" && (
         <Suspense fallback={<CardSkeleton />}>
-          <UsageStats period={period} setPeriod={setPeriod} hidePeriodSelector />
+          <UsageStats
+            period={period}
+            setPeriod={setPeriod}
+            hidePeriodSelector
+          />
         </Suspense>
       )}
       {activeTab === "logs" && <RequestLogger />}

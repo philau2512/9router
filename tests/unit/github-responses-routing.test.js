@@ -12,7 +12,9 @@ describe("GithubExecutor.supportsResponsesEndpoint", () => {
   const exec = new GithubExecutor();
 
   it("excludes Gemini models from the /responses endpoint", () => {
-    expect(exec.supportsResponsesEndpoint("gemini-3.1-pro-preview")).toBe(false);
+    expect(exec.supportsResponsesEndpoint("gemini-3.1-pro-preview")).toBe(
+      false,
+    );
     expect(exec.supportsResponsesEndpoint("gemini-3.1-pro-low")).toBe(false);
   });
 
@@ -47,7 +49,11 @@ describe("GithubExecutor.execute cached-route guard (#1062)", () => {
       .spyOn(Object.getPrototypeOf(Object.getPrototypeOf(exec)), "execute")
       .mockResolvedValue({ response: { status: 200 }, via: "chat" });
 
-    const result = await exec.execute({ model: "gemini-3.1-pro-preview", body: { messages: [] }, log: null });
+    const result = await exec.execute({
+      model: "gemini-3.1-pro-preview",
+      body: { messages: [] },
+      log: null,
+    });
 
     expect(respSpy).not.toHaveBeenCalled();
     expect(baseSpy).toHaveBeenCalled();

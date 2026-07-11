@@ -16,7 +16,13 @@ import { OpenCodeExecutor } from "../../open-sse/executors/opencode.js";
 const assistantWithToolCall = {
   role: "assistant",
   content: "",
-  tool_calls: [{ id: "call_x", type: "function", function: { name: "get_weather", arguments: "{}" } }],
+  tool_calls: [
+    {
+      id: "call_x",
+      type: "function",
+      function: { name: "get_weather", arguments: "{}" },
+    },
+  ],
 };
 
 function bodyWith(messages) {
@@ -40,7 +46,9 @@ describe("injectReasoningContent — DeepSeek thinking round-trip", () => {
     const out = injectReasoningContent({
       provider: "opencode",
       model: "deepseek-v4-flash-free",
-      body: bodyWith([{ ...assistantWithToolCall, reasoning_content: original }]),
+      body: bodyWith([
+        { ...assistantWithToolCall, reasoning_content: original },
+      ]),
     });
     expect(out.messages[0].reasoning_content).toBe(original);
   });
@@ -85,11 +93,21 @@ describe("injectReasoningContent — DeepSeek thinking round-trip", () => {
 });
 
 describe("injectReasoningContent — MiniMax thinking round-trip", () => {
-  const minimaxAssistantMsg = { role: "assistant", content: "here is a response", reasoning_content: "" };
+  const minimaxAssistantMsg = {
+    role: "assistant",
+    content: "here is a response",
+    reasoning_content: "",
+  };
   const minimaxAssistantWithToolCall = {
     role: "assistant",
     content: "",
-    tool_calls: [{ id: "call_x", type: "function", function: { name: "get_weather", arguments: "{}" } }],
+    tool_calls: [
+      {
+        id: "call_x",
+        type: "function",
+        function: { name: "get_weather", arguments: "{}" },
+      },
+    ],
     reasoning_content: "",
   };
 
@@ -108,7 +126,10 @@ describe("injectReasoningContent — MiniMax thinking round-trip", () => {
     const out = injectReasoningContent({
       provider: "minimax",
       model: "MiniMax-M2.7",
-      body: bodyWith([{ role: "user", content: "hi" }, minimaxAssistantWithToolCall]),
+      body: bodyWith([
+        { role: "user", content: "hi" },
+        minimaxAssistantWithToolCall,
+      ]),
     });
     const assistant = out.messages.find((m) => m.role === "assistant");
     expect(typeof assistant.reasoning_content).toBe("string");

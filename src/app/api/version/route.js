@@ -2,10 +2,14 @@ import https from "https";
 import pkg from "../../../../package.json" with { type: "json" };
 
 const NPM_PACKAGE_NAME = "9router";
-const VERSION_CACHE_TTL_MS = 3600000; // cache npm latest lookup for 1h
 
-// Survive hot reload; one cache per process
-const versionCache = (global.__npmVersionCache ??= { value: null, fetchedAt: 0 });
+// Cache npm latest-version lookup for 1 hour — avoids repeat network calls on
+// every dashboard load. global survives Next.js hot reload. See upstream a4c5fa4e1.
+const VERSION_CACHE_TTL_MS = 60 * 60 * 1000;
+const versionCache = (global.__npmVersionCache ??= {
+  value: null,
+  fetchedAt: 0,
+});
 
 // Fetch latest version from npm registry
 function fetchLatestVersion() {
@@ -23,10 +27,13 @@ function fetchLatestVersion() {
             resolve(null);
           }
         });
-      }
+      },
     );
     req.on("error", () => resolve(null));
-    req.on("timeout", () => { req.destroy(); resolve(null); });
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(null);
+    });
   });
 }
 
@@ -40,22 +47,20 @@ function compareVersions(a, b) {
   return 0;
 }
 
-async function getLatestVersionCached() {
-  if (versionCache.value && Date.now() - versionCache.fetchedAt < VERSION_CACHE_TTL_MS) {
-    return versionCache.value;
-  }
-  const latest = await fetchLatestVersion();
-  if (latest) {
-    versionCache.value = latest;
+export async function GET() {
+  let latestVersion = versionCache.value;
+  if (
+    !latestVersion ||
+    Date.now() - versionCache.fetchedAt >= VERSION_CACHE_TTL_MS
+  ) {
+    latestVersion = await fetchLatestVersion();
+    versionCache.value = latestVersion;
     versionCache.fetchedAt = Date.now();
   }
-  return latest;
-}
-
-export async function GET() {
-  const latestVersion = await getLatestVersionCached();
   const currentVersion = pkg.version;
-  const hasUpdate = latestVersion ? compareVersions(latestVersion, currentVersion) > 0 : false;
+  const hasUpdate = latestVersion
+    ? compareVersions(latestVersion, currentVersion) > 0
+    : false;
 
   return Response.json({ currentVersion, latestVersion, hasUpdate });
 }

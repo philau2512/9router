@@ -30,7 +30,7 @@ import {
   resolveKiroThinkingBudget,
   buildThinkingSystemPrefix,
   KIRO_AGENTIC_SYSTEM_PROMPT,
-  resolveDefaultProfileArn,
+  resolveKiroRequestProfileArn,
 } from "../../config/kiroConstants.js";
 import { DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { ROLE, CLAUDE_BLOCK } from "../schema/index.js";
@@ -92,8 +92,11 @@ function flattenClaudeToolInteractions(messages) {
     if (msg.role === ROLE.USER && Array.isArray(msg.content)) {
       const newContent = msg.content.map((block) =>
         block.type === CLAUDE_BLOCK.TOOL_RESULT
-          ? { type: CLAUDE_BLOCK.TEXT, text: toolResultBlockToText(block.content) }
-          : block
+          ? {
+              type: CLAUDE_BLOCK.TEXT,
+              text: toolResultBlockToText(block.content),
+            }
+          : block,
       );
       out.push({ ...msg, content: newContent });
       continue;
@@ -158,7 +161,8 @@ function convertClaudeMessagesToKiro(messages, tools, model) {
         if (!userMsg.userInputMessage.userInputMessageContext) {
           userMsg.userInputMessage.userInputMessageContext = {};
         }
-        userMsg.userInputMessage.userInputMessageContext.tools = buildToolSpecs();
+        userMsg.userInputMessage.userInputMessageContext.tools =
+          buildToolSpecs();
         toolsInjected = true;
       }
 
@@ -186,10 +190,16 @@ function convertClaudeMessagesToKiro(messages, tools, model) {
         for (const block of msg.content) {
           if (block.type === CLAUDE_BLOCK.TEXT) {
             pendingUserContent.push(block.text);
-          } else if (block.type === CLAUDE_BLOCK.IMAGE && block.source?.type === "base64") {
+          } else if (
+            block.type === CLAUDE_BLOCK.IMAGE &&
+            block.source?.type === "base64"
+          ) {
             const mediaType = block.source.media_type || DEFAULT_IMAGE_MIME;
             const format = mediaType.split("/")[1] || mediaType;
-            pendingImages.push({ format, source: { bytes: block.source.data } });
+            pendingImages.push({
+              format,
+              source: { bytes: block.source.data },
+            });
           } else if (block.type === CLAUDE_BLOCK.TOOL_RESULT) {
             let resultContent = "";
             if (typeof block.content === "string") {
@@ -276,7 +286,8 @@ function convertClaudeMessagesToKiro(messages, tools, model) {
   for (const current of history) {
     const prev = mergedHistory[mergedHistory.length - 1];
     if (current.userInputMessage && prev?.userInputMessage) {
-      prev.userInputMessage.content += "\n\n" + current.userInputMessage.content;
+      prev.userInputMessage.content +=
+        "\n\n" + current.userInputMessage.content;
       const prevCtx = prev.userInputMessage.userInputMessageContext;
       const curCtx = current.userInputMessage.userInputMessageContext;
       if (curCtx) {
@@ -375,7 +386,11 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
   const topP = body.top_p;
 
   const { upstream: upstreamModel, agentic } = resolveKiroModel(model);
-  const thinkingBudget = resolveKiroThinkingBudget(body, credentials?.rawHeaders, model);
+  const thinkingBudget = resolveKiroThinkingBudget(
+    body,
+    credentials?.rawHeaders,
+    model,
+  );
 
   // Guard 1: no client tools → flatten all tool interactions to text.
   if (!clientProvidedTools) {
@@ -385,7 +400,7 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
   const { history, currentMessage } = convertClaudeMessagesToKiro(
     messages,
     tools,
-    upstreamModel
+    upstreamModel,
   );
 
   // Guard 2: tools present → reconcile dangling tool_results.
@@ -393,21 +408,16 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
     reconcileOrphanedToolResults(history, currentMessage);
   }
 
-  // api_key / idc / external_idp must never use the shared default ARN (belongs
-  // to another account → 403 "bearer token invalid"); OAuth/social fall back to it.
-  const authMethod = credentials?.providerSpecificData?.authMethod;
-  const accountBoundAuth =
-    authMethod === "api_key" || authMethod === "idc" || authMethod === "external_idp";
-  const profileArn = accountBoundAuth
-    ? (credentials?.providerSpecificData?.profileArn || "")
-    : (credentials?.providerSpecificData?.profileArn || resolveDefaultProfileArn(authMethod));
+  // Resolve the profileArn to send. See resolveKiroRequestProfileArn:
+  // account-bound methods send their own ARN (or "" to use the token default);
+  // free-tier Builder ID / social send the shared default and NEVER an
+  // account-specific ARN that leaked into storage (root cause of 403
+  // "User is not authorized to make this call.").
+  const profileArn = resolveKiroRequestProfileArn(credentials);
 
   let finalContent = currentMessage?.userInputMessage?.content || "";
 
-  // System prompt: pass via native systemInstruction field (Kiro/Q API supports it)
-  // and also prepend as <instructions> in user content as fallback for upstreams
-  // that don't support the native field.
-  let systemInstruction = undefined;
+  // System prompt → prepend to the user content.
   if (body.system) {
     let systemText = "";
     if (typeof body.system === "string") {
@@ -415,43 +425,35 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
     } else if (Array.isArray(body.system)) {
       systemText = body.system.map((s) => s.text || "").join("\n");
     }
-    if (systemText) {
-      systemInstruction = systemText;
-      finalContent = `<instructions>\n${systemText}\n</instructions>\n\n${finalContent}`;
-    }
+    if (systemText) finalContent = `${systemText}\n\n${finalContent}`;
   }
 
   // Prefix order: thinking_mode tag, timestamp marker, then agentic prompt.
   const timestamp = new Date().toISOString();
   const prefixParts = [];
-  if (thinkingBudget !== null) prefixParts.push(buildThinkingSystemPrefix(thinkingBudget));
+  if (thinkingBudget !== null)
+    prefixParts.push(buildThinkingSystemPrefix(thinkingBudget));
   prefixParts.push(`[Context: Current time is ${timestamp}]`);
   if (agentic) prefixParts.push(KIRO_AGENTIC_SYSTEM_PROMPT);
   finalContent = `${prefixParts.join("\n\n")}\n\n${finalContent}`;
-
-  const userInputMessage = {
-    content: finalContent,
-    modelId: upstreamModel,
-    origin: "AI_EDITOR",
-    ...(currentMessage?.userInputMessage?.userInputMessageContext && {
-      userInputMessageContext:
-        currentMessage.userInputMessage.userInputMessageContext,
-    }),
-    ...(currentMessage?.userInputMessage?.images && {
-      images: currentMessage.userInputMessage.images,
-    }),
-  };
-
-  if (systemInstruction) {
-    userInputMessage.systemInstruction = systemInstruction;
-  }
 
   const payload = {
     conversationState: {
       chatTriggerType: "MANUAL",
       conversationId: uuidv4(),
       currentMessage: {
-        userInputMessage,
+        userInputMessage: {
+          content: finalContent,
+          modelId: upstreamModel,
+          origin: "AI_EDITOR",
+          ...(currentMessage?.userInputMessage?.userInputMessageContext && {
+            userInputMessageContext:
+              currentMessage.userInputMessage.userInputMessageContext,
+          }),
+          ...(currentMessage?.userInputMessage?.images && {
+            images: currentMessage.userInputMessage.images,
+          }),
+        },
       },
       history,
     },
@@ -462,7 +464,8 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
   if (maxTokens || temperature !== undefined || topP !== undefined) {
     payload.inferenceConfig = {};
     if (maxTokens) payload.inferenceConfig.maxTokens = maxTokens;
-    if (temperature !== undefined) payload.inferenceConfig.temperature = temperature;
+    if (temperature !== undefined)
+      payload.inferenceConfig.temperature = temperature;
     if (topP !== undefined) payload.inferenceConfig.topP = topP;
   }
 

@@ -14,13 +14,19 @@ export async function POST() {
     if (!getInstallInfo().installed) {
       const settings = await getSettings();
       if (!settings.pxpipeAutoInstall) {
-        return NextResponse.json({ error: "PXPIPE is not installed", code: "NOT_INSTALLED" }, { status: 409 });
+        return NextResponse.json(
+          { error: "PXPIPE is not installed", code: "NOT_INSTALLED" },
+          { status: 409 },
+        );
       }
       await installPxpipe();
     }
     await loadPxpipe();
     return NextResponse.json(getPxpipeStatus());
   } catch (error) {
-    return NextResponse.json({ error: error.message, code: error.code || null }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message, code: error.code || null },
+      { status: 500 },
+    );
   }
 }

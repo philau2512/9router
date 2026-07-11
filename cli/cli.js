@@ -7,7 +7,8 @@ const https = require("https");
 const net = require("net");
 const os = require("os");
 
-// Poll until the server accepts TCP connections on port, or timeout — avoids blind fixed waits.
+// Poll until server accepts TCP connections — avoids blind fixed setTimeout waits.
+// See upstream 0270f6ea7.
 function waitServerReady(port, { timeoutMs = 15000, intervalMs = 150 } = {}) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve) => {
@@ -37,7 +38,9 @@ function createSpinner(text) {
       if (process.stdout.isTTY) {
         process.stdout.write(`\r${frames[0]} ${currentText}`);
         interval = setInterval(() => {
-          process.stdout.write(`\r${frames[i++ % frames.length]} ${currentText}`);
+          process.stdout.write(
+            `\r${frames[i++ % frames.length]} ${currentText}`,
+          );
         }, 80);
       }
       return this;
@@ -58,22 +61,29 @@ function createSpinner(text) {
     fail(msg) {
       this.stop();
       console.log(`❌ ${msg}`);
-    }
+    },
   };
 }
 
 const pkg = require("./package.json");
-const { ensureSqliteRuntime, buildEnvWithRuntime } = require("./hooks/sqliteRuntime");
+const {
+  ensureSqliteRuntime,
+  buildEnvWithRuntime,
+} = require("./hooks/sqliteRuntime");
 const { ensureTrayRuntime } = require("./hooks/trayRuntime");
 const args = process.argv.slice(2);
 
 // Self-heal SQLite runtime deps (sql.js + better-sqlite3) into ~/.9router/runtime
 // so the server can resolve them via NODE_PATH. Best-effort — sql.js is required,
 // better-sqlite3 is optional. Logs to stderr only on failure.
-try { ensureSqliteRuntime({ silent: true }); } catch {}
+try {
+  ensureSqliteRuntime({ silent: true });
+} catch {}
 
 // Self-heal tray runtime (systray for macOS/Linux only). Windows skipped.
-try { ensureTrayRuntime({ silent: true }); } catch {}
+try {
+  ensureTrayRuntime({ silent: true });
+} catch {}
 
 // Configuration constants
 const APP_NAME = pkg.name; // Use from package.json
@@ -81,25 +91,10 @@ const INSTALL_CMD_LATEST = `npm i -g ${APP_NAME}@latest --prefer-online`;
 
 const DEFAULT_PORT = 20128;
 const DEFAULT_HOST = "0.0.0.0";
-
-// First non-internal IPv4 — the address remote peers actually reach when bound to 0.0.0.0.
-function getLanIp() {
-  for (const ifaces of Object.values(os.networkInterfaces())) {
-    for (const i of ifaces || []) {
-      if (i.family === "IPv4" && !i.internal) return i.address;
-    }
-  }
-  return null;
-}
-
-// Local URL stays "localhost"; warn separately when bound to all interfaces (network-exposed).
-function getDisplayHost() {
-  return host === DEFAULT_HOST ? "localhost" : host;
-}
 const MAX_PORT_ATTEMPTS = 10;
 // Identifiers for killAllAppProcesses - only kill 9router specifically
 const PROCESS_IDENTIFIERS = [
-  '9router'  // Only package name - avoid killing other apps
+  "9router", // Only package name - avoid killing other apps
 ];
 
 // Parse arguments
@@ -126,6 +121,9 @@ for (let i = 0; i < args.length; i++) {
   } else if (args[i] === "--tray" || args[i] === "-t") {
     trayMode = true;
     process.env.TRAY_MODE = "1";
+  } else if (args[i] === "doctor") {
+    runDoctor();
+    process.exit(process.exitCode || 0);
   } else if (args[i] === "--help" || args[i] === "-h") {
     console.log(`
 Usage: ${APP_NAME} [options]
@@ -136,6 +134,7 @@ Options:
   -n, --no-browser    Don't open browser automatically
   -l, --log           Show server logs (default: hidden)
   -t, --tray          Run in system tray mode (background)
+  doctor              Run local diagnostics without starting the server
   --skip-update       Skip auto-update check
   -h, --help          Show this help message
   -v, --version       Show version
@@ -155,6 +154,99 @@ if (skipUpdate && !trayMode && !process.stdin.isTTY) {
 
 // Always use Node.js runtime with absolute path
 const RUNTIME = process.execPath;
+
+function checkDoctorItem(label, check, hint) {
+  try {
+    const result = check();
+    if (result === false) {
+      console.log(`❌ ${label}${hint ? ` — ${hint}` : ""}`);
+      return false;
+    }
+    console.log(
+      `✅ ${label}${typeof result === "string" ? ` — ${result}` : ""}`,
+    );
+    return true;
+  } catch (error) {
+    console.log(`❌ ${label} — ${error.message}${hint ? ` (${hint})` : ""}`);
+    return false;
+  }
+}
+
+function commandExists(command) {
+  try {
+    execSync(
+      process.platform === "win32"
+        ? `where ${command}`
+        : `command -v ${command}`,
+      {
+        stdio: "ignore",
+        windowsHide: true,
+        timeout: 3000,
+      },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function dockerDaemonAvailable() {
+  try {
+    execSync("docker info", {
+      stdio: "ignore",
+      windowsHide: true,
+      timeout: 5000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function runDoctor() {
+  console.log(`\n${APP_NAME} doctor v${pkg.version}\n`);
+  const dataDir = getAppDataDir();
+  const doctorServerPath = path.join(__dirname, "app", "server.js");
+  const checks = [
+    checkDoctorItem("Node.js runtime", () => process.version),
+    checkDoctorItem(
+      "Standalone server bundle",
+      () => fs.existsSync(doctorServerPath),
+      "run npm run build from the cli package",
+    ),
+    checkDoctorItem("Data directory", () => {
+      if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+      return dataDir;
+    }),
+    checkDoctorItem("SQLite runtime", () => {
+      ensureSqliteRuntime({ silent: true });
+      return true;
+    }),
+    checkDoctorItem("Tray runtime", () => {
+      ensureTrayRuntime({ silent: true });
+      return process.platform === "win32" ? "skipped on Windows" : true;
+    }),
+    checkDoctorItem(
+      "Docker CLI",
+      () => commandExists("docker"),
+      "optional; needed only for Docker smoke tests",
+    ),
+    checkDoctorItem("Docker daemon", () => {
+      if (!commandExists("docker")) return "skipped; Docker CLI not installed";
+      return dockerDaemonAvailable()
+        ? true
+        : "skipped; start Docker Desktop to run smoke tests";
+    }),
+  ];
+
+  const failed = checks.filter((ok) => !ok).length;
+  console.log(
+    failed
+      ? `\n${failed} check(s) need attention.\n`
+      : "\nAll required checks passed.\n",
+  );
+  process.exitCode = failed > 0 ? 1 : 0;
+}
 
 // Compare semver versions: returns 1 if a > b, -1 if a < b, 0 if equal
 function compareVersions(a, b) {
@@ -182,13 +274,19 @@ function killByPidFile(pidFile) {
     if (!pid) return;
     try {
       if (process.platform === "win32") {
-        execSync(`taskkill /F /T /PID ${pid}`, { stdio: "ignore", windowsHide: true, timeout: 3000 });
+        execSync(`taskkill /F /T /PID ${pid}`, {
+          stdio: "ignore",
+          windowsHide: true,
+          timeout: 3000,
+        });
       } else {
         process.kill(pid, "SIGKILL");
       }
-    } catch { }
-    try { fs.unlinkSync(pidFile); } catch { }
-  } catch { }
+    } catch {}
+    try {
+      fs.unlinkSync(pidFile);
+    } catch {}
+  } catch {}
 }
 
 // Kill tunnel processes (cloudflared/tailscale) by their PID files
@@ -206,25 +304,38 @@ function killCloudflaredByAppPort(appPort) {
   try {
     if (process.platform === "win32") {
       const psCmd = `powershell -NonInteractive -WindowStyle Hidden -Command "Get-WmiObject Win32_Process -Filter 'Name=\\"cloudflared.exe\\"' | Select-Object ProcessId,CommandLine | ConvertTo-Csv -NoTypeInformation"`;
-      const output = execSync(psCmd, { encoding: "utf8", windowsHide: true, timeout: 5000 });
-      const lines = output.split("\n").slice(1).filter(l => l.trim());
-      lines.forEach(line => {
-        if (portMatchers.some(m => line.includes(m))) {
+      const output = execSync(psCmd, {
+        encoding: "utf8",
+        windowsHide: true,
+        timeout: 5000,
+      });
+      const lines = output
+        .split("\n")
+        .slice(1)
+        .filter((l) => l.trim());
+      lines.forEach((line) => {
+        if (portMatchers.some((m) => line.includes(m))) {
           const match = line.match(/^"(\d+)"/);
           if (match && match[1]) pids.push(match[1]);
         }
       });
     } else {
-      const output = execSync("ps -eo pid,command 2>/dev/null", { encoding: "utf8", timeout: 5000 });
-      output.split("\n").forEach(line => {
-        if (line.includes("cloudflared") && portMatchers.some(m => line.includes(m))) {
+      const output = execSync("ps -eo pid,command 2>/dev/null", {
+        encoding: "utf8",
+        timeout: 5000,
+      });
+      output.split("\n").forEach((line) => {
+        if (
+          line.includes("cloudflared") &&
+          portMatchers.some((m) => line.includes(m))
+        ) {
           const parts = line.trim().split(/\s+/);
           const pid = parts[0];
           if (pid && !isNaN(pid)) pids.push(pid);
         }
       });
     }
-  } catch { }
+  } catch {}
   return pids;
 }
 
@@ -232,17 +343,16 @@ function killCloudflaredByAppPort(appPort) {
 function killAllAppProcesses(appPort) {
   return new Promise((resolve) => {
     try {
-      // Background: MITM + tunnel/cloudflared run on separate ports/processes —
-      // killing them doesn't free the app port, so don't block the critical path.
-      // Server-side MITM manager has stale-lock recovery and starts deferred (~3s).
-      setImmediate(() => {
-        try { killProxyByPidFile(); } catch {}
-        try { killTunnelByPidFile(); } catch {}
-        try { killCloudflaredByAppPort(appPort); } catch {}
-      });
+      // Kill MIT first (privileged process, needs special handling)
+      killProxyByPidFile();
+      // Kill cloudflared/tailscale by PID file (precise, only this app's tunnel)
+      killTunnelByPidFile();
 
       const platform = process.platform;
       let pids = [];
+
+      // Catch stale PID files: kill cloudflared bound to this app's port
+      pids.push(...killCloudflaredByAppPort(appPort));
 
       if (platform === "win32") {
         // Windows: use WMI to get full CommandLine (tasklist /V doesn't include it)
@@ -251,16 +361,23 @@ function killAllAppProcesses(appPort) {
           const output = execSync(psCmd, {
             encoding: "utf8",
             windowsHide: true,
-            timeout: 5000
+            timeout: 5000,
           });
-          const lines = output.split("\n").slice(1).filter(l => l.trim());
-          lines.forEach(line => {
+          const lines = output
+            .split("\n")
+            .slice(1)
+            .filter((l) => l.trim());
+          lines.forEach((line) => {
             // Whitelist: real node process running 9router/cli.js, or next-server.
             // Avoids killing editors/grep/strace/cursor that just have "9router" in cmdline.
             const cmd = line.toLowerCase();
             const isAppProcess =
-              (cmd.includes("node") && cmd.includes("9router") && (cmd.includes("cli.js") || cmd.includes("\\9router") || cmd.includes("/9router")))
-              || cmd.includes("next-server");
+              (cmd.includes("node") &&
+                cmd.includes("9router") &&
+                (cmd.includes("cli.js") ||
+                  cmd.includes("\\9router") ||
+                  cmd.includes("/9router"))) ||
+              cmd.includes("next-server");
             if (isAppProcess) {
               const match = line.match(/^"(\d+)"/);
               if (match && match[1] && match[1] !== process.pid.toString()) {
@@ -274,19 +391,21 @@ function killAllAppProcesses(appPort) {
       } else {
         // macOS/Linux: use ps to find all matching processes
         try {
-          const output = execSync('ps aux 2>/dev/null', {
-            encoding: 'utf8',
-            timeout: 5000
+          const output = execSync("ps aux 2>/dev/null", {
+            encoding: "utf8",
+            timeout: 5000,
           });
-          const lines = output.split('\n');
+          const lines = output.split("\n");
 
-          lines.forEach(line => {
+          lines.forEach((line) => {
             // Whitelist: real node process running 9router/cli.js, or next-server.
             // Avoids killing grep/strace/editors/cursor that incidentally match "9router".
             const cmd = line.toLowerCase();
             const isAppProcess =
-              (cmd.includes("node") && cmd.includes("9router") && (cmd.includes("cli.js") || cmd.includes("/9router")))
-              || cmd.includes("next-server");
+              (cmd.includes("node") &&
+                cmd.includes("9router") &&
+                (cmd.includes("cli.js") || cmd.includes("/9router"))) ||
+              cmd.includes("next-server");
             if (isAppProcess) {
               const parts = line.trim().split(/\s+/);
               const pid = parts[1];
@@ -302,12 +421,20 @@ function killAllAppProcesses(appPort) {
 
       // Kill all found processes
       if (pids.length > 0) {
-        pids.forEach(pid => {
+        pids.forEach((pid) => {
           try {
             if (platform === "win32") {
-              execSync(`taskkill /F /PID ${pid} 2>nul`, { stdio: 'ignore', shell: true, windowsHide: true, timeout: 3000 });
+              execSync(`taskkill /F /PID ${pid} 2>nul`, {
+                stdio: "ignore",
+                shell: true,
+                windowsHide: true,
+                timeout: 3000,
+              });
             } else {
-              execSync(`kill -9 ${pid} 2>/dev/null`, { stdio: 'ignore', timeout: 3000 });
+              execSync(`kill -9 ${pid} 2>/dev/null`, {
+                stdio: "ignore",
+                timeout: 3000,
+              });
             }
           } catch (err) {
             // Process already dead or can't kill - continue
@@ -328,14 +455,22 @@ function killAllAppProcesses(appPort) {
 
 // Sleep helper using SharedArrayBuffer wait (sync, no busy-loop)
 function sleepSync(ms) {
-  try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); } catch { /* ignore */ }
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  } catch {
+    /* ignore */
+  }
 }
 
 // Wait until process dies or timeout reached
 function waitForExit(pid, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    try { process.kill(pid, 0); } catch { return true; }
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return true;
+    }
     sleepSync(100);
   }
   return false;
@@ -352,25 +487,60 @@ function killProxyByPidFile() {
 
     if (process.platform === "win32") {
       // Graceful first (lets server cleanup hosts), then force
-      try { execSync(`taskkill /T /PID ${pid}`, { stdio: "ignore", windowsHide: true, timeout: 2000 }); } catch { }
+      try {
+        execSync(`taskkill /T /PID ${pid}`, {
+          stdio: "ignore",
+          windowsHide: true,
+          timeout: 2000,
+        });
+      } catch {}
       if (!waitForExit(pid, 1500)) {
-        try { execSync(`taskkill /F /T /PID ${pid}`, { stdio: "ignore", windowsHide: true, timeout: 3000 }); } catch { }
+        try {
+          execSync(`taskkill /F /T /PID ${pid}`, {
+            stdio: "ignore",
+            windowsHide: true,
+            timeout: 3000,
+          });
+        } catch {}
       }
       // Last-resort: PowerShell Stop-Process (sometimes succeeds where taskkill fails on admin processes)
       if (!waitForExit(pid, 500)) {
-        try { execSync(`powershell -NonInteractive -WindowStyle Hidden -Command "Stop-Process -Id ${pid} -Force"`, { stdio: "ignore", windowsHide: true, timeout: 3000 }); } catch { }
+        try {
+          execSync(
+            `powershell -NonInteractive -WindowStyle Hidden -Command "Stop-Process -Id ${pid} -Force"`,
+            { stdio: "ignore", windowsHide: true, timeout: 3000 },
+          );
+        } catch {}
       }
     } else {
       // SIGTERM via cached sudo token first
-      try { execSync(`sudo -n kill -TERM ${pid} 2>/dev/null`, { stdio: "ignore", timeout: 2000 }); }
-      catch { try { process.kill(pid, "SIGTERM"); } catch { } }
+      try {
+        execSync(`sudo -n kill -TERM ${pid} 2>/dev/null`, {
+          stdio: "ignore",
+          timeout: 2000,
+        });
+      } catch {
+        try {
+          process.kill(pid, "SIGTERM");
+        } catch {}
+      }
       if (!waitForExit(pid, 1500)) {
-        try { execSync(`sudo -n kill -9 ${pid} 2>/dev/null`, { stdio: "ignore", timeout: 2000 }); }
-        catch { try { process.kill(pid, "SIGKILL"); } catch { } }
+        try {
+          execSync(`sudo -n kill -9 ${pid} 2>/dev/null`, {
+            stdio: "ignore",
+            timeout: 2000,
+          });
+        } catch {
+          try {
+            process.kill(pid, "SIGKILL");
+          } catch {}
+        }
       }
     }
-    try { fs.unlinkSync(pidFile); } catch { }
-  } catch { }
+    try {
+      fs.unlinkSync(pidFile);
+    } catch {}
+  } catch {}
 }
 
 // Kill any process on specific port
@@ -383,15 +553,22 @@ function killProcessOnPort(port) {
       if (platform === "win32") {
         try {
           const output = execSync(`netstat -ano | findstr :${port}`, {
-            encoding: 'utf8',
+            encoding: "utf8",
             shell: true,
             windowsHide: true,
-            timeout: 5000
+            timeout: 5000,
           }).trim();
-          const lines = output.split('\n').filter(l => l.includes('LISTENING'));
+          const lines = output
+            .split("\n")
+            .filter((l) => l.includes("LISTENING"));
           if (lines.length > 0) {
             pid = lines[0].trim().split(/\s+/).pop();
-            execSync(`taskkill /F /PID ${pid} 2>nul`, { stdio: 'ignore', shell: true, windowsHide: true, timeout: 3000 });
+            execSync(`taskkill /F /PID ${pid} 2>nul`, {
+              stdio: "ignore",
+              shell: true,
+              windowsHide: true,
+              timeout: 3000,
+            });
           }
         } catch (e) {
           // Port is free or error
@@ -400,12 +577,15 @@ function killProcessOnPort(port) {
         // macOS/Linux
         try {
           const pidOutput = execSync(`lsof -ti:${port}`, {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore']
+            encoding: "utf8",
+            stdio: ["pipe", "pipe", "ignore"],
           }).trim();
           if (pidOutput) {
-            pid = pidOutput.split('\n')[0];
-            execSync(`kill -9 ${pid} 2>/dev/null`, { stdio: 'ignore', timeout: 3000 });
+            pid = pidOutput.split("\n")[0];
+            execSync(`kill -9 ${pid} 2>/dev/null`, {
+              stdio: "ignore",
+              timeout: 3000,
+            });
           }
         } catch (e) {
           // Port is free or error
@@ -421,16 +601,22 @@ function killProcessOnPort(port) {
   });
 }
 
-
 // Detect if running in restricted environment (Codespaces, Docker)
 function isRestrictedEnvironment() {
   // Check for Codespaces
-  if (process.env.CODESPACES === "true" || process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN) {
+  if (
+    process.env.CODESPACES === "true" ||
+    process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN
+  ) {
     return "GitHub Codespaces";
   }
 
   // Check for Docker
-  if (fs.existsSync("/.dockerenv") || (fs.existsSync("/proc/1/cgroup") && fs.readFileSync("/proc/1/cgroup", "utf8").includes("docker"))) {
+  if (
+    fs.existsSync("/.dockerenv") ||
+    (fs.existsSync("/proc/1/cgroup") &&
+      fs.readFileSync("/proc/1/cgroup", "utf8").includes("docker"))
+  ) {
     return "Docker";
   }
 
@@ -464,25 +650,35 @@ function checkForUpdate() {
       resolve(version);
     };
 
-    const req = https.get(`https://registry.npmjs.org/${pkg.name}/latest`, { timeout: 3000 }, (res) => {
-      let data = "";
-      res.on("data", chunk => data += chunk);
-      res.on("end", () => {
-        try {
-          const latest = JSON.parse(data);
-          if (latest.version && compareVersions(latest.version, pkg.version) > 0) {
-            done(latest.version);
-          } else {
+    const req = https.get(
+      `https://registry.npmjs.org/${pkg.name}/latest`,
+      { timeout: 3000 },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          try {
+            const latest = JSON.parse(data);
+            if (
+              latest.version &&
+              compareVersions(latest.version, pkg.version) > 0
+            ) {
+              done(latest.version);
+            } else {
+              done(null);
+            }
+          } catch (e) {
             done(null);
           }
-        } catch (e) {
-          done(null);
-        }
-      });
-    });
+        });
+      },
+    );
 
     req.on("error", () => done(null));
-    req.on("timeout", () => { req.destroy(); done(null); });
+    req.on("timeout", () => {
+      req.destroy();
+      done(null);
+    });
   });
 }
 
@@ -506,25 +702,26 @@ function openBrowser(url) {
   });
 }
 
-// Find standalone server (bundled in bin/app for published package).
-// Prefer custom-server.js (injects real socket IP) when present.
+// Find standalone server (bundled in bin/app for published package)
 const standaloneDir = path.join(__dirname, "app");
-const customServerPath = path.join(standaloneDir, "custom-server.js");
-const serverPath = fs.existsSync(customServerPath)
-  ? customServerPath
-  : path.join(standaloneDir, "server.js");
+const serverPath = path.join(standaloneDir, "server.js");
 
 if (!fs.existsSync(serverPath)) {
   console.error("Error: Standalone build not found.");
-  console.error("Please run 'npm run build:cli' first.");
+  console.error("Please run 'npm run build' from the cli package first.");
   process.exit(1);
 }
 
-// Start server immediately; run update check in parallel (not on the critical path).
+// Check for updates in parallel with server start — not on critical path.
+// See upstream 0270f6ea7.
 const updatePromise = checkForUpdate();
 killAllAppProcesses(port)
-  .then(() => killProcessOnPort(port))
-  .then(() => startServer(updatePromise));
+  .then(() => {
+    return killProcessOnPort(port);
+  })
+  .then(() => {
+    startServer(updatePromise);
+  });
 
 // Show interface selection menu
 async function showInterfaceMenu(latestVersion) {
@@ -534,13 +731,15 @@ async function showInterfaceMenu(latestVersion) {
 
   clearScreen();
 
-  const displayHost = getDisplayHost();
+  const displayHost = host === DEFAULT_HOST ? "localhost" : host;
 
   // Detect tunnel/local mode for server URL display
   let serverUrl;
   try {
     const { endpoint, tunnelEnabled } = await getEndpoint(port);
-    serverUrl = tunnelEnabled ? endpoint.replace(/\/v1$/, "") : `http://${displayHost}:${port}`;
+    serverUrl = tunnelEnabled
+      ? endpoint.replace(/\/v1$/, "")
+      : `http://${displayHost}:${port}`;
   } catch (e) {
     serverUrl = `http://${displayHost}:${port}`;
   }
@@ -550,17 +749,25 @@ async function showInterfaceMenu(latestVersion) {
   const menuItems = [];
 
   if (latestVersion) {
-    menuItems.push({ label: `Update to v${latestVersion} (current: v${pkg.version})`, icon: "⬆" });
+    menuItems.push({
+      label: `Update to v${latestVersion} (current: v${pkg.version})`,
+      icon: "⬆",
+    });
   }
 
   menuItems.push(
     { label: "Web UI (Open in Browser)", icon: "🌐" },
     { label: "Terminal UI (Interactive CLI)", icon: "💻" },
     { label: "Hide to Tray (Background)", icon: "🔔" },
-    { label: "Exit", icon: "🚪" }
+    { label: "Exit", icon: "🚪" },
   );
 
-  const selected = await selectMenu(`Choose Interface (v${pkg.version})`, menuItems, 0, subtitle);
+  const selected = await selectMenu(
+    `Choose Interface (v${pkg.version})`,
+    menuItems,
+    0,
+    subtitle,
+  );
 
   const offset = latestVersion ? 1 : 0;
 
@@ -574,16 +781,11 @@ async function showInterfaceMenu(latestVersion) {
 const MAX_RESTARTS = 2;
 const RESTART_RESET_MS = 30000; // Reset counter if alive > 30s
 
-function startServer(updatePromise) {
-  // Accept either a Promise (parallel update check) or a resolved value.
-  const latestVersionPromise = Promise.resolve(updatePromise);
-  const displayHost = getDisplayHost();
+async function startServer(latestVersionPromise) {
+  // Resolve update check in parallel — server is already starting while we await.
+  const latestVersion = await Promise.resolve(latestVersionPromise);
+  const displayHost = host === DEFAULT_HOST ? "localhost" : host;
   const url = `http://${displayHost}:${port}/dashboard`;
-  // Surface real network exposure when bound to all interfaces (default 0.0.0.0).
-  if (host === DEFAULT_HOST) {
-    const lanIp = getLanIp();
-    if (lanIp) console.log(`\x1b[33m⚠ Network-exposed: reachable at http://${lanIp}:${port} (bound 0.0.0.0). Use --host 127.0.0.1 for local-only.\x1b[0m`);
-  }
 
   let restartCount = 0;
   let serverStartTime = Date.now();
@@ -602,14 +804,15 @@ function startServer(updatePromise) {
       env: {
         ...buildEnvWithRuntime(process.env),
         PORT: port.toString(),
-        HOSTNAME: host
-      }
+        HOSTNAME: host,
+      },
     });
     if (!showLog && child.stderr) {
       child.stderr.on("data", (data) => {
         const lines = data.toString().split("\n").filter(Boolean);
         crashLog.push(...lines);
-        if (crashLog.length > CRASH_LOG_LINES) crashLog = crashLog.slice(-CRASH_LOG_LINES);
+        if (crashLog.length > CRASH_LOG_LINES)
+          crashLog = crashLog.slice(-CRASH_LOG_LINES);
       });
     }
     return child;
@@ -627,7 +830,7 @@ function startServer(updatePromise) {
       try {
         const { killTray } = require("./src/cli/tray/tray");
         killTray();
-      } catch (e) { }
+      } catch (e) {}
       // Kill MIT server (privileged process) via PID file
       killProxyByPidFile();
       // Kill cloudflared/tailscale via PID file (only this app's tunnel)
@@ -638,7 +841,7 @@ function startServer(updatePromise) {
       }
       // Also try to kill process group
       process.kill(-server.pid, "SIGKILL");
-    } catch (e) { }
+    } catch (e) {}
   }
 
   // Suppress all errors during shutdown (systray lib throws JSON parse errors)
@@ -681,7 +884,7 @@ function startServer(updatePromise) {
           cleanup();
           setTimeout(() => process.exit(0), 100);
         },
-        onOpenDashboard: () => openBrowser(url)
+        onOpenDashboard: () => openBrowser(url),
       });
     } catch (err) {
       // Tray not available - continue without it
@@ -699,7 +902,9 @@ function startServer(updatePromise) {
 
     waitServerReady(port).then(() => {
       initTrayIcon();
-      console.log("\n💡 Router is now running in system tray. Close this terminal if you want.");
+      console.log(
+        "\n💡 Router is now running in system tray. Close this terminal if you want.",
+      );
       console.log("   Right-click tray icon to open dashboard or quit.\n");
     });
 
@@ -708,8 +913,6 @@ function startServer(updatePromise) {
 
   // Wait for server to be ready, then show interface menu loop + tray
   waitServerReady(port).then(async () => {
-    // Resolve parallel update check (already running); don't block server start on it.
-    const latestVersion = await latestVersionPromise;
     // Start tray icon alongside TUI
     initTrayIcon();
 
@@ -747,7 +950,7 @@ function startServer(updatePromise) {
           try {
             const { enableAutoStart } = require("./src/cli/tray/autostart");
             enableAutoStart(__filename);
-          } catch (e) { }
+          } catch (e) {}
 
           if (process.platform === "darwin") {
             // macOS: keep current process alive — spawning a detached child puts
@@ -755,29 +958,43 @@ function startServer(updatePromise) {
             process.removeAllListeners("SIGHUP");
             process.on("SIGHUP", () => {});
 
-            console.log(`\n⏳ Switching to tray mode... (icon already visible in menu bar)`);
+            console.log(
+              `\n⏳ Switching to tray mode... (icon already visible in menu bar)`,
+            );
             console.log(`🔔 9Router is running in tray (PID: ${process.pid})`);
             console.log(`   Server: http://${displayHost}:${port}`);
-            console.log(`\n💡 You can close this terminal. Right-click tray icon to quit.\n`);
+            console.log(
+              `\n💡 You can close this terminal. Right-click tray icon to quit.\n`,
+            );
 
             // Tray already init'd at startup — just keep event loop alive.
             return;
           }
 
           // Windows/Linux: spawn detached bgProcess (systray works fine in child)
-          console.log(`\n⏳ Starting background process... (tray icon will appear in ~3s)`);
+          console.log(
+            `\n⏳ Starting background process... (tray icon will appear in ~3s)`,
+          );
 
-          const bgProcess = spawn(process.execPath, [__filename, "--tray", "--skip-update", "-p", port.toString()], {
-            detached: true,
-            stdio: "ignore",
-            windowsHide: true,
-            env: { ...process.env }
-          });
+          const bgProcess = spawn(
+            process.execPath,
+            [__filename, "--tray", "--skip-update", "-p", port.toString()],
+            {
+              detached: true,
+              stdio: "ignore",
+              windowsHide: true,
+              env: { ...process.env },
+            },
+          );
           bgProcess.unref();
 
-          console.log(`🔔 9Router is now running in background (PID: ${bgProcess.pid})`);
+          console.log(
+            `🔔 9Router is now running in background (PID: ${bgProcess.pid})`,
+          );
           console.log(`   Server: http://${displayHost}:${port}`);
-          console.log(`\n💡 You can close this terminal. Right-click tray icon to quit.\n`);
+          console.log(
+            `\n💡 You can close this terminal. Right-click tray icon to quit.\n`,
+          );
 
           // cleanup() kills server so bgProcess can claim the port fresh
           cleanup();
@@ -800,7 +1017,10 @@ function startServer(updatePromise) {
     server.on("error", (err) => {
       console.error("Failed to start server:", err.message);
       if (!isShuttingDown) tryRestart();
-      else { cleanup(); process.exit(1); }
+      else {
+        cleanup();
+        process.exit(1);
+      }
     });
 
     server.on("close", (code) => {
@@ -818,15 +1038,24 @@ function startServer(updatePromise) {
     if (aliveMs >= RESTART_RESET_MS) restartCount = 0;
 
     if (restartCount >= MAX_RESTARTS) {
-      console.error(`\n⚠️  Server crashed ${MAX_RESTARTS} times. Disabling MIT and restarting...`);
+      console.error(
+        `\n⚠️  Server crashed ${MAX_RESTARTS} times. Disabling MIT and restarting...`,
+      );
       try {
-        const dbPath = path.join(os.homedir(), process.platform === "win32" ? path.join("AppData", "Roaming", "9router", "db.json") : path.join(".9router", "db.json"));
+        const dbPath = path.join(
+          os.homedir(),
+          process.platform === "win32"
+            ? path.join("AppData", "Roaming", "9router", "db.json")
+            : path.join(".9router", "db.json"),
+        );
         if (fs.existsSync(dbPath)) {
           const db = JSON.parse(fs.readFileSync(dbPath, "utf-8"));
           if (db.settings) db.settings.mitmEnabled = false;
           fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
         }
-      } catch { /* best effort */ }
+      } catch {
+        /* best effort */
+      }
       restartCount = 0;
       server = spawnServer();
       attachServerEvents();
@@ -835,10 +1064,12 @@ function startServer(updatePromise) {
 
     restartCount++;
     const delay = Math.min(1000 * restartCount, 10000);
-    console.error(`\n⚠️  Server exited (code=${code ?? "unknown"}). Restarting in ${delay / 1000}s... (${restartCount}/${MAX_RESTARTS})`);
+    console.error(
+      `\n⚠️  Server exited (code=${code ?? "unknown"}). Restarting in ${delay / 1000}s... (${restartCount}/${MAX_RESTARTS})`,
+    );
     if (crashLog.length) {
       console.error("\n--- Server crash log ---");
-      crashLog.forEach(l => console.error(l));
+      crashLog.forEach((l) => console.error(l));
       console.error("--- End crash log ---\n");
     }
 

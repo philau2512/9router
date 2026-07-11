@@ -1,13 +1,7 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
-import { ROLE, CLAUDE_BLOCK, MODEL_FALLBACK } from "../schema/index.js";
-import { fromOpenAIFinish } from "../concerns/finishReason.js";
-import { extractReasoningText } from "../concerns/reasoning.js";
 
-// Legacy "proxy_" prefix used by older request translators. Response strips it
-// defensively so tool names from such turns resolve back (e.g. proxy_Read → Read
-// for arg sanitization). Current request translator emits no prefix ("") — strip
-// is then a no-op. Kept intentionally; do NOT couple to request's empty prefix.
+// Prefix for Claude OAuth tool names (must match request translator)
 const CLAUDE_OAUTH_TOOL_PREFIX = "proxy_";
 
 // Sanitize tool call arguments to fix bad params from non-Anthropic models
@@ -25,8 +19,10 @@ function sanitizeToolArgs(toolName, argsJson) {
 }
 
 function sanitizeReadArgs(args) {
-  if (typeof args.limit === "string" && /^\d+$/.test(args.limit)) args.limit = Number(args.limit);
-  if (typeof args.offset === "string" && /^-?\d+$/.test(args.offset)) args.offset = Number(args.offset);
+  if (typeof args.limit === "string" && /^\d+$/.test(args.limit))
+    args.limit = Number(args.limit);
+  if (typeof args.offset === "string" && /^-?\d+$/.test(args.offset))
+    args.offset = Number(args.offset);
 
   if (typeof args.limit === "number") {
     if (args.limit > 2000) args.limit = 2000;
@@ -40,10 +36,12 @@ function sanitizeReadArgs(args) {
 }
 
 function isValidPdfPagesArg(filePath, pages) {
-  return typeof filePath === "string" &&
+  return (
+    typeof filePath === "string" &&
     filePath.toLowerCase().endsWith(".pdf") &&
     typeof pages === "string" &&
-    /^\d+(?:-\d+)?$/.test(pages);
+    /^\d+(?:-\d+)?$/.test(pages)
+  );
 }
 
 // Helper: stop thinking block if started
@@ -51,7 +49,7 @@ function stopThinkingBlock(state, results) {
   if (!state.thinkingBlockStarted) return;
   results.push({
     type: "content_block_stop",
-    index: state.thinkingBlockIndex
+    index: state.thinkingBlockIndex,
   });
   state.thinkingBlockStarted = false;
 }
@@ -62,7 +60,7 @@ function stopTextBlock(state, results) {
   state.textBlockClosed = true;
   results.push({
     type: "content_block_stop",
-    index: state.textBlockIndex
+    index: state.textBlockIndex,
   });
   state.textBlockStarted = false;
 }
@@ -77,14 +75,22 @@ export function openaiToClaudeResponse(chunk, state) {
 
   // Track usage from OpenAI chunk if available
   if (chunk.usage && typeof chunk.usage === "object") {
-    const promptTokens = typeof chunk.usage.prompt_tokens === "number" ? chunk.usage.prompt_tokens : 0;
-    const outputTokens = typeof chunk.usage.completion_tokens === "number" ? chunk.usage.completion_tokens : 0;
+    const promptTokens =
+      typeof chunk.usage.prompt_tokens === "number"
+        ? chunk.usage.prompt_tokens
+        : 0;
+    const outputTokens =
+      typeof chunk.usage.completion_tokens === "number"
+        ? chunk.usage.completion_tokens
+        : 0;
 
     // Extract cache tokens from prompt_tokens_details
     const cachedTokens = chunk.usage.prompt_tokens_details?.cached_tokens;
-    const cacheCreationTokens = chunk.usage.prompt_tokens_details?.cache_creation_tokens;
+    const cacheCreationTokens =
+      chunk.usage.prompt_tokens_details?.cache_creation_tokens;
     const cacheReadTokens = typeof cachedTokens === "number" ? cachedTokens : 0;
-    const cacheCreateTokens = typeof cacheCreationTokens === "number" ? cacheCreationTokens : 0;
+    const cacheCreateTokens =
+      typeof cacheCreationTokens === "number" ? cacheCreationTokens : 0;
 
     // input_tokens = prompt_tokens - cached_tokens - cache_creation_tokens
     // Because OpenAI's prompt_tokens includes all prompt-side tokens
@@ -92,7 +98,7 @@ export function openaiToClaudeResponse(chunk, state) {
 
     state.usage = {
       input_tokens: inputTokens,
-      output_tokens: outputTokens
+      output_tokens: outputTokens,
     };
 
     // Add cache_read_input_tokens if present
@@ -113,30 +119,35 @@ export function openaiToClaudeResponse(chunk, state) {
   if (!state.messageStartSent) {
     state.messageStartSent = true;
     state.messageId = chunk.id?.replace("chatcmpl-", "") || `msg_${Date.now()}`;
-    if (!state.messageId || state.messageId === "chat" || state.messageId.length < 8) {
-      state.messageId = chunk.extend_fields?.requestId ||
+    if (
+      !state.messageId ||
+      state.messageId === "chat" ||
+      state.messageId.length < 8
+    ) {
+      state.messageId =
+        chunk.extend_fields?.requestId ||
         chunk.extend_fields?.traceId ||
         `msg_${Date.now()}`;
     }
-    state.model = chunk.model || MODEL_FALLBACK;
+    state.model = chunk.model || "unknown";
     state.nextBlockIndex = 0;
     results.push({
       type: "message_start",
       message: {
         id: state.messageId,
         type: "message",
-        role: ROLE.ASSISTANT,
+        role: "assistant",
         model: state.model,
         content: [],
         stop_reason: null,
         stop_sequence: null,
-        usage: { input_tokens: 0, output_tokens: 0 }
-      }
+        usage: { input_tokens: 0, output_tokens: 0 },
+      },
     });
   }
 
-  // Handle reasoning (thinking) across vendor shapes - GLM/DeepSeek/Qwen/MiniMax/etc.
-  const reasoningContent = extractReasoningText(delta);
+  // Handle reasoning_content (thinking) - GLM, DeepSeek, etc.
+  const reasoningContent = delta?.reasoning_content || delta?.reasoning;
   if (reasoningContent) {
     stopTextBlock(state, results);
 
@@ -146,14 +157,14 @@ export function openaiToClaudeResponse(chunk, state) {
       results.push({
         type: "content_block_start",
         index: state.thinkingBlockIndex,
-        content_block: { type: CLAUDE_BLOCK.THINKING, thinking: "" }
+        content_block: { type: "thinking", thinking: "" },
       });
     }
 
     results.push({
       type: "content_block_delta",
       index: state.thinkingBlockIndex,
-      delta: { type: "thinking_delta", thinking: reasoningContent }
+      delta: { type: "thinking_delta", thinking: reasoningContent },
     });
   }
 
@@ -168,29 +179,33 @@ export function openaiToClaudeResponse(chunk, state) {
       results.push({
         type: "content_block_start",
         index: state.textBlockIndex,
-        content_block: { type: CLAUDE_BLOCK.TEXT, text: "" }
+        content_block: { type: "text", text: "" },
       });
     }
 
     results.push({
       type: "content_block_delta",
       index: state.textBlockIndex,
-      delta: { type: "text_delta", text: delta.content }
+      delta: { type: "text_delta", text: delta.content },
     });
   }
 
   // Tool calls
   if (delta?.tool_calls) {
+    if (!state.toolCalls) state.toolCalls = new Map();
     for (const tc of delta.tool_calls) {
       const idx = tc.index ?? 0;
 
-      // GLM/fireworks repeats id+null-name on every arg chunk; open block once per idx
-      if (tc.id && !state.toolCalls.has(idx)) {
+      if (tc.id) {
         stopThinkingBlock(state, results);
         stopTextBlock(state, results);
 
         const toolBlockIndex = state.nextBlockIndex++;
-        state.toolCalls.set(idx, { id: tc.id, name: tc.function?.name || "", blockIndex: toolBlockIndex });
+        state.toolCalls.set(idx, {
+          id: tc.id,
+          name: tc.function?.name || "",
+          blockIndex: toolBlockIndex,
+        });
 
         // Strip prefix from tool name for response
         let toolName = tc.function?.name || "";
@@ -202,20 +217,52 @@ export function openaiToClaudeResponse(chunk, state) {
           type: "content_block_start",
           index: toolBlockIndex,
           content_block: {
-            type: CLAUDE_BLOCK.TOOL_USE,
+            type: "tool_use",
             id: tc.id,
             name: toolName,
-            input: {}
-          }
+            input: {},
+          },
         });
       }
 
       if (tc.function?.arguments) {
         const toolInfo = state.toolCalls.get(idx);
         if (toolInfo) {
-          // Buffer args instead of streaming — sanitize at finish to fix bad params
-          if (!state.toolArgBuffers) state.toolArgBuffers = new Map();
-          state.toolArgBuffers.set(idx, (state.toolArgBuffers.get(idx) || "") + tc.function.arguments);
+          let toolName = toolInfo.name;
+          if (toolName.startsWith(CLAUDE_OAUTH_TOOL_PREFIX)) {
+            toolName = toolName.slice(CLAUDE_OAUTH_TOOL_PREFIX.length);
+          }
+
+          if (toolName === "Read") {
+            if (!state.toolArgBuffers) state.toolArgBuffers = new Map();
+            const current =
+              (state.toolArgBuffers.get(idx) || "") + tc.function.arguments;
+            state.toolArgBuffers.set(idx, current);
+
+            // Try to parse early if the arguments are complete (e.g. in tests)
+            try {
+              JSON.parse(current);
+              const sanitized = sanitizeToolArgs(toolInfo.name, current);
+              results.push({
+                type: "content_block_delta",
+                index: toolInfo.blockIndex,
+                delta: { type: "input_json_delta", partial_json: sanitized },
+              });
+              state.toolArgBuffers.delete(idx);
+            } catch {
+              // JSON is incomplete, continue buffering
+            }
+          } else {
+            // Stream arguments directly in real-time
+            results.push({
+              type: "content_block_delta",
+              index: toolInfo.blockIndex,
+              delta: {
+                type: "input_json_delta",
+                partial_json: tc.function.arguments,
+              },
+            });
+          }
         }
       }
     }
@@ -226,20 +273,26 @@ export function openaiToClaudeResponse(chunk, state) {
     stopThinkingBlock(state, results);
     stopTextBlock(state, results);
 
-    for (const [idx, toolInfo] of state.toolCalls) {
-      // Emit buffered + sanitized args as single delta before stop
-      const buffered = state.toolArgBuffers?.get(idx);
-      if (buffered) {
-        const sanitized = sanitizeToolArgs(toolInfo.name, buffered);
-        results.push({
-          type: "content_block_delta",
-          index: toolInfo.blockIndex,
-          delta: { type: "input_json_delta", partial_json: sanitized }
-        });
+    for (const [idx, toolInfo] of state.toolCalls || []) {
+      let toolName = toolInfo.name;
+      if (toolName.startsWith(CLAUDE_OAUTH_TOOL_PREFIX)) {
+        toolName = toolName.slice(CLAUDE_OAUTH_TOOL_PREFIX.length);
+      }
+
+      if (toolName === "Read") {
+        const buffered = state.toolArgBuffers?.get(idx);
+        if (buffered) {
+          const sanitized = sanitizeToolArgs(toolInfo.name, buffered);
+          results.push({
+            type: "content_block_delta",
+            index: toolInfo.blockIndex,
+            delta: { type: "input_json_delta", partial_json: sanitized },
+          });
+        }
       }
       results.push({
         type: "content_block_stop",
-        index: toolInfo.blockIndex
+        index: toolInfo.blockIndex,
       });
     }
 
@@ -251,7 +304,7 @@ export function openaiToClaudeResponse(chunk, state) {
     results.push({
       type: "message_delta",
       delta: { stop_reason: convertFinishReason(choice.finish_reason) },
-      usage: finalUsage
+      usage: finalUsage,
     });
     results.push({ type: "message_stop" });
   }
@@ -259,7 +312,19 @@ export function openaiToClaudeResponse(chunk, state) {
   return results.length > 0 ? results : null;
 }
 
-const convertFinishReason = (reason) => fromOpenAIFinish(reason, "claude");
+// Convert OpenAI finish_reason to Claude stop_reason
+function convertFinishReason(reason) {
+  switch (reason) {
+    case "stop":
+      return "end_turn";
+    case "length":
+      return "max_tokens";
+    case "tool_calls":
+      return "tool_use";
+    default:
+      return "end_turn";
+  }
+}
 
 // Register
 register(FORMATS.OPENAI, FORMATS.CLAUDE, null, openaiToClaudeResponse);

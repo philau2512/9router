@@ -1,213 +1,5 @@
 import { getModelsByProviderId } from "open-sse/config/providerModels.js";
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-export const QUOTA_CACHE_KEY = "quotaCacheData";
-export const REFRESH_INTERVAL_MS = 60000;
-// Claude usage/quota endpoint rate-limits; poll it less often than other providers
-export const CLAUDE_REFRESH_INTERVAL_MS = 180000;
-export const DEPLETED_QUOTA_THRESHOLD = 5;
-export const AUTO_REFRESH_STORAGE_KEY = "quotaAutoRefresh";
-export const CONNECTIONS_PAGE_SIZE = 20;
-export const ACCOUNT_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
-export const ACCOUNT_PAGE_SIZE_MAX = 500;
-export const ACCOUNT_FILTER_OPTIONS = [
-  { value: "all", label: "All accounts" },
-  { value: "active", label: "Active" },
-  { value: "inactive", label: "Turned off" },
-];
-export const QUOTA_SORT_OPTIONS = [
-  { value: "default", label: "Default quota order" },
-  { value: "remaining-asc", label: "% quota: low to high" },
-  { value: "remaining-desc", label: "% quota: high to low" },
-];
-
-// ─── Pure helpers ─────────────────────────────────────────────────────────────
-export function getConnectionLabel(connection) {
-  return connection.name?.trim()
-    || connection.email?.trim()
-    || connection.displayName?.trim()
-    || null;
-}
-
-export function getConnectionQuotaRemaining(connection, quotaData) {
-  const quota = quotaData[connection.id]?.quotas?.[0];
-  if (!quota) return Number.POSITIVE_INFINITY;
-  if (typeof quota.remaining === "number") return quota.remaining;
-  return Number.POSITIVE_INFINITY;
-}
-
-export function sortVisibleConnections(
-  connections,
-  quotaData,
-  expiringFirst,
-  providerFilter,
-  quotaSortMode,
-) {
-  if (providerFilter === "codex" && quotaSortMode !== "default") {
-    return [...connections].sort((a, b) => {
-      const remainingA = getConnectionQuotaRemaining(a, quotaData);
-      const remainingB = getConnectionQuotaRemaining(b, quotaData);
-      const remainingDiff =
-        quotaSortMode === "remaining-asc"
-          ? remainingA - remainingB
-          : remainingB - remainingA;
-      if (remainingDiff !== 0) return remainingDiff;
-      return (getConnectionLabel(a) || "").localeCompare(
-        getConnectionLabel(b) || "",
-      );
-    });
-  }
-
-  if (!expiringFirst) return connections;
-
-  const getEarliestResetTime = (connection) => {
-    const resetTimes = (quotaData[connection.id]?.quotas || [])
-      .map((quota) =>
-        quota.resetAt
-          ? new Date(quota.resetAt).getTime()
-          : Number.POSITIVE_INFINITY,
-      )
-      .filter((time) => Number.isFinite(time));
-    return resetTimes.length > 0
-      ? Math.min(...resetTimes)
-      : Number.POSITIVE_INFINITY;
-  };
-
-  return [...connections].sort((a, b) => {
-    const expiryDiff = getEarliestResetTime(a) - getEarliestResetTime(b);
-    if (expiryDiff !== 0) return expiryDiff;
-    return (
-      (a.provider || "").localeCompare(b.provider || "") ||
-      (getConnectionLabel(a) || "").localeCompare(getConnectionLabel(b) || "")
-    );
-  });
-}
-
-export function buildLoadingState(connections) {
-  const nextLoadingState = {};
-  connections.forEach((connection) => {
-    nextLoadingState[connection.id] = true;
-  });
-  return nextLoadingState;
-}
-
-export function filterQuotaStateByConnections(state, connections) {
-  const visibleIds = new Set(connections.map((connection) => connection.id));
-  return Object.fromEntries(
-    Object.entries(state).filter(([id]) => visibleIds.has(id)),
-  );
-}
-
-export function getConnectionsPageRange(pagination) {
-  if (!pagination.total) {
-    return { start: 0, end: 0 };
-  }
-  const start = (pagination.page - 1) * pagination.pageSize + 1;
-  const end = Math.min(pagination.page * pagination.pageSize, pagination.total);
-  return { start, end };
-}
-
-export function getConnectionsEmptyMessage(totals, providerFilter, accountFilter) {
-  if (!totals.eligibleConnections) {
-    return {
-      icon: "cloud_off",
-      title: "No Providers Connected",
-      description:
-        "Connect to providers with OAuth to track your API quota limits and usage.",
-    };
-  }
-  if (!totals.providerFilteredConnections) {
-    return {
-      icon: "filter_alt_off",
-      title: "No Accounts Match Current Filters",
-      description:
-        providerFilter === "all"
-          ? "Try changing the account status filter to see more quota trackers."
-          : `No ${accountFilter === "inactive" ? "turned off" : accountFilter === "active" ? "active" : "matching"} accounts found for ${providerFilter}.`,
-    };
-  }
-  return {
-    icon: "filter_alt_off",
-    title: "No Accounts On This Page",
-    description:
-      "Try moving to another page or refreshing the current filters.",
-  };
-}
-
-export function sortRequestFromExpiringFirst(expiringFirst) {
-  return expiringFirst ? "expiring" : "priority";
-}
-
-export function getPageSizeLabel(pageSize, isCustomPageSize) {
-  return isCustomPageSize ? `Custom: ${pageSize} / page` : `${pageSize} / page`;
-}
-
-export function getConnectionsPaginationSummary(pagination) {
-  const { start, end } = getConnectionsPageRange(pagination);
-  return `Showing ${start}-${end} of ${pagination.total}`;
-}
-
-export function getSafePagination(pagination, fallbackPageSize) {
-  return (
-    pagination || {
-      page: 1,
-      pageSize: fallbackPageSize,
-      total: 0,
-      totalPages: 1,
-    }
-  );
-}
-
-export function getSafeTotals(totals, fallbackTotal = 0) {
-  return (
-    totals || {
-      eligibleConnections: fallbackTotal,
-      providerFilteredConnections: fallbackTotal,
-    }
-  );
-}
-
-export function shouldResetPage(previousValue, nextValue) {
-  return previousValue !== nextValue;
-}
-
-export function getPaginationPageValue(dataPagination, fallbackPage) {
-  return dataPagination?.page || fallbackPage;
-}
-
-export function getProviderOptions(dataProviderOptions) {
-  return dataProviderOptions || [];
-}
-
-export async function reconcileConnectionsPage(fetchConnections, targetPage) {
-  return await fetchConnections(targetPage);
-}
-
-export function getQuotaCache() {
-  if (typeof window === "undefined") return {};
-  try {
-    const cached = window.localStorage.getItem(QUOTA_CACHE_KEY);
-    return cached ? JSON.parse(cached) : {};
-  } catch (error) {
-    console.error("Error reading quota cache:", error);
-    return {};
-  }
-}
-
-export function setQuotaCache(connectionId, quotaEntry) {
-  if (typeof window === "undefined") return;
-  try {
-    const cache = getQuotaCache();
-    cache[connectionId] = {
-      ...quotaEntry,
-      cachedAt: new Date().toISOString(),
-    };
-    window.localStorage.setItem(QUOTA_CACHE_KEY, JSON.stringify(cache));
-  } catch (error) {
-    console.error("Error writing quota cache:", error);
-  }
-}
-
 /**
  * Format ISO date string to countdown format (inspired by vscode-antigravity-cockpit)
  * @param {string|Date} date - ISO date string or Date object
@@ -224,20 +16,20 @@ export function formatResetTime(date) {
     if (diffMs <= 0) return "-";
 
     const totalMinutes = Math.ceil(diffMs / (1000 * 60));
-    
+
     // < 60 minutes: show only minutes
     if (totalMinutes < 60) {
       return `${totalMinutes}m`;
     }
-    
+
     const totalHours = Math.floor(totalMinutes / 60);
     const remainingMinutes = totalMinutes % 60;
-    
+
     // < 24 hours: show hours and minutes
     if (totalHours < 24) {
       return `${totalHours}h ${remainingMinutes}m`;
     }
-    
+
     // >= 24 hours: show days, hours, and minutes
     const days = Math.floor(totalHours / 24);
     const remainingHours = totalHours % 24;
@@ -368,26 +160,22 @@ export function parseQuotaData(provider, data) {
         }
         break;
 
-      case "qoder":
-        // Qoder ships a `user` quota and (optionally) an `organization`
-        // quota, both with same shape: {total, used, remaining, unit, resetAt}.
-        // Skip an organization bucket when its total is 0 — most personal
-        // Qoder accounts won't have one and rendering "0/0" is misleading.
-        // Don't forward Qoder's `remaining` field: it's an absolute credit
-        // count, but getRemainingPercentage / QuotaTable interpret
-        // `remaining` as a 0-100 percentage and would render 348 credits
-        // as "348%". The percentage is computed from used/total instead.
+      case "grok-cli":
+      case "gcli":
+      case "xai":
+        // Grok billing rows come keyed by label (Monthly credits / Weekly
+        // limit / On-demand / Prepaid). Preserve remainingPercentage + unlimited
+        // so depleted ($0/$0) and unknown windows render correctly instead of a
+        // wrong 0% bar (same handling as antigravity).
         if (data.quotas) {
-          Object.entries(data.quotas).forEach(([quotaType, quota]) => {
-            if (quotaType === "organization" && (!quota || (Number(quota.total) || 0) === 0)) {
-              return;
-            }
+          Object.entries(data.quotas).forEach(([name, quota]) => {
             normalizedQuotas.push({
-              name: quotaType === "user" ? "Personal" : quotaType === "organization" ? "Organization" : quotaType,
+              name,
               used: quota.used || 0,
               total: quota.total || 0,
-              unit: quota.unit,
               resetAt: quota.resetAt || null,
+              remainingPercentage: quota.remainingPercentage,
+              unlimited: quota.unlimited,
             });
           });
         }
@@ -415,59 +203,6 @@ export function parseQuotaData(provider, data) {
         }
         break;
 
-      case "vercel-ai-gateway":
-        // Vercel returns currency credit balance, not request quotas.
-        // The 'Remaining (USD)' row needs explicit remainingPercentage because
-        // its used/total values would otherwise compute the wrong direction
-        // (e.g. used=95.5 / total=100 → 4% instead of 96%).
-        if (data.quotas) {
-          Object.entries(data.quotas).forEach(([name, quota]) => {
-            normalizedQuotas.push({
-              name,
-              used: quota.used || 0,
-              total: quota.total || 0,
-              resetAt: quota.resetAt || null,
-              remainingPercentage: quota.remainingPercentage,
-            });
-          });
-        }
-        break;
-
-      case "codebuddy-cn":
-        // CodeBuddy CN mixes recurring refill packs ("Monthly"/"Weekly"/...)
-        // with one-shot bonus packs ("Bonus Pack N"). Forward `recurring`
-        // so the UI can show "Expires in" for bonus packs (whose resetAt is
-        // a hard expiry, not a refresh) instead of "Reset in".
-        if (data.quotas) {
-          Object.entries(data.quotas).forEach(([name, quota]) => {
-            normalizedQuotas.push({
-              name,
-              used: quota.used || 0,
-              total: quota.total || 0,
-              resetAt: quota.resetAt || null,
-              recurring: quota.recurring !== false,
-            });
-          });
-        }
-        break;
-
-      case "grok-cli":
-        // Grok Build credits (on-demand window + prepaid balance).
-        // Do NOT forward absolute `remaining` — getRemainingPercentage treats
-        // it as a 0–100 percentage (same as Qoder). Use remainingPercentage.
-        if (data.quotas) {
-          Object.entries(data.quotas).forEach(([name, quota]) => {
-            normalizedQuotas.push({
-              name,
-              used: quota.used || 0,
-              total: quota.total || 0,
-              resetAt: quota.resetAt || null,
-              remainingPercentage: quota.remainingPercentage,
-            });
-          });
-        }
-        break;
-
       default:
         // Generic fallback for unknown providers
         if (data.quotas) {
@@ -490,7 +225,7 @@ export function parseQuotaData(provider, data) {
   const modelOrder = getModelsByProviderId(provider);
   if (modelOrder.length > 0) {
     const orderMap = new Map(modelOrder.map((m, i) => [m.id, i]));
-    
+
     normalizedQuotas.sort((a, b) => {
       // Use modelKey for antigravity, otherwise use name
       const keyA = a.modelKey || a.name;

@@ -22,14 +22,18 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes per credential
 const catalogCache = new Map();
 
 function cacheKey(credentials) {
-  return credentials?.providerSpecificData?.copilotToken
-    || credentials?.accessToken
-    || "copilot-anonymous";
+  // Use stable GitHub OAuth accessToken as primary key — copilotToken is short-lived
+  // (~30 min) and would create new cache entries on each refresh.
+  return (
+    credentials?.accessToken ||
+    credentials?.providerSpecificData?.copilotToken ||
+    "copilot-anonymous"
+  );
 }
 
 function buildHeaders(token) {
   return {
-    "Authorization": `Bearer ${token}`,
+    Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
     "Copilot-Integration-Id": "vscode-chat",
     "editor-version": `vscode/${GITHUB_COPILOT.VSCODE_VERSION}`,
@@ -92,9 +96,13 @@ function expandCatalog(raw) {
  * @returns {Promise<{ models: object[] } | null>}
  */
 export async function resolveCopilotModels(credentials, options = {}) {
-  const token = credentials?.providerSpecificData?.copilotToken || credentials?.accessToken;
+  const token =
+    credentials?.providerSpecificData?.copilotToken || credentials?.accessToken;
   if (!token) {
-    options.log?.debug?.("COPILOT_MODELS", "No copilotToken/accessToken; skipping live fetch");
+    options.log?.debug?.(
+      "COPILOT_MODELS",
+      "No copilotToken/accessToken; skipping live fetch",
+    );
     return null;
   }
 
@@ -113,8 +121,15 @@ export async function resolveCopilotModels(credentials, options = {}) {
   } catch (err) {
     // A 401/403 means the Copilot token is stale — refresh from the GitHub
     // access token and retry once.
-    if (err && (err.status === 401 || err.status === 403) && credentials.accessToken) {
-      options.log?.info?.("COPILOT_MODELS", `Got ${err.status}; refreshing Copilot token`);
+    if (
+      err &&
+      (err.status === 401 || err.status === 403) &&
+      credentials.accessToken
+    ) {
+      options.log?.info?.(
+        "COPILOT_MODELS",
+        `Got ${err.status}; refreshing Copilot token`,
+      );
       const refreshed = await refreshCopilotToken(credentials.accessToken);
       if (refreshed?.token) {
         if (typeof options.onCredentialsRefreshed === "function") {
@@ -124,21 +139,33 @@ export async function resolveCopilotModels(credentials, options = {}) {
               copilotTokenExpiresAt: refreshed.expiresAt,
             });
           } catch (e) {
-            options.log?.warn?.("COPILOT_MODELS", `onCredentialsRefreshed failed: ${e?.message || e}`);
+            options.log?.warn?.(
+              "COPILOT_MODELS",
+              `onCredentialsRefreshed failed: ${e?.message || e}`,
+            );
           }
         }
         try {
           raw = await fetchCatalogRaw(refreshed.token, options.signal);
         } catch (err2) {
-          options.log?.warn?.("COPILOT_MODELS", `Retry after refresh failed: ${err2?.message || err2}`);
+          options.log?.warn?.(
+            "COPILOT_MODELS",
+            `Retry after refresh failed: ${err2?.message || err2}`,
+          );
           return null;
         }
       } else {
-        options.log?.warn?.("COPILOT_MODELS", "Token refresh did not return a token");
+        options.log?.warn?.(
+          "COPILOT_MODELS",
+          "Token refresh did not return a token",
+        );
         return null;
       }
     } else {
-      options.log?.warn?.("COPILOT_MODELS", `Live model fetch failed: ${err?.message || err}`);
+      options.log?.warn?.(
+        "COPILOT_MODELS",
+        `Live model fetch failed: ${err?.message || err}`,
+      );
       return null;
     }
   }

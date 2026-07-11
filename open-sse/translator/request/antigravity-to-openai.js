@@ -1,10 +1,6 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
-import { adjustMaxTokens } from "../formats/maxTokens.js";
-import { encodeDataUri } from "../concerns/image.js";
-import { ROLE, GEMINI_ROLE, OPENAI_BLOCK } from "../schema/index.js";
-import { budgetToEffort } from "../concerns/thinking.js";
-import { collapseTextParts } from "../concerns/message.js";
+import { adjustMaxTokens } from "../helpers/maxTokensHelper.js";
 
 // Convert Antigravity request to OpenAI format
 // Antigravity body: { project, model, userAgent, requestType, requestId, request: { contents, systemInstruction, tools, toolConfig, generationConfig, sessionId } }
@@ -13,7 +9,7 @@ export function antigravityToOpenAIRequest(model, body, stream) {
   const result = {
     model: model,
     messages: [],
-    stream: stream
+    stream: stream,
   };
 
   // Generation config
@@ -35,8 +31,16 @@ export function antigravityToOpenAIRequest(model, body, stream) {
 
     // Thinking config → reasoning_effort
     if (config.thinkingConfig) {
-      const effort = budgetToEffort(config.thinkingConfig.thinkingBudget || 0);
-      if (effort) result.reasoning_effort = effort;
+      const budget = config.thinkingConfig.thinkingBudget || 0;
+      if (budget > 0) {
+        if (budget <= 2048) {
+          result.reasoning_effort = "low";
+        } else if (budget <= 16384) {
+          result.reasoning_effort = "medium";
+        } else {
+          result.reasoning_effort = "high";
+        }
+      }
     }
   }
 
@@ -44,7 +48,7 @@ export function antigravityToOpenAIRequest(model, body, stream) {
   if (req.systemInstruction) {
     const systemText = extractText(req.systemInstruction);
     if (systemText) {
-      result.messages.push({ role: ROLE.SYSTEM, content: systemText });
+      result.messages.push({ role: "system", content: systemText });
     }
   }
 
@@ -69,12 +73,15 @@ export function antigravityToOpenAIRequest(model, body, stream) {
       if (tool.functionDeclarations) {
         for (const func of tool.functionDeclarations) {
           result.tools.push({
-            type: OPENAI_BLOCK.FUNCTION,
+            type: "function",
             function: {
               name: func.name,
               description: func.description || "",
-              parameters: normalizeSchemaTypes(func.parameters) || { type: "object", properties: {} }
-            }
+              parameters: normalizeSchemaTypes(func.parameters) || {
+                type: "object",
+                properties: {},
+              },
+            },
           });
         }
       }
@@ -91,14 +98,12 @@ function normalizeSchemaTypes(schema) {
 
   const result = Array.isArray(schema) ? [...schema] : { ...schema };
 
-
   if (typeof result.type === "string") {
     result.type = result.type.toLowerCase();
   }
 
   // Strip enumDescriptions — not supported by upstream APIs
   delete result.enumDescriptions;
-
 
   if (result.properties) {
     const normalized = {};
@@ -118,7 +123,12 @@ function normalizeSchemaTypes(schema) {
 // Convert Antigravity content to OpenAI message
 // Handles: text, thought, thoughtSignature, functionCall, functionResponse, inlineData
 function convertContent(content) {
-  const role = content.role === GEMINI_ROLE.MODEL ? ROLE.ASSISTANT : content.role === GEMINI_ROLE.USER ? ROLE.USER : content.role;
+  const role =
+    content.role === "model"
+      ? "assistant"
+      : content.role === "user"
+        ? "user"
+        : content.role;
 
   if (!content.parts || !Array.isArray(content.parts)) {
     return null;
@@ -136,59 +146,67 @@ function convertContent(content) {
       continue;
     }
 
-    // Text with thoughtSignature = regular text after thinking
+    // Text with thoughtSignature = regular text after thinking (skip empty)
     if (part.thoughtSignature && part.text !== undefined) {
-      if (part.text) {
-        textParts.push({ type: OPENAI_BLOCK.TEXT, text: part.text });
-      }
+      if (part.text) textParts.push({ type: "text", text: part.text });
       continue;
     }
 
-    // Regular text
+    // Regular text (skip empty strings)
     if (part.text !== undefined && part.text !== "") {
-      textParts.push({ type: OPENAI_BLOCK.TEXT, text: part.text });
+      textParts.push({ type: "text", text: part.text });
     }
 
     // Inline data (images)
     if (part.inlineData) {
       textParts.push({
-        type: OPENAI_BLOCK.IMAGE_URL,
+        type: "image_url",
         image_url: {
-          url: encodeDataUri(part.inlineData.mimeType, part.inlineData.data)
-        }
+          url: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
+        },
       });
     }
 
     // Function call
     if (part.functionCall) {
       toolCalls.push({
-        // Deterministic id from name so the matching functionResponse pairs correctly.
-        id: part.functionCall.id || `call_${part.functionCall.name}`,
-        type: OPENAI_BLOCK.FUNCTION,
+        id:
+          part.functionCall.id ||
+          `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        type: "function",
         function: {
           name: part.functionCall.name,
-          arguments: JSON.stringify(part.functionCall.args || {})
-        }
+          arguments: JSON.stringify(part.functionCall.args || {}),
+        },
       });
     }
 
     // Function response → collect all, each becomes a separate tool message
     if (part.functionResponse) {
       toolResults.push({
-        role: ROLE.TOOL,
-        tool_call_id: part.functionResponse.id || `call_${part.functionResponse.name}`,
-        content: JSON.stringify(part.functionResponse.response?.result || part.functionResponse.response || {})
+        role: "tool",
+        tool_call_id: part.functionResponse.id || part.functionResponse.name,
+        content: JSON.stringify(
+          part.functionResponse.response?.result ||
+            part.functionResponse.response ||
+            {},
+        ),
       });
     }
   }
 
   // Content with functionResponses — return array of tool result messages,
   // plus an assistant message for any co-located tool calls / text.
+  // Preserves tool_calls when functionResponse and functionCall coexist in
+  // the same content part, and skips empty text parts before they reach Claude.
   if (toolResults.length > 0) {
     if (toolCalls.length > 0 || textParts.length > 0 || reasoningContent) {
-      const assistantMsg = { role: ROLE.ASSISTANT };
+      const assistantMsg = { role: "assistant" };
       if (textParts.length > 0) {
-        assistantMsg.content = collapseTextParts(textParts);
+        assistantMsg.content =
+          textParts.length === 1 && textParts[0].type === "text"
+            ? textParts[0].text
+            : textParts;
       }
       if (reasoningContent) {
         assistantMsg.reasoning_content = reasoningContent;
@@ -203,9 +221,12 @@ function convertContent(content) {
 
   // Assistant with tool calls
   if (toolCalls.length > 0) {
-    const msg = { role: ROLE.ASSISTANT };
+    const msg = { role: "assistant" };
     if (textParts.length > 0) {
-      msg.content = collapseTextParts(textParts);
+      msg.content =
+        textParts.length === 1 && textParts[0].type === "text"
+          ? textParts[0].text
+          : textParts;
     }
     if (reasoningContent) {
       msg.reasoning_content = reasoningContent;
@@ -218,7 +239,10 @@ function convertContent(content) {
   if (textParts.length > 0 || reasoningContent) {
     const msg = { role };
     if (textParts.length > 0) {
-      msg.content = collapseTextParts(textParts);
+      msg.content =
+        textParts.length === 1 && textParts[0].type === "text"
+          ? textParts[0].text
+          : textParts;
     }
     if (reasoningContent) {
       msg.reasoning_content = reasoningContent;
@@ -233,7 +257,7 @@ function convertContent(content) {
 function extractText(instruction) {
   if (typeof instruction === "string") return instruction;
   if (instruction.parts && Array.isArray(instruction.parts)) {
-    return instruction.parts.map(p => p.text || "").join("");
+    return instruction.parts.map((p) => p.text || "").join("");
   }
   return "";
 }

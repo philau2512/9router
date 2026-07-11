@@ -1,7 +1,6 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
-import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 
 // Models that use /zen/go/v1/messages (Anthropic/Claude format + x-api-key auth)
 const MESSAGES_FORMAT_MODELS = new Set([
@@ -34,7 +33,7 @@ export class OpenCodeGoExecutor extends BaseExecutor {
 
     if (MESSAGES_FORMAT_MODELS.has(this._lastModel)) {
       headers["x-api-key"] = key;
-      headers["anthropic-version"] = ANTHROPIC_API_VERSION;
+      headers["anthropic-version"] = "2023-06-01";
     } else {
       headers["Authorization"] = `Bearer ${key}`;
     }

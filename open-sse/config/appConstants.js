@@ -1,10 +1,8 @@
 import { platform, arch } from "os";
-import { PROVIDERS, PROVIDER_OAUTH } from "./providers.js";
-import { ANTIGRAVITY_IDE_USER_AGENT } from "../providers/shared.js";
 
-// === Gemini CLI === derive từ registry gemini-cli.transport
-export const GEMINI_CLI_VERSION = PROVIDERS["gemini-cli"]?.cliVersion;
-export const GEMINI_CLI_API_CLIENT = PROVIDERS["gemini-cli"]?.apiClient;
+// === Gemini CLI ===
+export const GEMINI_CLI_VERSION = "0.34.0";
+export const GEMINI_CLI_API_CLIENT = "google-genai-sdk/1.41.0 gl-node/v22.19.0";
 
 // Map Node arch to Gemini CLI arch string (x64/x86/arm64/...)
 function geminiCLIArch() {
@@ -18,13 +16,11 @@ export function geminiCLIUserAgent(model = "unknown") {
 }
 
 // === GitHub Copilot ===
-// Derive từ registry github.transport.copilot
-const _ghCopilot = PROVIDERS.github?.copilot || {};
 export const GITHUB_COPILOT = {
-  VSCODE_VERSION: _ghCopilot.vscodeVersion,
-  COPILOT_CHAT_VERSION: _ghCopilot.chatVersion,
-  USER_AGENT: _ghCopilot.userAgent,
-  API_VERSION: _ghCopilot.apiVersion,
+  VSCODE_VERSION: "1.110.0",
+  COPILOT_CHAT_VERSION: "0.38.0",
+  USER_AGENT: "GitHubCopilotChat/0.38.0",
+  API_VERSION: "2025-04-01",
 };
 
 // === Antigravity enums ===
@@ -32,7 +28,7 @@ export const IDE_TYPE = {
   UNSPECIFIED: 0,
   JETSKI: 10,
   ANTIGRAVITY: 9,
-  PLUGINS: 7
+  PLUGINS: 7,
 };
 
 export const PLATFORM = {
@@ -41,36 +37,45 @@ export const PLATFORM = {
   DARWIN_ARM64: 2,
   LINUX_AMD64: 3,
   LINUX_ARM64: 4,
-  WINDOWS_AMD64: 5
+  WINDOWS_AMD64: 5,
 };
 
 export const PLUGIN_TYPE = {
   UNSPECIFIED: 0,
   CLOUD_CODE: 1,
-  GEMINI: 2
+  GEMINI: 2,
 };
 
 export function getPlatformEnum() {
   const os = platform();
   const architecture = arch();
-  if (os === "darwin") return architecture === "arm64" ? PLATFORM.DARWIN_ARM64 : PLATFORM.DARWIN_AMD64;
-  if (os === "linux") return architecture === "arm64" ? PLATFORM.LINUX_ARM64 : PLATFORM.LINUX_AMD64;
+  if (os === "darwin")
+    return architecture === "arm64"
+      ? PLATFORM.DARWIN_ARM64
+      : PLATFORM.DARWIN_AMD64;
+  if (os === "linux")
+    return architecture === "arm64"
+      ? PLATFORM.LINUX_ARM64
+      : PLATFORM.LINUX_AMD64;
   if (os === "win32") return PLATFORM.WINDOWS_AMD64;
   return PLATFORM.UNSPECIFIED;
 }
 
 export function getPlatformUserAgent() {
-  return ANTIGRAVITY_IDE_USER_AGENT;
+  return `antigravity/1.104.0 ${platform()}/${arch()}`;
 }
 
 export const CLIENT_METADATA = {
   ideType: IDE_TYPE.ANTIGRAVITY,
   platform: getPlatformEnum(),
-  pluginType: PLUGIN_TYPE.GEMINI
+  pluginType: PLUGIN_TYPE.GEMINI,
 };
 
 // Internal anti-loop header
-export const INTERNAL_REQUEST_HEADER = { name: "x-request-source", value: "local" };
+export const INTERNAL_REQUEST_HEADER = {
+  name: "x-request-source",
+  value: "local",
+};
 
 // Suffix added to client tools when forwarding to Antigravity provider (anti-ban cloaking)
 export const AG_TOOL_SUFFIX = "_ide";
@@ -125,17 +130,18 @@ export const AG_DEFAULT_TOOLS = new Set([
   "task_boundary",
   "view_content_chunk",
   "view_file",
-  "write_to_file"
+  "write_to_file",
 ]);
 
 // Antigravity chat/stream headers
 export const ANTIGRAVITY_HEADERS = {
-  "User-Agent": ANTIGRAVITY_IDE_USER_AGENT
+  "User-Agent": `antigravity/1.107.0 ${platform()}/${arch()}`,
 };
 
 // Cloud Code Assist API
 export const CLOUD_CODE_API = {
-  loadCodeAssist: "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
+  loadCodeAssist:
+    "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
   onboardUser: "https://cloudcode-pa.googleapis.com/v1internal:onboardUser",
 };
 
@@ -143,7 +149,11 @@ export const LOAD_CODE_ASSIST_HEADERS = {
   "Content-Type": "application/json",
   "User-Agent": "google-api-nodejs-client/9.15.1",
   "X-Goog-Api-Client": "google-cloud-sdk vscode_cloudshelleditor/0.1",
-  "Client-Metadata": JSON.stringify({ ideType: IDE_TYPE.ANTIGRAVITY, platform: getPlatformEnum(), pluginType: PLUGIN_TYPE.GEMINI }),
+  "Client-Metadata": JSON.stringify({
+    ideType: IDE_TYPE.ANTIGRAVITY,
+    platform: getPlatformEnum(),
+    pluginType: PLUGIN_TYPE.GEMINI,
+  }),
 };
 
 export const LOAD_CODE_ASSIST_METADATA = {
@@ -153,22 +163,48 @@ export const LOAD_CODE_ASSIST_METADATA = {
 };
 
 // System prompts
-export const CLAUDE_SYSTEM_PROMPT = "You are Claude Code, Anthropic's official CLI for Claude.";
-export const ANTIGRAVITY_DEFAULT_SYSTEM = "You are Antigravity, a powerful agentic AI coding assistant designed by the Google Deepmind team working on Advanced Agentic Coding.You are pair programming with a USER to solve their coding task. The task may require creating a new codebase, modifying or debugging an existing codebase, or simply answering a question.**Absolute paths only****Proactiveness**";
+export const CLAUDE_SYSTEM_PROMPT =
+  "You are Claude Code, Anthropic's official CLI for Claude.";
+export const ANTIGRAVITY_DEFAULT_SYSTEM =
+  "You are Antigravity, a powerful agentic AI coding assistant designed by the Google Deepmind team working on Advanced Agentic Coding.You are pair programming with a USER to solve their coding task. The task may require creating a new codebase, modifying or debugging an existing codebase, or simply answering a question.**Absolute paths only****Proactiveness**";
 
-// Derive từ registry oauth.refreshLeadMs
-export const REFRESH_LEAD_MS = Object.fromEntries(
-  Object.entries(PROVIDER_OAUTH).filter(([, o]) => o.refreshLeadMs).map(([id, o]) => [id, o.refreshLeadMs])
-);
+// Proactive token refresh lead times per provider (ms)
+export const REFRESH_LEAD_MS = {
+  codex: 2 * 60 * 60 * 1000, // 2 hours
+  claude: 4 * 60 * 60 * 1000, // 4 hours
+  iflow: 24 * 60 * 60 * 1000, // 24 hours
+  qwen: 20 * 60 * 1000, // 20 minutes
+  "kimi-coding": 5 * 60 * 1000, // 5 minutes
+  antigravity: 5 * 60 * 1000, // 5 minutes
+};
 
 // OAuth endpoints
 export const OAUTH_ENDPOINTS = {
-  google:    { token: "https://oauth2.googleapis.com/token", auth: "https://accounts.google.com/o/oauth2/auth" },
-  openai:    { token: PROVIDER_OAUTH["codex"]?.tokenUrl, auth: PROVIDER_OAUTH["codex"]?.authorizeUrl },
-  anthropic: { token: PROVIDER_OAUTH["claude"]?.tokenUrl, auth: "https://api.anthropic.com/v1/oauth/authorize" }, // ≠ claude.authorizeUrl (claude.ai login) — keep
-  qwen:      { token: PROVIDER_OAUTH["qwen"]?.tokenUrl, auth: PROVIDER_OAUTH["qwen"]?.deviceCodeUrl },
-  iflow:     { token: PROVIDER_OAUTH["iflow"]?.tokenUrl, auth: PROVIDER_OAUTH["iflow"]?.authorizeUrl },
-  github:    { token: PROVIDER_OAUTH["github"]?.tokenUrl, auth: PROVIDER_OAUTH["github"]?.authorizeUrl, deviceCode: PROVIDER_OAUTH["github"]?.deviceCodeUrl },
+  google: {
+    token: "https://oauth2.googleapis.com/token",
+    auth: "https://accounts.google.com/o/oauth2/auth",
+  },
+  openai: {
+    token: "https://auth.openai.com/oauth/token",
+    auth: "https://auth.openai.com/oauth/authorize",
+  },
+  anthropic: {
+    token: "https://api.anthropic.com/v1/oauth/token",
+    auth: "https://api.anthropic.com/v1/oauth/authorize",
+  },
+  qwen: {
+    token: "https://qwen.ai/api/v1/oauth2/token",
+    auth: "https://qwen.ai/api/v1/oauth2/device/code",
+  },
+  iflow: {
+    token: "https://iflow.cn/oauth/token",
+    auth: "https://iflow.cn/oauth",
+  },
+  github: {
+    token: "https://github.com/login/oauth/access_token",
+    auth: "https://github.com/login/oauth/authorize",
+    deviceCode: "https://github.com/login/device/code",
+  },
 };
 
 // Generate Kimi OAuth custom headers
@@ -176,7 +212,10 @@ export function buildKimiHeaders() {
   return {
     "X-Msh-Platform": "9router",
     "X-Msh-Version": "2.1.2",
-    "X-Msh-Device-Model": typeof process !== "undefined" ? `${process.platform} ${process.arch}` : "unknown",
-    "X-Msh-Device-Id": `kimi-${Date.now()}`
+    "X-Msh-Device-Model":
+      typeof process !== "undefined"
+        ? `${process.platform} ${process.arch}`
+        : "unknown",
+    "X-Msh-Device-Id": `kimi-${Date.now()}`,
   };
 }

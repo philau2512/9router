@@ -1,5 +1,5 @@
 {
-  "name": "9router",
+  "name": "@philaudev/9router",
   "version": "0.5.30",
   "description": "9Router CLI - Start and manage 9Router server",
   "bin": {

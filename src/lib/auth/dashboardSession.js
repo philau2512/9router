@@ -1,12 +1,10 @@
 import { SignJWT, jwtVerify } from "jose";
-import bcrypt from "bcryptjs";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import bcrypt from "bcryptjs";
 import { DATA_DIR } from "@/lib/dataDir";
 import { getSettings } from "@/lib/localDb";
-
-const DEFAULT_PASSWORD = "123456";
 
 function loadJwtSecret() {
   if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
@@ -57,7 +55,11 @@ export async function getDashboardAuthSession(token) {
   }
 }
 
-export async function setDashboardAuthCookie(cookieStore, request, claims = {}) {
+export async function setDashboardAuthCookie(
+  cookieStore,
+  request,
+  claims = {},
+) {
   const token = await createDashboardAuthToken(claims);
   cookieStore.set("auth_token", token, {
     httpOnly: true,
@@ -71,12 +73,19 @@ export function clearDashboardAuthCookie(cookieStore) {
   cookieStore.delete("auth_token");
 }
 
-// Verify the current dashboard password (re-auth for sensitive actions).
+/**
+ * Verify the dashboard password against the stored hash (or env/default).
+ * Used for re-authentication on sensitive operations (DB export/import).
+ */
 export async function verifyDashboardPassword(password) {
-  if (typeof password !== "string" || !password) return false;
-  const settings = await getSettings();
-  const storedHash = settings?.password;
-  if (storedHash) return bcrypt.compare(password, storedHash);
-  const initialPassword = process.env.INITIAL_PASSWORD || DEFAULT_PASSWORD;
-  return password === initialPassword;
+  if (!password) return false;
+  try {
+    const settings = await getSettings();
+    const storedHash = settings.password;
+    if (storedHash) return await bcrypt.compare(password, storedHash);
+    const initialPassword = process.env.INITIAL_PASSWORD || "123456";
+    return password === initialPassword;
+  } catch {
+    return false;
+  }
 }

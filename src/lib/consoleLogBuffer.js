@@ -30,7 +30,6 @@ const MAX_BATCH_LINES = 50;
 function flushPendingLines() {
   state.flushTimer = null;
   if (!state.pendingLines.length) return;
-
   const lines = state.pendingLines.splice(0, state.pendingLines.length);
   state.emitter.emit("lines", lines);
 }
@@ -54,7 +53,8 @@ function stripAnsi(str) {
 
 function formatArg(arg) {
   if (typeof arg === "string") return stripAnsi(arg);
-  if (arg instanceof Error) return stripAnsi(arg.stack || arg.message || String(arg));
+  if (arg instanceof Error)
+    return stripAnsi(arg.stack || arg.message || String(arg));
   try {
     return stripAnsi(JSON.stringify(arg));
   } catch {

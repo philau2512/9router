@@ -1,12 +1,15 @@
-import { buildClineHeaders } from "../shared/clineAuth.js";
+/**
+ * ClinePass live model resolver — fetches /v1/models from Cline's API.
+ */
+import { buildClineHeaders } from "../../src/shared/utils/clineAuth.js";
 
 const CLINEPASS_MODELS_ENDPOINT = "https://api.cline.bot/api/v1/models";
 const FETCH_TIMEOUT_MS = 5000;
 
 /**
- * Build request headers for the ClinePass /models endpoint (Cline's upstream API).
+ * Build request headers for the ClinePass /models endpoint.
  * - API keys are sent as plain Bearer tokens.
- * - OAuth access tokens must carry the WorkOS `workos:` prefix (handled by buildClineHeaders).
+ * - OAuth access tokens carry the WorkOS `workos:` prefix (handled by buildClineHeaders).
  */
 function buildModelListHeaders(token, isApiKey) {
   if (isApiKey) {
@@ -48,7 +51,9 @@ export async function resolveClinepassModels(credentials) {
     if (!Array.isArray(rawList)) return null;
 
     const models = rawList
-      .filter((m) => typeof m?.id === "string" && m.id.startsWith("cline-pass/"))
+      .filter(
+        (m) => typeof m?.id === "string" && m.id.startsWith("cline-pass/"),
+      )
       .map((m) => ({
         id: m.id,
         name: m.name || m.id,

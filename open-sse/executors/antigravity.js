@@ -1,12 +1,17 @@
 import crypto from "crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
-import { OAUTH_ENDPOINTS, ANTIGRAVITY_HEADERS, AG_DEFAULT_TOOLS, AG_TOOL_SUFFIX } from "../config/appConstants.js";
+import {
+  OAUTH_ENDPOINTS,
+  ANTIGRAVITY_HEADERS,
+  INTERNAL_REQUEST_HEADER,
+  AG_DEFAULT_TOOLS,
+  AG_TOOL_SUFFIX,
+} from "../config/appConstants.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
-import { resolveSessionId } from "../utils/sessionManager.js";
+import { deriveSessionId } from "../utils/sessionManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { cleanJSONSchemaForAntigravity } from "../translator/formats/gemini.js";
-import { DEFAULT_THINKING_AG_SIGNATURE } from "../config/defaultThinkingSignature.js";
+import { cleanJSONSchemaForAntigravity } from "../translator/helpers/geminiHelper.js";
 
 // Sanitize function name: Gemini requires [a-zA-Z_][a-zA-Z0-9_.:\-]{0,63}
 function sanitizeFunctionName(name) {
@@ -18,8 +23,7 @@ function sanitizeFunctionName(name) {
 
 const MAX_RETRY_AFTER_MS = 10000;
 const ANTIGRAVITY_TRANSIENT_RETRY_MAX_MS = 15000;
-const MAX_ANTIGRAVITY_OUTPUT_TOKENS = 64000;
-const ANTIGRAVITY_IDE_REQUEST_ID_RE = /^agent\/[^/]+\/\d+\/[^/]+\/\d+$/;
+const MAX_ANTIGRAVITY_OUTPUT_TOKENS = 16384;
 
 const ANTIGRAVITY_TRANSIENT_ERROR_PATTERNS = [
   /high\s+traffic/i,
@@ -38,33 +42,21 @@ const ANTIGRAVITY_TRANSIENT_STATUSES = new Set([
   HTTP_STATUS.GATEWAY_TIMEOUT,
 ]);
 
-// Fields Google generateContent rejects (Claude/OpenAI/Qwen thinking fields set at body root by thinkingUnified.js)
-const ANTIGRAVITY_REQUEST_BLACKLIST = [
-  "output_config",
-  "thinking",
-  "reasoning_effort",
-  "reasoning",
-  "enable_thinking",
-  "thinking_budget",
-  "thinkingConfig",
-];
+// Fields Google generateContent rejects (e.g. Claude adaptive output_config) — stripped from antigravity request envelope
+const ANTIGRAVITY_REQUEST_BLACKLIST = ["output_config"];
 
 // Strip blacklisted fields from an object (used for both body.request and top-level body)
-const stripBlacklisted = obj => {
+const stripBlacklisted = (obj) => {
   for (const key of ANTIGRAVITY_REQUEST_BLACKLIST) delete obj[key];
 };
 
 // Image generation model name patterns
-const IMAGE_MODEL_PATTERNS = [
-  /image/i,
-  /imagen/i,
-  /image-generation/i,
-];
+const IMAGE_MODEL_PATTERNS = [/image/i, /imagen/i, /image-generation/i];
 
 // Detect if a model is an image generation model
 function isImageModel(model) {
   if (!model) return false;
-  return IMAGE_MODEL_PATTERNS.some(p => p.test(model));
+  return IMAGE_MODEL_PATTERNS.some((p) => p.test(model));
 }
 
 // Parse aspect ratio / resolution from model name suffixes
@@ -80,33 +72,12 @@ function parseImageConfig(model) {
       config.aspectRatio = `${w}:${h}`;
     } else {
       // Resolution like 1024x768 — derive aspect ratio
-      const gcd = (a, b) => b ? gcd(b, a % b) : a;
+      const gcd = (a, b) => (b ? gcd(b, a % b) : a);
       const d = gcd(w, h);
-      config.aspectRatio = `${w/d}:${h/d}`;
+      config.aspectRatio = `${w / d}:${h / d}`;
     }
   }
   return config;
-}
-
-function uuidFromSeed(seed) {
-  const bytes = crypto.createHash("sha256").update(String(seed || "antigravity")).digest().subarray(0, 16);
-  bytes[6] = (bytes[6] & 0x0f) | 0x50;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = bytes.toString("hex");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
-function buildIdeRequestId({ body, request, credentials, model, requestType }) {
-  if (ANTIGRAVITY_IDE_REQUEST_ID_RE.test(body?.requestId || "")) {
-    return body.requestId;
-  }
-
-  const sessionId = request?.sessionId || body?.request?.sessionId || credentials?._clientSessionId || credentials?.connectionId || credentials?.email || "anonymous";
-  const conversationId = uuidFromSeed(`antigravity:conversation:${sessionId}`);
-  const trajectoryId = uuidFromSeed(`antigravity:trajectory:${sessionId}:${model}:${requestType}`);
-  const contentCount = Array.isArray(request?.contents) ? request.contents.length : 1;
-  const step = Math.max(1, contentCount * 2 - 1);
-  return `agent/${conversationId}/${Date.now()}/${trajectoryId}/${step}`;
 }
 
 export class AntigravityExecutor extends BaseExecutor {
@@ -119,17 +90,23 @@ export class AntigravityExecutor extends BaseExecutor {
     const baseUrl = baseUrls[urlIndex] || baseUrls[0];
     // Image generation MUST use non-streaming generateContent
     const forceNonStream = isImageModel(model);
-    const action = (stream && !forceNonStream) ? "streamGenerateContent?alt=sse" : "generateContent";
+    const action =
+      stream && !forceNonStream
+        ? "streamGenerateContent?alt=sse"
+        : "generateContent";
     return `${baseUrl}/v1internal:${action}`;
   }
 
-  // sessionId comes from transformRequest output; base.execute runs transformRequest before
-  // buildHeaders, so we read it from instance state cached there (fallback: explicit arg).
   buildHeaders(credentials, stream = true, sessionId = null) {
     return {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${credentials.accessToken}`,
-      "User-Agent": this.config.headers?.["User-Agent"] || ANTIGRAVITY_HEADERS["User-Agent"],
+      Authorization: `Bearer ${credentials.accessToken}`,
+      "User-Agent":
+        this.config.headers?.["User-Agent"] ||
+        ANTIGRAVITY_HEADERS["User-Agent"],
+      [INTERNAL_REQUEST_HEADER.name]: INTERNAL_REQUEST_HEADER.value,
+      ...(sessionId && { "X-Machine-Session-Id": sessionId }),
+      Accept: stream ? "text/event-stream" : "application/json",
     };
   }
 
@@ -146,70 +123,55 @@ export class AntigravityExecutor extends BaseExecutor {
       const contents = [];
       const srcContents = body.request?.contents || body.contents || [];
       for (const c of srcContents) {
-        const textParts = (c.parts || []).filter(p => p.text !== undefined).map(p => ({ text: p.text }));
+        const textParts = (c.parts || [])
+          .filter((p) => p.text !== undefined)
+          .map((p) => ({ text: p.text }));
         if (textParts.length > 0) {
           contents.push({ role: c.role || "user", parts: textParts });
         }
       }
 
-      const sessionId = resolveSessionId({
-        headers: credentials?.rawHeaders,
-        body,
-        connectionId: credentials?.email || credentials?.connectionId,
-        scope: "antigravity",
-      });
-
-      this._lastSessionId = sessionId;
-      const request = {
-        contents,
-        generationConfig: {
-          temperature: 1.0,
-          topP: 0.95,
-          topK: 40,
-          maxOutputTokens: 8192,
-          imageConfig,
-        },
-        sessionId,
-        // No tools, no systemInstruction, no safetySettings for image gen
-      };
+      const sessionId =
+        body.request?.sessionId ||
+        deriveSessionId(credentials?.email || credentials?.connectionId);
 
       return {
         project: projectId,
         model: cleanModel,
         userAgent: "antigravity",
         requestType: "image_gen",
-        requestId: buildIdeRequestId({ body, request, credentials, model: cleanModel, requestType: "image_gen" }),
-        request,
+        requestId: `agent-${crypto.randomUUID()}`,
+        request: {
+          contents,
+          generationConfig: {
+            temperature: 1.0,
+            topP: 0.95,
+            topK: 40,
+            maxOutputTokens: 8192,
+            imageConfig,
+          },
+          sessionId,
+          // No tools, no systemInstruction, no safetySettings for image gen
+        },
       };
     }
 
     // ─── Standard (non-image) request ───
     // Fix contents for Claude models via Antigravity
-    const contents = body.request?.contents?.map(c => {
+    const contents = body.request?.contents?.map((c) => {
       let role = c.role;
       // functionResponse must be role "user" for Claude models
-      if (c.parts?.some(p => p.functionResponse)) {
+      if (c.parts?.some((p) => p.functionResponse)) {
         role = "user";
       }
       // Strip thought-only parts, keep thoughtSignature on functionCall parts (Gemini 3+ requires it)
-      const parts = c.parts?.filter(p => {
+      const parts = c.parts?.filter((p) => {
         if (p.thought && !p.functionCall) return false;
         if (p.thoughtSignature && !p.functionCall && !p.text) return false;
         return true;
       });
-      // Gemini 3+ rejects functionCall parts without thoughtSignature. Clients (Claude Code, IDE)
-      // don't persist thoughtSignature in their history, so backfill the default signature on any
-      // functionCall part that arrives without one.
-      const needsBackfill = parts?.some(p => p.functionCall && !p.thoughtSignature) ?? false;
-      if (role !== c.role || parts?.length !== c.parts?.length || needsBackfill) {
-        return {
-          ...c, role,
-          parts: needsBackfill
-            ? parts.map(p => (p.functionCall && !p.thoughtSignature)
-                ? { ...p, thoughtSignature: DEFAULT_THINKING_AG_SIGNATURE }
-                : p)
-            : parts,
-        };
+      if (role !== c.role || parts?.length !== c.parts?.length) {
+        return { ...c, role, parts };
       }
       return c;
     });
@@ -219,6 +181,7 @@ export class AntigravityExecutor extends BaseExecutor {
 
     if (tools && tools.length > 0) {
       // Merge all groups into a single functionDeclarations group (Gemini expects 1 group)
+      // Deduplicate by sanitized name to avoid "Tool names must be unique" rejections.
       const seenToolNames = new Set();
       const allDeclarations = [];
       for (const group of tools) {
@@ -231,17 +194,35 @@ export class AntigravityExecutor extends BaseExecutor {
             name,
             parameters: fn.parameters
               ? cleanJSONSchemaForAntigravity(structuredClone(fn.parameters))
-              : { type: "object", properties: { reason: { type: "string", description: "Brief explanation" } }, required: ["reason"] }
+              : {
+                  type: "object",
+                  properties: {
+                    reason: {
+                      type: "string",
+                      description: "Brief explanation",
+                    },
+                  },
+                  required: ["reason"],
+                },
           });
         }
       }
-      tools = allDeclarations.length > 0 ? [{ functionDeclarations: allDeclarations }] : [];
+      tools =
+        allDeclarations.length > 0
+          ? [{ functionDeclarations: allDeclarations }]
+          : [];
     }
 
     // Strip tools/toolConfig (handled separately) and blacklisted fields that Google rejects
-    const { tools: _originalTools, toolConfig: _originalToolConfig, ...requestWithoutTools } = body.request || {};
+    const {
+      tools: _originalTools,
+      toolConfig: _originalToolConfig,
+      ...requestWithoutTools
+    } = body.request || {};
     stripBlacklisted(requestWithoutTools);
-    const generationConfig = { ...(requestWithoutTools.generationConfig || {}) };
+    const generationConfig = {
+      ...(requestWithoutTools.generationConfig || {}),
+    };
     if (generationConfig.maxOutputTokens > MAX_ANTIGRAVITY_OUTPUT_TOKENS) {
       generationConfig.maxOutputTokens = MAX_ANTIGRAVITY_OUTPUT_TOKENS;
     }
@@ -251,15 +232,17 @@ export class AntigravityExecutor extends BaseExecutor {
       generationConfig,
       ...(contents && { contents }),
       ...(tools && { tools }),
-      sessionId: body.request?.sessionId || resolveSessionId({ headers: credentials?.rawHeaders, body, connectionId: credentials?.email || credentials?.connectionId, scope: "antigravity" }),
+      sessionId:
+        body.request?.sessionId ||
+        deriveSessionId(credentials?.email || credentials?.connectionId),
       safetySettings: undefined,
-      ...(tools?.length > 0 && { toolConfig: { functionCallingConfig: { mode: "VALIDATED" } } })
+      ...(tools?.length > 0 && {
+        toolConfig: { functionCallingConfig: { mode: "VALIDATED" } },
+      }),
     };
 
     // Strip blacklisted thinking fields from top-level body (set by thinkingUnified.js at root, not body.request)
     stripBlacklisted(body);
-
-    this._lastSessionId = transformedRequest.sessionId; // cached for buildHeaders (base.execute order)
 
     return {
       ...body,
@@ -267,8 +250,8 @@ export class AntigravityExecutor extends BaseExecutor {
       model: model,
       userAgent: "antigravity",
       requestType: "agent",
-      requestId: buildIdeRequestId({ body, request: transformedRequest, credentials, model, requestType: "agent" }),
-      request: transformedRequest
+      requestId: `agent-${crypto.randomUUID()}`,
+      request: transformedRequest,
     };
   }
 
@@ -276,16 +259,23 @@ export class AntigravityExecutor extends BaseExecutor {
     if (!credentials.refreshToken) return null;
 
     try {
-      const response = await proxyAwareFetch(OAUTH_ENDPOINTS.google.token, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
-        body: new URLSearchParams({
-          grant_type: "refresh_token",
-          refresh_token: credentials.refreshToken,
-          client_id: this.config.clientId,
-          client_secret: this.config.clientSecret
-        })
-      }, proxyOptions);
+      const response = await proxyAwareFetch(
+        OAUTH_ENDPOINTS.google.token,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Accept: "application/json",
+          },
+          body: new URLSearchParams({
+            grant_type: "refresh_token",
+            refresh_token: credentials.refreshToken,
+            client_id: this.config.clientId,
+            client_secret: this.config.clientSecret,
+          }),
+        },
+        proxyOptions,
+      );
 
       if (!response.ok) return null;
 
@@ -296,7 +286,7 @@ export class AntigravityExecutor extends BaseExecutor {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || credentials.refreshToken,
         expiresIn: tokens.expires_in,
-        projectId: credentials.projectId
+        projectId: credentials.projectId,
       };
     } catch (error) {
       log?.error?.("TOKEN", `Antigravity refresh error: ${error.message}`);
@@ -305,8 +295,12 @@ export class AntigravityExecutor extends BaseExecutor {
   }
 
   generateProjectId() {
-    const adj = ["useful", "bright", "swift", "calm", "bold"][Math.floor(Math.random() * 5)];
-    const noun = ["fuze", "wave", "spark", "flow", "core"][Math.floor(Math.random() * 5)];
+    const adj = ["useful", "bright", "swift", "calm", "bold"][
+      Math.floor(Math.random() * 5)
+    ];
+    const noun = ["fuze", "wave", "spark", "flow", "core"][
+      Math.floor(Math.random() * 5)
+    ];
     return `${adj}-${noun}-${crypto.randomUUID().slice(0, 5)}`;
   }
 
@@ -317,7 +311,7 @@ export class AntigravityExecutor extends BaseExecutor {
   parseRetryHeaders(headers) {
     if (!headers?.get) return null;
 
-    const retryAfter = headers.get('retry-after');
+    const retryAfter = headers.get("retry-after");
     if (retryAfter) {
       const seconds = parseInt(retryAfter, 10);
       if (!isNaN(seconds) && seconds > 0) return seconds * 1000;
@@ -329,13 +323,13 @@ export class AntigravityExecutor extends BaseExecutor {
       }
     }
 
-    const resetAfter = headers.get('x-ratelimit-reset-after');
+    const resetAfter = headers.get("x-ratelimit-reset-after");
     if (resetAfter) {
       const seconds = parseInt(resetAfter, 10);
       if (!isNaN(seconds) && seconds > 0) return seconds * 1000;
     }
 
-    const resetTimestamp = headers.get('x-ratelimit-reset');
+    const resetTimestamp = headers.get("x-ratelimit-reset");
     if (resetTimestamp) {
       const ts = parseInt(resetTimestamp, 10) * 1000;
       const diff = ts - Date.now();
@@ -367,43 +361,230 @@ export class AntigravityExecutor extends BaseExecutor {
       errorJson?.message,
       errorJson?.error,
       bodyText,
-    ].filter(Boolean).map(v => typeof v === "string" ? v : JSON.stringify(v)).join("\n");
+    ]
+      .filter(Boolean)
+      .map((v) => (typeof v === "string" ? v : JSON.stringify(v)))
+      .join("\n");
   }
 
   isTransientAntigravityError(status, message) {
     if (status === HTTP_STATUS.RATE_LIMITED) return true;
     if (ANTIGRAVITY_TRANSIENT_STATUSES.has(status)) return true;
-    return ANTIGRAVITY_TRANSIENT_ERROR_PATTERNS.some(pattern => pattern.test(message || ""));
+    return ANTIGRAVITY_TRANSIENT_ERROR_PATTERNS.some((pattern) =>
+      pattern.test(message || ""),
+    );
   }
 
-  // Hook called by BaseExecutor.tryRetry: derive delay from Retry-After (header → body),
-  // cap at MAX_RETRY_AFTER_MS, else retry transient Antigravity failures with backoff.
-  // Return false to veto (fallback URL / final error).
-  async computeRetryDelay(response, attempt) {
-    let bodyText = "";
-    let errorJson = null;
-    let retryMs = this.parseRetryHeaders(response.headers);
+  /**
+   * Parse Antigravity 429 quota errors to extract precise reset timestamp.
+   * Looks for ErrorInfo.metadata.quotaResetTimeStamp (absolute) or
+   * RetryInfo.retryDelay (relative seconds, e.g. "12872.41s") in gRPC details array.
+   * Without this, the fallback backoff only locks for a few seconds despite a 3-4h quota reset.
+   * @param {Response} response
+   * @param {string} bodyText
+   */
+  parseError(response, bodyText) {
+    if (response.status === 429 && bodyText) {
+      try {
+        const json = JSON.parse(bodyText);
+        const details = json?.error?.details;
+        if (Array.isArray(details)) {
+          // Prefer absolute reset timestamp from ErrorInfo metadata (most reliable)
+          for (const detail of details) {
+            if (
+              detail["@type"]?.includes("ErrorInfo") &&
+              detail?.metadata?.quotaResetTimeStamp
+            ) {
+              const resetMs = new Date(
+                detail.metadata.quotaResetTimeStamp,
+              ).getTime();
+              if (resetMs > Date.now()) {
+                return {
+                  status: 429,
+                  message: json.error?.message || bodyText,
+                  resetsAtMs: resetMs,
+                };
+              }
+            }
+          }
+          // Fallback: relative delay from RetryInfo (e.g. "12872.411299746s")
+          for (const detail of details) {
+            if (detail["@type"]?.includes("RetryInfo") && detail?.retryDelay) {
+              const seconds = parseFloat(
+                String(detail.retryDelay).replace(/s$/, ""),
+              );
+              if (seconds > 0) {
+                return {
+                  status: 429,
+                  message: json.error?.message || bodyText,
+                  resetsAtMs: Date.now() + seconds * 1000,
+                };
+              }
+            }
+          }
+        }
+      } catch {
+        /* fall through to default */
+      }
+    }
+    return super.parseError(response, bodyText);
+  }
 
-    try {
-      bodyText = await response.clone().text();
-      errorJson = bodyText ? JSON.parse(bodyText) : null;
-    } catch {
-      // ignore parse errors → fall through to status/message based retry
+  async execute({
+    model,
+    body,
+    stream,
+    credentials,
+    signal,
+    log,
+    proxyOptions = null,
+  }) {
+    const fallbackCount = this.getFallbackCount();
+    let lastError = null;
+    let lastStatus = 0;
+    const MAX_AUTO_RETRIES = 3;
+    const MAX_RETRY_AFTER_RETRIES = 3;
+    const retryAttemptsByUrl = {}; // Track retry attempts per URL
+    const retryAfterAttemptsByUrl = {}; // Track Retry-After retries per URL
+
+    for (let urlIndex = 0; urlIndex < fallbackCount; urlIndex++) {
+      const url = this.buildUrl(model, stream, urlIndex);
+      const transformedBody = this.transformRequest(
+        model,
+        body,
+        stream,
+        credentials,
+      );
+      const sessionId = transformedBody.request?.sessionId;
+      const headers = this.buildHeaders(credentials, stream, sessionId);
+
+      // Initialize retry counters for this URL
+      if (!retryAttemptsByUrl[urlIndex]) {
+        retryAttemptsByUrl[urlIndex] = 0;
+      }
+      if (!retryAfterAttemptsByUrl[urlIndex]) {
+        retryAfterAttemptsByUrl[urlIndex] = 0;
+      }
+
+      try {
+        const response = await proxyAwareFetch(
+          url,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify(transformedBody),
+            signal,
+          },
+          proxyOptions,
+        );
+
+        if (
+          response.status === HTTP_STATUS.RATE_LIMITED ||
+          ANTIGRAVITY_TRANSIENT_STATUSES.has(response.status)
+        ) {
+          // Read error body once for Retry-After parsing + transient error detection
+          let retryMs = this.parseRetryHeaders(response.headers);
+          let retryBodyText = "";
+          let retryErrorJson = null;
+          try {
+            retryBodyText = await response.clone().text();
+            retryErrorJson = retryBodyText ? JSON.parse(retryBodyText) : null;
+          } catch {
+            // ignore parse errors — fall through to status/message based retry
+          }
+          const retryErrorMessage = this.extractErrorMessage(
+            retryErrorJson,
+            retryBodyText,
+          );
+
+          if (!retryMs) {
+            retryMs = this.parseRetryFromErrorMessage(retryErrorMessage);
+          }
+
+          if (
+            retryMs &&
+            retryMs <= MAX_RETRY_AFTER_MS &&
+            retryAfterAttemptsByUrl[urlIndex] < MAX_RETRY_AFTER_RETRIES
+          ) {
+            retryAfterAttemptsByUrl[urlIndex]++;
+            log?.debug?.(
+              "RETRY",
+              `${response.status} with Retry-After: ${Math.ceil(retryMs / 1000)}s, waiting... (${retryAfterAttemptsByUrl[urlIndex]}/${MAX_RETRY_AFTER_RETRIES})`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, retryMs));
+            urlIndex--;
+            continue;
+          }
+
+          // Auto retry transient errors (429 + 5xx capacity patterns) with bounded backoff
+          if (
+            this.isTransientAntigravityError(
+              response.status,
+              retryErrorMessage,
+            ) &&
+            (!retryMs || retryMs === 0) &&
+            retryAttemptsByUrl[urlIndex] < MAX_AUTO_RETRIES
+          ) {
+            retryAttemptsByUrl[urlIndex]++;
+            const cap =
+              response.status === HTTP_STATUS.RATE_LIMITED
+                ? MAX_RETRY_AFTER_MS
+                : ANTIGRAVITY_TRANSIENT_RETRY_MAX_MS;
+            const backoffMs = Math.min(
+              1000 * 2 ** retryAttemptsByUrl[urlIndex],
+              cap,
+            );
+            const label =
+              response.status === HTTP_STATUS.RATE_LIMITED
+                ? "429"
+                : `${response.status} transient`;
+            log?.debug?.(
+              "RETRY",
+              `${label} auto retry ${retryAttemptsByUrl[urlIndex]}/${MAX_AUTO_RETRIES} after ${backoffMs / 1000}s`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, backoffMs));
+            urlIndex--;
+            continue;
+          }
+
+          log?.debug?.(
+            "RETRY",
+            `${response.status}, Retry-After ${retryMs ? `too long (${Math.ceil(retryMs / 1000)}s)` : "missing"}, trying fallback`,
+          );
+          lastStatus = response.status;
+
+          if (urlIndex + 1 < fallbackCount) {
+            continue;
+          }
+        }
+
+        if (this.shouldRetry(response.status, urlIndex)) {
+          log?.debug?.(
+            "RETRY",
+            `${response.status} on ${url}, trying fallback ${urlIndex + 1}`,
+          );
+          lastStatus = response.status;
+          continue;
+        }
+
+        return { response, url, headers, transformedBody };
+      } catch (error) {
+        lastError = error;
+        if (urlIndex + 1 < fallbackCount) {
+          log?.debug?.(
+            "RETRY",
+            `Error on ${url}, trying fallback ${urlIndex + 1}`,
+          );
+          continue;
+        }
+        throw error;
+      }
     }
 
-    const errorMessage = this.extractErrorMessage(errorJson, bodyText);
-
-    if (!retryMs) {
-      retryMs = this.parseRetryFromErrorMessage(errorMessage);
-    }
-    if (retryMs) return retryMs <= MAX_RETRY_AFTER_MS ? retryMs : false;
-
-    if (!this.isTransientAntigravityError(response.status, errorMessage)) return false;
-
-    const cap = response.status === HTTP_STATUS.RATE_LIMITED
-      ? MAX_RETRY_AFTER_MS
-      : ANTIGRAVITY_TRANSIENT_RETRY_MAX_MS;
-    return Math.min(1000 * (2 ** attempt), cap); // exponential backoff
+    throw (
+      lastError ||
+      new Error(`All ${fallbackCount} URLs failed with status ${lastStatus}`)
+    );
   }
 
   /**
@@ -421,7 +602,7 @@ export class AntigravityExecutor extends BaseExecutor {
     const isCopilot = clientTool === "github-copilot";
     const toolNameMap = new Map();
     const clientDeclarations = [];
-    const decoyNames = new Set(AG_DECOY_TOOLS.map(tool => tool.name));
+    const decoyNames = new Set(AG_DECOY_TOOLS.map((tool) => tool.name));
 
     // First: collect renamed client tools
     for (const toolGroup of tools) {
@@ -461,35 +642,41 @@ export class AntigravityExecutor extends BaseExecutor {
     }
 
     // Rename tool names in conversation history (contents)
-    const cloakedContents = body.request?.contents?.map(msg => {
+    const cloakedContents = body.request?.contents?.map((msg) => {
       if (!msg.parts) return msg;
-      
-      const cloakedParts = msg.parts.map(part => {
+
+      const cloakedParts = msg.parts.map((part) => {
         // Rename functionCall.name
-        if (part.functionCall && !AG_DEFAULT_TOOLS.has(part.functionCall.name)) {
+        if (
+          part.functionCall &&
+          !AG_DEFAULT_TOOLS.has(part.functionCall.name)
+        ) {
           return {
             ...part,
             functionCall: {
               ...part.functionCall,
-              name: `${part.functionCall.name}${AG_TOOL_SUFFIX}`
-            }
+              name: `${part.functionCall.name}${AG_TOOL_SUFFIX}`,
+            },
           };
         }
-        
+
         // Rename functionResponse.name
-        if (part.functionResponse && !AG_DEFAULT_TOOLS.has(part.functionResponse.name)) {
+        if (
+          part.functionResponse &&
+          !AG_DEFAULT_TOOLS.has(part.functionResponse.name)
+        ) {
           return {
             ...part,
             functionResponse: {
               ...part.functionResponse,
-              name: `${part.functionResponse.name}${AG_TOOL_SUFFIX}`
-            }
+              name: `${part.functionResponse.name}${AG_TOOL_SUFFIX}`,
+            },
           };
         }
-        
+
         return part;
       });
-      
+
       return { ...msg, parts: cloakedParts };
     });
 
@@ -500,10 +687,10 @@ export class AntigravityExecutor extends BaseExecutor {
         request: {
           ...body.request,
           tools: [{ functionDeclarations: allDeclarations }],
-          contents: cloakedContents || body.request.contents
-        }
+          contents: cloakedContents || body.request.contents,
+        },
       },
-      toolNameMap
+      toolNameMap,
     };
   }
 }
@@ -513,108 +700,108 @@ const AG_DECOY_TOOLS = [
   {
     name: "browser_subagent",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
   },
   {
     name: "command_status",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
   },
   {
     name: "find_by_name",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
   },
   {
     name: "generate_image",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
   },
   {
     name: "grep_search",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
   },
   {
     name: "list_dir",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
   },
   {
     name: "list_resources",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
   },
   {
     name: "mcp_sequential-thinking_sequentialthinking",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
   },
   {
     name: "multi_replace_file_content",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
   },
   {
     name: "notify_user",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
   },
   {
     name: "read_resource",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
   },
   {
     name: "read_terminal",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
   },
   {
     name: "read_url_content",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
   },
   {
     name: "replace_file_content",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
   },
   {
     name: "run_command",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
   },
   {
     name: "search_web",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
   },
   {
     name: "send_command_input",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
   },
   {
     name: "task_boundary",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
   },
   {
     name: "view_content_chunk",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
   },
   {
     name: "view_file",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
   },
   {
     name: "write_to_file",
     description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  }
+    parameters: { type: "OBJECT", properties: {}, required: [] },
+  },
 ];
 
 export default AntigravityExecutor;

@@ -2,12 +2,6 @@
  * Wrap chat-completions endpoints (with built-in web search) into the unified
  * /v1/search response format. Supports gemini, openai, xai, kimi, minimax, perplexity.
  */
-import { PROVIDER_MEDIA } from "../../providers/index.js";
-
-// Default search model + endpoint derive from registry searchViaChat (single source)
-const searchModel = (id) => PROVIDER_MEDIA[id]?.searchViaChat?.defaultModel;
-const searchEndpoint = (id, model) =>
-  (PROVIDER_MEDIA[id]?.searchViaChat?.endpoint || "").replace("{model}", model || "");
 
 const REQUEST_TIMEOUT_MS = 15000;
 const DEFAULT_MAX_RESULTS = 10;
@@ -31,7 +25,7 @@ function toResult(c, index, provider, retrievedAt) {
     content: null,
     metadata: {},
     citation: { provider, retrieved_at: retrievedAt, rank: index + 1 },
-    provider_raw: null
+    provider_raw: null,
   };
 }
 
@@ -49,19 +43,24 @@ function normalizeCitation(c) {
  */
 const CHAT_SEARCH_CONFIG = {
   gemini: {
-    endpoint: (model) => searchEndpoint("gemini", model),
+    endpoint: (model) =>
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+    defaultModel: "gemini-2.5-flash",
     buildBody: (query) => ({
       contents: [{ role: "user", parts: [{ text: query }] }],
-      tools: [{ google_search: {} }]
+      tools: [{ google_search: {} }],
     }),
     buildHeaders: (token) => ({
       "Content-Type": "application/json",
-      "x-goog-api-key": token
+      "x-goog-api-key": token,
     }),
     extractAnswer: (data) => {
       const candidate = data?.candidates?.[0];
       const parts = candidate?.content?.parts || [];
-      const text = parts.map((p) => p?.text || "").filter(Boolean).join("");
+      const text = parts
+        .map((p) => p?.text || "")
+        .filter(Boolean)
+        .join("");
       const chunks = candidate?.groundingMetadata?.groundingChunks || [];
       const citations = chunks
         .map((ch) => ch?.web)
@@ -70,15 +69,16 @@ const CHAT_SEARCH_CONFIG = {
         .filter((c) => c.url);
       const tokens = data?.usageMetadata?.totalTokenCount || 0;
       return { text, citations, tokens };
-    }
+    },
   },
 
   openai: {
-    endpoint: () => searchEndpoint("openai"),
+    endpoint: () => "https://api.openai.com/v1/chat/completions",
+    defaultModel: "gpt-4o-mini",
     buildBody: (query, model) => {
       const body = {
         model,
-        messages: [{ role: "user", content: query }]
+        messages: [{ role: "user", content: query }],
       };
       // Non-search-preview models need explicit web_search tool
       if (!/search/i.test(model)) {
@@ -88,7 +88,7 @@ const CHAT_SEARCH_CONFIG = {
     },
     buildHeaders: (token) => ({
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`
+      Authorization: `Bearer ${token}`,
     }),
     extractAnswer: (data) => {
       const msg = data?.choices?.[0]?.message || {};
@@ -104,19 +104,20 @@ const CHAT_SEARCH_CONFIG = {
       const citations = fromAnn.length ? fromAnn : fromTop;
       const tokens = data?.usage?.total_tokens || 0;
       return { text, citations, tokens };
-    }
+    },
   },
 
   xai: {
-    endpoint: () => searchEndpoint("xai"),
+    endpoint: () => "https://api.x.ai/v1/responses",
+    defaultModel: "grok-4.20-reasoning",
     buildBody: (query, model) => ({
       model,
       input: [{ role: "user", content: query }],
-      tools: [{ type: "web_search" }]
+      tools: [{ type: "web_search" }],
     }),
     buildHeaders: (token) => ({
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`
+      Authorization: `Bearer ${token}`,
     }),
     extractAnswer: (data) => {
       // /v1/responses returns output[] array of message/tool blocks
@@ -143,21 +144,20 @@ const CHAT_SEARCH_CONFIG = {
       }
       const tokens = data?.usage?.total_tokens || 0;
       return { text, citations, tokens };
-    }
+    },
   },
 
   kimi: {
-    endpoint: () => searchEndpoint("kimi"),
+    endpoint: () => "https://api.moonshot.cn/v1/chat/completions",
+    defaultModel: "kimi-k2.5",
     buildBody: (query, model) => ({
       model,
       messages: [{ role: "user", content: query }],
-      tools: [
-        { type: "builtin_function", function: { name: "$web_search" } }
-      ]
+      tools: [{ type: "builtin_function", function: { name: "$web_search" } }],
     }),
     buildHeaders: (token) => ({
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`
+      Authorization: `Bearer ${token}`,
     }),
     extractAnswer: (data) => {
       const msg = data?.choices?.[0]?.message || {};
@@ -174,10 +174,7 @@ const CHAT_SEARCH_CONFIG = {
           continue;
         }
         const items =
-          parsed?.search_results ||
-          parsed?.results ||
-          parsed?.references ||
-          [];
+          parsed?.search_results || parsed?.results || parsed?.references || [];
         if (Array.isArray(items)) {
           for (const it of items) {
             const url = it?.url || it?.link;
@@ -185,26 +182,27 @@ const CHAT_SEARCH_CONFIG = {
             citations.push({
               url,
               title: it.title || "",
-              snippet: it.snippet || it.summary || ""
+              snippet: it.snippet || it.summary || "",
             });
           }
         }
       }
       const tokens = data?.usage?.total_tokens || 0;
       return { text, citations, tokens };
-    }
+    },
   },
 
   minimax: {
-    endpoint: () => searchEndpoint("minimax"),
+    endpoint: () => "https://api.minimaxi.com/v1/text/chatcompletion_v2",
+    defaultModel: "MiniMax-M2.7",
     buildBody: (query, model) => ({
       model,
       messages: [{ role: "user", content: query }],
-      tools: [{ type: "web_search" }]
+      tools: [{ type: "web_search" }],
     }),
     buildHeaders: (token) => ({
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`
+      Authorization: `Bearer ${token}`,
     }),
     extractAnswer: (data) => {
       const msg = data?.choices?.[0]?.message || {};
@@ -219,7 +217,7 @@ const CHAT_SEARCH_CONFIG = {
           citations.push({
             url,
             title: it.title || "",
-            snippet: it.snippet || it.summary || ""
+            snippet: it.snippet || it.summary || "",
           });
         }
       }
@@ -242,7 +240,7 @@ const CHAT_SEARCH_CONFIG = {
               citations.push({
                 url,
                 title: it.title || "",
-                snippet: it.snippet || ""
+                snippet: it.snippet || "",
               });
             }
           }
@@ -250,18 +248,19 @@ const CHAT_SEARCH_CONFIG = {
       }
       const tokens = data?.usage?.total_tokens || 0;
       return { text, citations, tokens };
-    }
+    },
   },
 
   perplexity: {
-    endpoint: () => searchEndpoint("perplexity"),
+    endpoint: () => "https://api.perplexity.ai/chat/completions",
+    defaultModel: "sonar",
     buildBody: (query, model) => ({
       model,
-      messages: [{ role: "user", content: query }]
+      messages: [{ role: "user", content: query }],
     }),
     buildHeaders: (token) => ({
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`
+      Authorization: `Bearer ${token}`,
     }),
     extractAnswer: (data) => {
       const msg = data?.choices?.[0]?.message || {};
@@ -272,55 +271,8 @@ const CHAT_SEARCH_CONFIG = {
         : [];
       const tokens = data?.usage?.total_tokens || 0;
       return { text, citations, tokens };
-    }
+    },
   },
-
-  "perplexity-agent": {
-    endpoint: () => searchEndpoint("perplexity-agent"),
-    buildBody: (query, model) => ({
-      model,
-      input: query,
-      tools: [{ type: "web_search" }]
-    }),
-    buildHeaders: (token) => ({
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`
-    }),
-    extractAnswer: (data) => {
-      const output = Array.isArray(data?.output) ? data.output : [];
-      let text = "";
-      const citations = [];
-      for (const item of output) {
-        const parts = Array.isArray(item?.content) ? item.content : [];
-        for (const p of parts) {
-          if (typeof p?.text === "string") text += p.text;
-          const anns = Array.isArray(p?.annotations) ? p.annotations : [];
-          for (const a of anns) {
-            const c = normalizeCitation(a?.url ? a : a?.url_citation);
-            if (c) citations.push(c);
-          }
-        }
-        const results = Array.isArray(item?.results) ? item.results : [];
-        for (const r of results) {
-          const url = r?.url || r?.link;
-          if (!url) continue;
-          citations.push({
-            url,
-            title: r?.title || "",
-            snippet: r?.snippet || ""
-          });
-        }
-      }
-      if (!citations.length && Array.isArray(data?.citations)) {
-        for (const c of data.citations) {
-          const n = normalizeCitation(c);
-          if (n) citations.push(n);
-        }
-      }
-      const tokens = data?.usage?.total_tokens || 0;
-      return { text, citations, tokens };
-    }
-  }
 };
 
 /**
@@ -340,7 +292,7 @@ export async function handleChatSearch({
   maxResults,
   model,
   credentials,
-  log
+  log,
 }) {
   const startTime = Date.now();
   const cfg = CHAT_SEARCH_CONFIG[provider];
@@ -349,7 +301,7 @@ export async function handleChatSearch({
     return {
       success: false,
       status: 400,
-      error: `Unsupported chat-search provider: ${provider}`
+      error: `Unsupported chat-search provider: ${provider}`,
     };
   }
 
@@ -362,7 +314,7 @@ export async function handleChatSearch({
     return {
       success: false,
       status: 401,
-      error: "Missing credentials (apiKey or accessToken)"
+      error: "Missing credentials (apiKey or accessToken)",
     };
   }
 
@@ -370,7 +322,7 @@ export async function handleChatSearch({
     Number.isFinite(maxResults) && maxResults > 0
       ? Math.floor(maxResults)
       : DEFAULT_MAX_RESULTS;
-  const useModel = model || searchModel(provider);
+  const useModel = model || cfg.defaultModel;
   const url = cfg.endpoint(useModel);
   const body = cfg.buildBody(query, useModel);
   const headers = cfg.buildHeaders(token);
@@ -385,7 +337,7 @@ export async function handleChatSearch({
       method: "POST",
       headers,
       body: JSON.stringify(body),
-      signal: controller.signal
+      signal: controller.signal,
     });
   } catch (err) {
     clearTimeout(timer);
@@ -393,11 +345,13 @@ export async function handleChatSearch({
       log?.warn?.(`[chatSearch] timeout provider=${provider}`);
       return { success: false, status: 504, error: "Upstream timeout" };
     }
-    log?.error?.(`[chatSearch] network error provider=${provider}: ${err?.message}`);
+    log?.error?.(
+      `[chatSearch] network error provider=${provider}: ${err?.message}`,
+    );
     return {
       success: false,
       status: 502,
-      error: `Network error: ${err?.message || "unknown"}`
+      error: `Network error: ${err?.message || "unknown"}`,
     };
   }
   clearTimeout(timer);
@@ -410,7 +364,7 @@ export async function handleChatSearch({
     return {
       success: false,
       status: 502,
-      error: `Invalid upstream response (status ${resp.status})`
+      error: `Invalid upstream response (status ${resp.status})`,
     };
   }
 
@@ -420,11 +374,13 @@ export async function handleChatSearch({
       data?.error ||
       data?.message ||
       `Upstream HTTP ${resp.status}`;
-    log?.warn?.(`[chatSearch] upstream error provider=${provider} status=${resp.status}`);
+    log?.warn?.(
+      `[chatSearch] upstream error provider=${provider} status=${resp.status}`,
+    );
     return {
       success: false,
       status: resp.status,
-      error: typeof errMsg === "string" ? errMsg : JSON.stringify(errMsg)
+      error: typeof errMsg === "string" ? errMsg : JSON.stringify(errMsg),
     };
   }
 
@@ -445,10 +401,10 @@ export async function handleChatSearch({
       metrics: {
         response_time_ms: Date.now() - startTime,
         upstream_latency_ms: upstreamLatency,
-        total_results_available: null
+        total_results_available: null,
       },
-      errors: []
-    }
+      errors: [],
+    },
   };
 }
 

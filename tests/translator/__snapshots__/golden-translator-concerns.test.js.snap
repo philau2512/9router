@@ -148,7 +148,7 @@ exports[`GOLDEN response stream: Kiro → OpenAI (finish after tool) > toolUse t
     "choices": [
       {
         "delta": {},
-        "finish_reason": "tool_calls",
+        "finish_reason": "stop",
         "index": 0,
       },
     ],

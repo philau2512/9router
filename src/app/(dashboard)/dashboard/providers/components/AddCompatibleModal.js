@@ -11,7 +11,8 @@ const VARIANT_CONFIG = {
     defaultBaseUrl: "https://api.openai.com/v1",
     namePlaceholder: "OpenAI Compatible (Prod)",
     prefixPlaceholder: "oc-prod",
-    baseUrlHint: "Use the base URL (ending in /v1) for your OpenAI-compatible API.",
+    baseUrlHint:
+      "Use the base URL (ending in /v1) for your OpenAI-compatible API.",
     modelIdPlaceholder: "e.g. gpt-4, claude-3-opus",
     errorLabel: "OpenAI Compatible",
     hasApiType: true,
@@ -22,7 +23,8 @@ const VARIANT_CONFIG = {
     defaultBaseUrl: "https://api.anthropic.com/v1",
     namePlaceholder: "Anthropic Compatible (Prod)",
     prefixPlaceholder: "ac-prod",
-    baseUrlHint: "Use the base URL (ending in /v1) for your Anthropic-compatible API. The system will append /messages.",
+    baseUrlHint:
+      "Use the base URL (ending in /v1) for your Anthropic-compatible API. The system will append /messages.",
     modelIdPlaceholder: "e.g. claude-3-opus",
     errorLabel: "Anthropic Compatible",
     hasApiType: false,
@@ -50,19 +52,29 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
 
-  // openai: reset baseUrl when apiType changes; anthropic: reset checks when opened
-  useEffect(() => {
-    if (config.hasApiType) {
-      setFormData((prev) => ({ ...prev, baseUrl: config.defaultBaseUrl }));
-    } else if (isOpen) {
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  if (isOpen !== prevIsOpen) {
+    setPrevIsOpen(isOpen);
+    if (isOpen) {
+      setFormData({
+        name: "",
+        prefix: "",
+        ...(config.hasApiType ? { apiType: "chat" } : {}),
+        baseUrl: config.defaultBaseUrl,
+      });
       setValidationResult(null);
       setCheckKey("");
       setCheckModelId("");
     }
-  }, [config.hasApiType ? formData.apiType : isOpen]);
+  }
 
   const handleSubmit = async () => {
-    if (!formData.name.trim() || !formData.prefix.trim() || !formData.baseUrl.trim()) return;
+    if (
+      !formData.name.trim() ||
+      !formData.prefix.trim() ||
+      !formData.baseUrl.trim()
+    )
+      return;
     setSubmitting(true);
     try {
       const res = await fetch("/api/provider-nodes", {
@@ -120,7 +132,9 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
         <>
           <Badge variant="success">Valid</Badge>
           {method === "chat" && (
-            <span className="text-sm text-text-muted">(via inference test)</span>
+            <span className="text-sm text-text-muted">
+              (via inference test)
+            </span>
           )}
         </>
       );
@@ -155,13 +169,21 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
             label="API Type"
             options={API_TYPE_OPTIONS}
             value={formData.apiType}
-            onChange={(e) => setFormData({ ...formData, apiType: e.target.value })}
+            onChange={(e) =>
+              setFormData((prev) => ({
+                ...prev,
+                apiType: e.target.value,
+                baseUrl: config.defaultBaseUrl,
+              }))
+            }
           />
         )}
         <Input
           label="Base URL"
           value={formData.baseUrl}
-          onChange={(e) => setFormData({ ...formData, baseUrl: e.target.value })}
+          onChange={(e) =>
+            setFormData({ ...formData, baseUrl: e.target.value })
+          }
           placeholder={config.defaultBaseUrl}
           hint={config.baseUrlHint}
         />

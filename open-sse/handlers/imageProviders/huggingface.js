@@ -1,10 +1,9 @@
 // HuggingFace Inference API — returns binary image
 import { nowSec } from "./_base.js";
-import { PROVIDER_MEDIA } from "../../providers/index.js";
 
-const BASE_URL = PROVIDER_MEDIA["huggingface"]?.imageConfig?.baseUrl;
+const BASE_URL = "https://api-inference.huggingface.co/models";
 
-export default {
+const provider = {
   buildUrl: (model) => `${BASE_URL}/${model}`,
   buildHeaders: (creds) => {
     const headers = { "Content-Type": "application/json" };
@@ -21,3 +20,5 @@ export default {
   },
   normalize: (responseBody) => responseBody,
 };
+
+export default provider;

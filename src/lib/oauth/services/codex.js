@@ -76,7 +76,7 @@ export class CodexService extends OAuthService {
       spinner.text = "Starting local server...";
 
       // Start local server for callback (use fixed port 1455 like real Codex CLI)
-      const fixedPort = CODEX_CONFIG.fixedPort;
+      const fixedPort = 1455;
       let callbackParams = null;
       const { port, close } = await startLocalServer((params) => {
         callbackParams = params;
@@ -117,7 +117,9 @@ export class CodexService extends OAuthService {
       close();
 
       if (callbackParams.error) {
-        throw new Error(callbackParams.error_description || callbackParams.error);
+        throw new Error(
+          callbackParams.error_description || callbackParams.error,
+        );
       }
 
       if (!callbackParams.code) {
@@ -127,7 +129,12 @@ export class CodexService extends OAuthService {
       spinner.start("Exchanging code for tokens...");
 
       // Exchange code for tokens (Codex uses form-urlencoded)
-      const tokens = await this.exchangeCode(callbackParams.code, redirectUri, codeVerifier, "application/x-www-form-urlencoded");
+      const tokens = await this.exchangeCode(
+        callbackParams.code,
+        redirectUri,
+        codeVerifier,
+        "application/x-www-form-urlencoded",
+      );
 
       spinner.text = "Saving tokens to server...";
 

@@ -1,4 +1,8 @@
-import { getConsoleLogs, getConsoleEmitter, initConsoleLogCapture } from "@/lib/consoleLogBuffer";
+import {
+  getConsoleLogs,
+  getConsoleEmitter,
+  initConsoleLogCapture,
+} from "@/lib/consoleLogBuffer";
 
 export const dynamic = "force-dynamic";
 
@@ -7,7 +11,13 @@ initConsoleLogCapture();
 export async function GET(request) {
   const encoder = new TextEncoder();
   const emitter = getConsoleEmitter();
-  const state = { closed: false, send: null, sendLines: null, sendClear: null, keepalive: null };
+  const state = {
+    closed: false,
+    send: null,
+    sendLines: null,
+    sendClear: null,
+    keepalive: null,
+  };
 
   // Idempotent: safe to call from request.signal abort, cancel(), or enqueue failure.
   const cleanup = () => {
@@ -28,14 +38,22 @@ export async function GET(request) {
       // Send all buffered logs immediately on connect
       const buffered = getConsoleLogs();
       if (buffered.length > 0) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "init", logs: buffered })}\n\n`));
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ type: "init", logs: buffered })}\n\n`,
+          ),
+        );
       }
 
       // Push new lines as they arrive
       state.send = (line) => {
         if (state.closed) return;
         try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "line", line })}\n\n`));
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ type: "line", line })}\n\n`,
+            ),
+          );
         } catch {
           cleanup();
         }
@@ -44,7 +62,11 @@ export async function GET(request) {
       state.sendLines = (lines) => {
         if (state.closed || !Array.isArray(lines) || lines.length === 0) return;
         try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "lines", lines })}\n\n`));
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ type: "lines", lines })}\n\n`,
+            ),
+          );
         } catch {
           cleanup();
         }
@@ -54,7 +76,9 @@ export async function GET(request) {
       state.sendClear = () => {
         if (state.closed) return;
         try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "clear" })}\n\n`));
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ type: "clear" })}\n\n`),
+          );
         } catch {
           cleanup();
         }
@@ -66,7 +90,10 @@ export async function GET(request) {
 
       // Keepalive ping every 25s
       state.keepalive = setInterval(() => {
-        if (state.closed) { clearInterval(state.keepalive); return; }
+        if (state.closed) {
+          clearInterval(state.keepalive);
+          return;
+        }
         try {
           controller.enqueue(encoder.encode(": ping\n\n"));
         } catch {
@@ -84,7 +111,7 @@ export async function GET(request) {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
+      Connection: "keep-alive",
     },
   });
 }

@@ -10,10 +10,18 @@ function makeController() {
     signal: new AbortController().signal,
     startTime: Date.now(),
     isConnected: () => connected,
-    handleComplete: () => { connected = false; },
-    handleError: () => { connected = false; },
-    handleDisconnect: () => { connected = false; },
-    abort: () => { connected = false; },
+    handleComplete: () => {
+      connected = false;
+    },
+    handleError: () => {
+      connected = false;
+    },
+    handleDisconnect: () => {
+      connected = false;
+    },
+    abort: () => {
+      connected = false;
+    },
   };
 }
 
@@ -35,15 +43,20 @@ describe("Responses abort terminal synthesis", () => {
     // Upstream readable that errors mid-stream (simulates fetch abort on stall)
     const upstream = new ReadableStream({
       start(controller) {
-        controller.enqueue(new TextEncoder().encode("event: response.created\ndata: {}\n\n"));
+        controller.enqueue(
+          new TextEncoder().encode("event: response.created\ndata: {}\n\n"),
+        );
         controller.error(new Error("stream stall timeout"));
       },
     });
 
     const out = createDisconnectAwareStream(
-      { readable: upstream, writable: { getWriter: () => ({ abort: () => Promise.resolve() }) } },
+      {
+        readable: upstream,
+        writable: { getWriter: () => ({ abort: () => Promise.resolve() }) },
+      },
       makeController(),
-      buildAbortedResponsesTerminalBytes
+      buildAbortedResponsesTerminalBytes,
     );
 
     const text = await readAll(out);
@@ -60,9 +73,12 @@ describe("Responses abort terminal synthesis", () => {
     });
 
     const out = createDisconnectAwareStream(
-      { readable: upstream, writable: { getWriter: () => ({ abort: () => Promise.resolve() }) } },
+      {
+        readable: upstream,
+        writable: { getWriter: () => ({ abort: () => Promise.resolve() }) },
+      },
       makeController(),
-      null
+      null,
     );
 
     const text = await readAll(out);

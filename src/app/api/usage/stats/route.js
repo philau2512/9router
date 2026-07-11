@@ -1,7 +1,17 @@
 import { NextResponse } from "next/server";
 import { getUsageStats } from "@/lib/usageDb";
 
-const VALID_PERIODS = new Set(["today", "24h", "7d", "30d", "60d", "all"]);
+const VALID_PERIODS = new Set([
+  "today",
+  "24h",
+  "7d",
+  "30d",
+  "60d",
+  "90d",
+  "180d",
+  "365d",
+  "all",
+]);
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +28,9 @@ export async function GET(request) {
     return NextResponse.json(stats);
   } catch (error) {
     console.error("[API] Failed to get usage stats:", error);
-    return NextResponse.json({ error: "Failed to fetch usage stats" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch usage stats" },
+      { status: 500 },
+    );
   }
 }

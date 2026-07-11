@@ -64,34 +64,6 @@ docker run -d \
   decolua/9router:latest
 ```
 
-## Optional Headroom sidecar
-
-The 9Router image does not bundle Python or Headroom. To use Headroom in Docker, run it as a separate service and point 9Router at that proxy:
-
-```yaml
-services:
-  9router:
-    image: decolua/9router:latest
-    ports:
-      - "20128:20128"
-    volumes:
-      - "$HOME/.9router:/app/data"
-    environment:
-      DATA_DIR: /app/data
-      HEADROOM_URL: http://headroom:8787
-    depends_on:
-      - headroom
-
-  headroom:
-    image: ghcr.io/chopratejas/headroom:latest
-    ports:
-      - "8787:8787"
-```
-
-In the dashboard, open `Endpoint` → `Token Saver` → `Headroom`, confirm the URL is `http://headroom:8787`, recheck status, then enable Headroom.
-
-If Headroom runs on the Docker host instead of as a sidecar, use `http://host.docker.internal:8787` on macOS/Windows. On Linux, add `--add-host=host.docker.internal:host-gateway` or the equivalent compose `extra_hosts` entry.
-
 ## Update to latest
 
 ```bash
@@ -118,6 +90,7 @@ docker run --rm -p 20128:20128 \
 ## Publish (automatic via CI)
 
 Push a git tag `v*` → GitHub Actions builds multi-platform (amd64+arm64) and pushes to:
+
 - `ghcr.io/decolua/9router:v{version}` + `:latest`
 - `decolua/9router:v{version}` + `:latest`
 

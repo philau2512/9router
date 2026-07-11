@@ -12,8 +12,6 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { randomUUID } from "crypto";
-import { ROLE, OPENAI_BLOCK } from "../schema/index.js";
-import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
 
 function flattenText(content) {
   if (content == null) return "";
@@ -22,7 +20,8 @@ function flattenText(content) {
     const parts = [];
     for (const p of content) {
       if (typeof p === "string") parts.push(p);
-      else if (p && typeof p === "object" && typeof p.text === "string") parts.push(p.text);
+      else if (p && typeof p === "object" && typeof p.text === "string")
+        parts.push(p.text);
     }
     return parts.join("\n");
   }
@@ -30,32 +29,36 @@ function flattenText(content) {
 }
 
 function toContentBlocks(content) {
-  if (content == null) return [{ type: OPENAI_BLOCK.TEXT, text: "" }];
-  if (typeof content === "string") return [{ type: OPENAI_BLOCK.TEXT, text: content }];
+  if (content == null) return [{ type: "text", text: "" }];
+  if (typeof content === "string") return [{ type: "text", text: content }];
   if (Array.isArray(content)) {
     const blocks = [];
     for (const part of content) {
       if (typeof part === "string") {
-        blocks.push({ type: OPENAI_BLOCK.TEXT, text: part });
+        blocks.push({ type: "text", text: part });
       } else if (part && typeof part === "object") {
-        if (part.type === OPENAI_BLOCK.TEXT && typeof part.text === "string") {
-          blocks.push({ type: OPENAI_BLOCK.TEXT, text: part.text });
-        } else if (part.type === OPENAI_BLOCK.IMAGE_URL || part.type === OPENAI_BLOCK.IMAGE) {
-          blocks.push({ type: OPENAI_BLOCK.TEXT, text: "[image omitted]" });
+        if (part.type === "text" && typeof part.text === "string") {
+          blocks.push({ type: "text", text: part.text });
+        } else if (part.type === "image_url" || part.type === "image") {
+          blocks.push({ type: "text", text: "[image omitted]" });
         } else if (typeof part.text === "string") {
-          blocks.push({ type: OPENAI_BLOCK.TEXT, text: part.text });
+          blocks.push({ type: "text", text: part.text });
         }
       }
     }
-    return blocks.length ? blocks : [{ type: OPENAI_BLOCK.TEXT, text: "" }];
+    return blocks.length ? blocks : [{ type: "text", text: "" }];
   }
-  return [{ type: OPENAI_BLOCK.TEXT, text: String(content) }];
+  return [{ type: "text", text: String(content) }];
 }
 
 function safeParseJson(s) {
   if (s == null) return {};
   if (typeof s !== "string") return s;
-  try { return JSON.parse(s); } catch { return {}; }
+  try {
+    return JSON.parse(s);
+  } catch {
+    return {};
+  }
 }
 
 function convertMessages(messages = []) {
@@ -66,30 +69,33 @@ function convertMessages(messages = []) {
     if (!m) continue;
     const role = m.role;
 
-    if (role === ROLE.SYSTEM) {
+    if (role === "system") {
       const t = flattenText(m.content);
       if (t) systemTexts.push(t);
       continue;
     }
 
-    if (role === ROLE.TOOL) {
-      const value = typeof m.content === "string" ? m.content : flattenText(m.content);
+    if (role === "tool") {
+      const value =
+        typeof m.content === "string" ? m.content : flattenText(m.content);
       out.push({
-        role: ROLE.TOOL,
-        content: [{
-          type: "tool-result",
-          toolCallId: m.tool_call_id || "",
-          toolName: m.name || "",
-          output: { type: "text", value },
-        }],
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: m.tool_call_id || "",
+            toolName: m.name || "",
+            output: { type: "text", value },
+          },
+        ],
       });
       continue;
     }
 
-    if (role === ROLE.ASSISTANT) {
+    if (role === "assistant") {
       const blocks = [];
       const text = flattenText(m.content);
-      if (text) blocks.push({ type: OPENAI_BLOCK.TEXT, text });
+      if (text) blocks.push({ type: "text", text });
       if (Array.isArray(m.tool_calls)) {
         for (const tc of m.tool_calls) {
           const fn = tc.function || {};
@@ -101,11 +107,18 @@ function convertMessages(messages = []) {
           });
         }
       }
-      out.push({ role: ROLE.ASSISTANT, content: blocks.length ? blocks : [{ type: OPENAI_BLOCK.TEXT, text: "" }] });
+      // reasoning_content → prepend reasoning block before text/tool-call blocks
+      if (m.reasoning_content) {
+        blocks.unshift({ type: "reasoning", text: m.reasoning_content });
+      }
+      out.push({
+        role: "assistant",
+        content: blocks.length ? blocks : [{ type: "text", text: "" }],
+      });
       continue;
     }
 
-    out.push({ role: ROLE.USER, content: toContentBlocks(m.content) });
+    out.push({ role: "user", content: toContentBlocks(m.content) });
   }
 
   return { messages: out, system: systemTexts.join("\n\n") };
@@ -116,7 +129,7 @@ function convertTools(tools) {
   const result = [];
   for (const t of tools) {
     if (!t) continue;
-    if (t.type === OPENAI_BLOCK.FUNCTION && t.function) {
+    if (t.type === "function" && t.function) {
       result.push({
         name: t.function.name,
         description: t.function.description,
@@ -133,13 +146,13 @@ function convertTools(tools) {
   return result.length ? result : undefined;
 }
 
-export function openaiToCommandCodeRequest(model, body, stream /* , credentials */) {
+export function openaiToCommandCode(model, body, stream /* , credentials */) {
   const { messages, system } = convertMessages(body.messages);
   const params = {
     model,
     messages,
     stream: stream !== false,
-    max_tokens: body.max_tokens ?? body.max_output_tokens ?? DEFAULT_MAX_TOKENS,
+    max_tokens: body.max_tokens ?? body.max_output_tokens ?? 64000,
     temperature: body.temperature ?? 0.3,
   };
 
@@ -169,4 +182,4 @@ export function openaiToCommandCodeRequest(model, body, stream /* , credentials 
   };
 }
 
-register(FORMATS.OPENAI, FORMATS.COMMANDCODE, openaiToCommandCodeRequest, null);
+register(FORMATS.OPENAI, FORMATS.COMMANDCODE, openaiToCommandCode, null);

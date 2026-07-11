@@ -3,8 +3,16 @@ function normalizeString(value) {
   return String(value).trim();
 }
 
-const ALLOWED_PROXY_SCHEMES = ["http:", "https:", "socks5:", "socks4:", "socks5h:", "socks4a:"];
+const ALLOWED_PROXY_SCHEMES = [
+  "http:",
+  "https:",
+  "socks5:",
+  "socks4:",
+  "socks5h:",
+  "socks4a:",
+];
 
+// Validate proxy URL: reject shell metacharacters and non-allowed schemes.
 function validateProxyUrl(url) {
   if (!url) return null;
   if (/[\n\r`$]/.test(url)) return null;
@@ -17,9 +25,11 @@ function validateProxyUrl(url) {
   }
 }
 
-export function applyOutboundProxyEnv(
-  { outboundProxyEnabled, outboundProxyUrl, outboundNoProxy } = {}
-) {
+export function applyOutboundProxyEnv({
+  outboundProxyEnabled,
+  outboundProxyUrl,
+  outboundNoProxy,
+} = {}) {
   if (typeof process === "undefined" || !process.env) return;
   const enabled = Boolean(outboundProxyEnabled);
   const proxyUrl = normalizeString(outboundProxyUrl);

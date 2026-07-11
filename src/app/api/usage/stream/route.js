@@ -4,29 +4,60 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const encoder = new TextEncoder();
-  const state = { closed: false, keepalive: null, send: null, sendPending: null, cachedStats: null };
+  const state = {
+    closed: false,
+    keepalive: null,
+    send: null,
+    sendPending: null,
+    cachedStats: null,
+    sendInFlight: false,
+    sendQueued: false,
+  };
 
   const stream = new ReadableStream({
     async start(controller) {
       // Full stats refresh (heavy) + immediate lightweight push
       state.send = async () => {
         if (state.closed) return;
+        if (state.sendInFlight) {
+          state.sendQueued = true;
+          return;
+        }
+
+        state.sendInFlight = true;
         try {
-          // Push lightweight update immediately so UI reflects changes fast
-          if (state.cachedStats) {
-            const { activeRequests, recentRequests, errorProvider } = await getActiveRequests();
-            const quickStats = { ...state.cachedStats, activeRequests, recentRequests, errorProvider };
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(quickStats)}\n\n`));
-          }
-          // Then do full recalc and update cache
-          const stats = await getUsageStats();
-          state.cachedStats = stats;
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(stats)}\n\n`));
+          do {
+            state.sendQueued = false;
+            if (state.closed) return;
+
+            // Push lightweight update immediately so UI reflects changes fast
+            if (state.cachedStats) {
+              const { activeRequests, recentRequests, errorProvider } =
+                await getActiveRequests();
+              const quickStats = {
+                ...state.cachedStats,
+                activeRequests,
+                recentRequests,
+                errorProvider,
+              };
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify(quickStats)}\n\n`),
+              );
+            }
+            // Then do full recalc and update cache
+            const stats = await getUsageStats();
+            state.cachedStats = stats;
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify(stats)}\n\n`),
+            );
+          } while (state.sendQueued && !state.closed);
         } catch {
           state.closed = true;
           statsEmitter.off("update", state.send);
           statsEmitter.off("pending", state.sendPending);
           clearInterval(state.keepalive);
+        } finally {
+          state.sendInFlight = false;
         }
       };
 
@@ -34,9 +65,17 @@ export async function GET() {
       state.sendPending = async () => {
         if (state.closed || !state.cachedStats) return;
         try {
-          const { activeRequests, recentRequests, errorProvider } = await getActiveRequests();
-          const stats = { ...state.cachedStats, activeRequests, recentRequests, errorProvider };
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(stats)}\n\n`));
+          const { activeRequests, recentRequests, errorProvider } =
+            await getActiveRequests();
+          const stats = {
+            ...state.cachedStats,
+            activeRequests,
+            recentRequests,
+            errorProvider,
+          };
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify(stats)}\n\n`),
+          );
         } catch {
           state.closed = true;
           statsEmitter.off("update", state.send);
@@ -51,7 +90,10 @@ export async function GET() {
       statsEmitter.on("pending", state.sendPending);
 
       state.keepalive = setInterval(() => {
-        if (state.closed) { clearInterval(state.keepalive); return; }
+        if (state.closed) {
+          clearInterval(state.keepalive);
+          return;
+        }
         try {
           controller.enqueue(encoder.encode(": ping\n\n"));
         } catch {

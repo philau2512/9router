@@ -1,3 +1,6 @@
+const path = require("path");
+const fs = require("fs");
+const os = require("os");
 const api = require("../api/client");
 const { confirm, pause } = require("../utils/input");
 const { showStatus } = require("../utils/display");
@@ -10,10 +13,17 @@ const COLORS = {
   red: "\x1b[31m",
   yellow: "\x1b[33m",
   dim: "\x1b[2m",
-  cyan: "\x1b[36m"
+  cyan: "\x1b[36m",
 };
 
 const DEFAULT_PASSWORD = "123456";
+
+// Resolve db.json path (matches app/src/lib/dataDir.js convention)
+function getDbPath() {
+  return process.platform === "win32"
+    ? path.join(process.env.APPDATA || "", "9router", "db.json")
+    : path.join(os.homedir(), ".9router", "db.json");
+}
 
 /**
  * Show settings menu (tunnel + RTK + reset password)
@@ -29,71 +39,89 @@ async function showSettingsMenu(breadcrumb = []) {
       // Tunnel section
       const tunnel = data?.tunnel || {};
       if (tunnel.enabled && tunnel.publicUrl) {
-        lines.push(`  Endpoint: ${COLORS.green}${tunnel.publicUrl}/v1${COLORS.reset}`);
-        lines.push(`  Tunnel:   ${COLORS.green}ON${COLORS.reset} ${COLORS.dim}(${tunnel.shortId})${COLORS.reset}`);
+        lines.push(
+          `  Endpoint: ${COLORS.green}${tunnel.publicUrl}/v1${COLORS.reset}`,
+        );
+        lines.push(
+          `  Tunnel:   ${COLORS.green}ON${COLORS.reset} ${COLORS.dim}(${tunnel.shortId})${COLORS.reset}`,
+        );
       } else {
         lines.push(`  Endpoint: http://localhost:20128/v1`);
-        lines.push(`  Tunnel:   ${COLORS.red}OFF${COLORS.reset} ${COLORS.dim}(local only)${COLORS.reset}`);
+        lines.push(
+          `  Tunnel:   ${COLORS.red}OFF${COLORS.reset} ${COLORS.dim}(local only)${COLORS.reset}`,
+        );
       }
 
       // RTK section
       const rtkOn = data?.settings?.rtkEnabled !== false;
-      lines.push(`  RTK:      ${rtkOn ? `${COLORS.green}ON${COLORS.reset}` : `${COLORS.red}OFF${COLORS.reset}`} ${COLORS.dim}(Token Saver)${COLORS.reset}`);
-      const headroomOn = data?.settings?.headroomEnabled === true;
-      lines.push(`  Headroom: ${headroomOn ? `${COLORS.green}ON${COLORS.reset}` : `${COLORS.red}OFF${COLORS.reset}`} ${COLORS.dim}(${data?.settings?.headroomUrl || "http://localhost:8787"})${COLORS.reset}`);
+      lines.push(
+        `  RTK:      ${rtkOn ? `${COLORS.green}ON${COLORS.reset}` : `${COLORS.red}OFF${COLORS.reset}`} ${COLORS.dim}(Token Saver)${COLORS.reset}`,
+      );
 
       // Auth mode section
       const authMode = data?.settings?.authMode || "password";
       const authColor = authMode === "password" ? COLORS.green : COLORS.yellow;
-      lines.push(`  Auth:     ${authColor}${authMode.toUpperCase()}${COLORS.reset} ${COLORS.dim}(login mode)${COLORS.reset}`);
+      lines.push(
+        `  Auth:     ${authColor}${authMode.toUpperCase()}${COLORS.reset} ${COLORS.dim}(login mode)${COLORS.reset}`,
+      );
 
       return lines.join("\n");
     },
     refresh: async () => {
       const [tunnelRes, settingsRes] = await Promise.all([
         api.getTunnelStatus(),
-        api.getSettings()
+        api.getSettings(),
       ]);
       return {
-        tunnel: tunnelRes.success ? (tunnelRes.data || {}) : {},
-        settings: settingsRes.success ? (settingsRes.data || {}) : {}
+        tunnel: tunnelRes.success ? tunnelRes.data || {} : {},
+        settings: settingsRes.success ? settingsRes.data || {} : {},
       };
     },
     items: [
       {
         label: "Tunnel ON",
-        action: async () => { await enableTunnel(); return true; }
+        action: async () => {
+          await enableTunnel();
+          return true;
+        },
       },
       {
         label: "Tunnel OFF",
-        action: async () => { await disableTunnel(); return true; }
+        action: async () => {
+          await disableTunnel();
+          return true;
+        },
       },
       {
         label: (d) => {
           const on = d?.settings?.rtkEnabled !== false;
           return `Token Saver (RTK): ${on ? "ON" : "OFF"} → toggle`;
         },
-        action: async (d) => { await toggleRtk(d?.settings?.rtkEnabled !== false); return true; }
-      },
-      {
-        label: (d) => {
-          const on = d?.settings?.headroomEnabled === true;
-          return `Token Saver (Headroom): ${on ? "ON" : "OFF"} → toggle`;
+        action: async (d) => {
+          await toggleRtk(d?.settings?.rtkEnabled !== false);
+          return true;
         },
-        action: async (d) => { await toggleHeadroom(d?.settings?.headroomEnabled === true); return true; }
       },
       {
         label: "🔑 Reset Password to Default",
-        action: async () => { await resetPassword(); return true; }
+        action: async () => {
+          await resetPassword();
+          return true;
+        },
       },
       {
         label: (d) => {
           const mode = d?.settings?.authMode || "password";
-          return mode === "password" ? "🔓 Reset Auth Mode (already password)" : `🔓 Reset Auth Mode to Password (current: ${mode})`;
+          return mode === "password"
+            ? "🔓 Reset Auth Mode (already password)"
+            : `🔓 Reset Auth Mode to Password (current: ${mode})`;
         },
-        action: async () => { await resetAuthMode(); return true; }
-      }
-    ]
+        action: async () => {
+          await resetAuthMode();
+          return true;
+        },
+      },
+    ],
   });
 }
 
@@ -169,34 +197,41 @@ async function toggleRtk(currentlyOn) {
   await pause();
 }
 
-async function toggleHeadroom(currentlyOn) {
-  const next = !currentlyOn;
-  const result = await api.updateSettings({ headroomEnabled: next });
-  if (result.success) {
-    showStatus(`Headroom ${next ? "enabled" : "disabled"}`, "success");
-  } else {
-    showStatus(`Failed: ${result.error}`, "error");
-  }
-  await pause();
-}
-
 /**
- * Reset dashboard password to default via server API (writes the live SQLite DB).
+ * Reset dashboard password by clearing the hash in db.json (Phase B).
  * After reset, user can log in with the default password "123456".
  */
 async function resetPassword() {
-  const ok = await confirm(`Reset dashboard password to default "${DEFAULT_PASSWORD}"?`);
+  const dbPath = getDbPath();
+
+  if (!fs.existsSync(dbPath)) {
+    showStatus(`db.json not found at ${dbPath}`, "error");
+    await pause();
+    return;
+  }
+
+  const ok = await confirm(
+    `Reset dashboard password to default "${DEFAULT_PASSWORD}"?`,
+  );
   if (!ok) {
     showStatus("Cancelled", "info");
     await pause();
     return;
   }
 
-  const result = await api.resetPassword();
-  if (result.success) {
+  try {
+    const raw = fs.readFileSync(dbPath, "utf-8");
+    const db = JSON.parse(raw);
+    if (
+      db.settings &&
+      Object.prototype.hasOwnProperty.call(db.settings, "password")
+    ) {
+      delete db.settings.password;
+    }
+    fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
     showStatus(`Password reset. Default: ${DEFAULT_PASSWORD}`, "success");
-  } else {
-    showStatus(`Failed to reset password: ${result.error}`, "error");
+  } catch (err) {
+    showStatus(`Failed to reset password: ${err.message}`, "error");
   }
   await pause();
 }

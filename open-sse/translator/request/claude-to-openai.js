@@ -1,9 +1,9 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
-import { adjustMaxTokens } from "../formats/maxTokens.js";
-import { encodeDataUri } from "../concerns/image.js";
-import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
-import { collapseTextParts } from "../concerns/message.js";
+import { v4 as uuidv4 } from "uuid";
+import { extractThinking } from "../concerns/thinkingUnified.js";
+import { effortToBudget, budgetToLevel } from "../concerns/thinking.js";
+import { adjustMaxTokens } from "../helpers/maxTokensHelper.js";
 
 function stripAnthropicBillingHeader(text) {
   if (typeof text !== "string") return "";
@@ -15,7 +15,7 @@ export function claudeToOpenAIRequest(model, body, stream) {
   const result = {
     model: model,
     messages: [],
-    stream: stream
+    stream: stream,
   };
 
   // Max tokens
@@ -31,13 +31,16 @@ export function claudeToOpenAIRequest(model, body, stream) {
   // System message
   if (body.system) {
     const systemContent = Array.isArray(body.system)
-      ? body.system.map(s => stripAnthropicBillingHeader(s.text || "")).filter(Boolean).join("\n")
+      ? body.system
+          .map((s) => stripAnthropicBillingHeader(s.text || ""))
+          .filter(Boolean)
+          .join("\n")
       : stripAnthropicBillingHeader(body.system);
-    
+
     if (systemContent) {
       result.messages.push({
-        role: ROLE.SYSTEM,
-        content: systemContent
+        role: "system",
+        content: systemContent,
       });
     }
   }
@@ -58,20 +61,18 @@ export function claudeToOpenAIRequest(model, body, stream) {
     }
   }
 
-  // Fix missing tool responses - OpenAI requires every tool_call to have a response.
-  // Local variant: scans contiguous tool replies + inserts "[No response received]"
-  // (distinct from the global immediate-next check in concerns/toolCall, runs on the openai leg).
-  fixMissingToolResponsesOpenAI(result.messages);
+  // Fix missing tool responses - OpenAI requires every tool_call to have a response
+  fixMissingToolResponses(result.messages);
 
   // Tools
   if (body.tools && Array.isArray(body.tools)) {
-    result.tools = body.tools.map(tool => ({
-      type: OPENAI_BLOCK.FUNCTION,
+    result.tools = body.tools.map((tool) => ({
+      type: "function",
       function: {
         name: tool.name,
         description: String(tool.description || ""),
-        parameters: tool.input_schema || { type: "object", properties: {} }
-      }
+        parameters: tool.input_schema || { type: "object", properties: {} },
+      },
     }));
   }
 
@@ -90,37 +91,69 @@ export function claudeToOpenAIRequest(model, body, stream) {
     result.reasoning = body.reasoning;
   }
 
+  // Extract and map Claude thinking/effort -> OpenAI format
+  const thinkingConfig = extractThinking(body);
+  if (thinkingConfig) {
+    if (thinkingConfig.mode === "budget") {
+      result.thinking = {
+        type: "enabled",
+        budget_tokens: thinkingConfig.budget,
+      };
+      result.reasoning_effort =
+        budgetToLevel(thinkingConfig.budget) || "medium";
+    } else if (thinkingConfig.mode === "level") {
+      result.reasoning_effort = thinkingConfig.level;
+      result.thinking = {
+        type: "enabled",
+        budget_tokens: effortToBudget(thinkingConfig.level) || 16000,
+      };
+    } else if (thinkingConfig.mode === "auto") {
+      result.reasoning_effort = "high";
+      result.thinking = {
+        type: "enabled",
+        budget_tokens: 16000,
+      };
+    } else if (thinkingConfig.mode === "none") {
+      result.thinking = { type: "disabled" };
+      result.reasoning_effort = "none";
+    }
+  }
+
   return result;
 }
 
 // Fix missing tool responses - add empty responses for tool_calls without responses
-function fixMissingToolResponsesOpenAI(messages) {
+function fixMissingToolResponses(messages) {
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
-    if (msg.role === ROLE.ASSISTANT && msg.tool_calls && msg.tool_calls.length > 0) {
-      const toolCallIds = msg.tool_calls.map(tc => tc.id);
-      
+    if (
+      msg.role === "assistant" &&
+      msg.tool_calls &&
+      msg.tool_calls.length > 0
+    ) {
+      const toolCallIds = msg.tool_calls.map((tc) => tc.id);
+
       // Collect all tool response IDs that IMMEDIATELY follow this assistant message
       const respondedIds = new Set();
       let insertPosition = i + 1;
       for (let j = i + 1; j < messages.length; j++) {
         const nextMsg = messages[j];
-        if (nextMsg.role === ROLE.TOOL && nextMsg.tool_call_id) {
+        if (nextMsg.role === "tool" && nextMsg.tool_call_id) {
           respondedIds.add(nextMsg.tool_call_id);
           insertPosition = j + 1;
         } else {
           break;
         }
       }
-      
+
       // Find missing responses and insert them
-      const missingIds = toolCallIds.filter(id => !respondedIds.has(id));
-      
+      const missingIds = toolCallIds.filter((id) => !respondedIds.has(id));
+
       if (missingIds.length > 0) {
-        const missingResponses = missingIds.map(id => ({
-          role: ROLE.TOOL,
+        const missingResponses = missingIds.map((id) => ({
+          role: "tool",
           tool_call_id: id,
-          content: "[No response received]"
+          content: "[No response received]",
         }));
         messages.splice(insertPosition, 0, ...missingResponses);
         i = insertPosition + missingResponses.length - 1;
@@ -129,27 +162,18 @@ function fixMissingToolResponsesOpenAI(messages) {
   }
 }
 
-// Wrap mid-conversation system text so it ends as a user turn (avoids Anthropic prefill 400).
-// Uses <instructions> tags that Claude models treat as authoritative directives.
-function systemReminderText(content) {
-  const parts = Array.isArray(content)
-    ? content.filter(c => c?.type === CLAUDE_BLOCK.TEXT).map(c => c.text || "")
-    : [typeof content === "string" ? content : ""];
-  const text = parts.filter(Boolean).join("\n");
-  if (!text.trim()) return "";
-  return `<instructions>\n${text}\n</instructions>`;
-}
-
 // Convert single Claude message - returns single message or array of messages
 function convertClaudeMessage(msg) {
-  // Mid-conversation system message -> user (per Anthropic placement rules)
-  if (msg.role === ROLE.SYSTEM) {
-    const text = systemReminderText(msg.content);
-    return text ? { role: ROLE.USER, content: text } : null;
+  // Upstream fix from open-sse commit 749c2e3f9
+  // Map mid-conversation system message to user role to prevent 400 errors with LiteLLM
+  // Claude Code inserts role:system at end of messages[], previously mapped to assistant
+  // causing conversation not ending with user → OpenAI-compat provider (LiteLLM) translates
+  // back to Anthropic returning 400 "assistant message prefill"
+  let role = msg.role === "user" || msg.role === "tool" ? "user" : "assistant";
+  if (msg.role === "system") {
+    role = "user"; // Map system → user and wrap in <system-reminder> to preserve instruction semantics
   }
 
-  const role = msg.role === ROLE.USER || msg.role === ROLE.TOOL ? ROLE.USER : ROLE.ASSISTANT;
-  
   // Simple string content
   if (typeof msg.content === "string") {
     return { role, content: msg.content };
@@ -160,52 +184,59 @@ function convertClaudeMessage(msg) {
     const parts = [];
     const toolCalls = [];
     const toolResults = [];
+    let reasoningContent = ""; // Accumulate thinking blocks → reasoning_content on output
 
     for (const block of msg.content) {
       switch (block.type) {
-        case CLAUDE_BLOCK.TEXT:
-          parts.push({ type: OPENAI_BLOCK.TEXT, text: block.text });
+        case "text":
+          parts.push({ type: "text", text: block.text });
           break;
 
-        case CLAUDE_BLOCK.IMAGE:
+        case "thinking":
+          // Thinking blocks → reasoning_content (preserved across OpenAI bridge)
+          reasoningContent += block.thinking || "";
+          break;
+
+        case "image":
           if (block.source?.type === "base64") {
             parts.push({
-              type: OPENAI_BLOCK.IMAGE_URL,
+              type: "image_url",
               image_url: {
-                url: encodeDataUri(block.source.media_type, block.source.data)
-              }
+                url: `data:${block.source.media_type};base64,${block.source.data}`,
+              },
             });
           }
           break;
 
-        case CLAUDE_BLOCK.TOOL_USE:
+        case "tool_use":
           toolCalls.push({
             id: block.id,
-            type: OPENAI_BLOCK.FUNCTION,
+            type: "function",
             function: {
               name: block.name,
-              arguments: JSON.stringify(block.input || {})
-            }
+              arguments: JSON.stringify(block.input || {}),
+            },
           });
           break;
 
-        case CLAUDE_BLOCK.TOOL_RESULT:
+        case "tool_result":
           let resultContent = "";
           if (typeof block.content === "string") {
             resultContent = block.content;
           } else if (Array.isArray(block.content)) {
-            resultContent = block.content
-              .filter(c => c.type === CLAUDE_BLOCK.TEXT)
-              .map(c => c.text)
-              .join("\n") || JSON.stringify(block.content);
+            resultContent =
+              block.content
+                .filter((c) => c.type === "text")
+                .map((c) => c.text)
+                .join("\n") || JSON.stringify(block.content);
           } else if (block.content) {
             resultContent = JSON.stringify(block.content);
           }
-          
+
           toolResults.push({
-            role: ROLE.TOOL,
+            role: "tool",
             tool_call_id: block.tool_use_id,
-            content: resultContent
+            content: resultContent,
           });
           break;
       }
@@ -214,29 +245,44 @@ function convertClaudeMessage(msg) {
     // If has tool results, return array of tool messages
     if (toolResults.length > 0) {
       if (parts.length > 0) {
-        return [...toolResults, { role: ROLE.USER, content: collapseTextParts(parts) }];
+        const textContent =
+          parts.length === 1 && parts[0].type === "text"
+            ? parts[0].text
+            : parts;
+        return [...toolResults, { role: "user", content: textContent }];
       }
       return toolResults;
     }
 
     // If has tool calls, return assistant message with tool_calls
     if (toolCalls.length > 0) {
-      const result = { role: ROLE.ASSISTANT };
+      const result = { role: "assistant" };
       if (parts.length > 0) {
-        result.content = collapseTextParts(parts);
+        result.content =
+          parts.length === 1 && parts[0].type === "text"
+            ? parts[0].text
+            : parts;
       }
       result.tool_calls = toolCalls;
+      if (reasoningContent) result.reasoning_content = reasoningContent;
       return result;
     }
 
     // Return content
     if (parts.length > 0) {
-      return {
-        role,
-        content: collapseTextParts(parts)
-      };
+      // Flatten text-only arrays to string (OpenAI providers reject content arrays for text-only)
+      const allText = parts.every((p) => p.type === "text");
+      const flatContent = allText
+        ? parts.map((p) => p.text).join("\n")
+        : parts.length === 1 && parts[0].type === "text"
+          ? parts[0].text
+          : parts;
+      const out = { role, content: flatContent };
+      if (role === "assistant" && reasoningContent)
+        out.reasoning_content = reasoningContent;
+      return out;
     }
-    
+
     // Empty content array
     if (msg.content.length === 0) {
       return { role, content: "" };
@@ -250,12 +296,16 @@ function convertClaudeMessage(msg) {
 function convertToolChoice(choice) {
   if (!choice) return "auto";
   if (typeof choice === "string") return choice;
-  
+
   switch (choice.type) {
-    case "auto": return "auto";
-    case "any": return "required";
-    case "tool": return { type: OPENAI_BLOCK.FUNCTION, function: { name: choice.name } };
-    default: return "auto";
+    case "auto":
+      return "auto";
+    case "any":
+      return "required";
+    case "tool":
+      return { type: "function", function: { name: choice.name } };
+    default:
+      return "auto";
   }
 }
 

@@ -7,28 +7,34 @@ const { execSync } = require("child_process");
 const cliDir = path.resolve(__dirname, "..");
 const appDir = path.resolve(cliDir, "..");
 const rootDir = path.resolve(appDir, "..");
-const cliAppDir = process.env.NINEROUTER_CLI_APP_DIR || path.join(cliDir, "app");
+const cliAppDir = path.join(cliDir, "app");
 const buildHomeDir = path.join(cliDir, ".build-home");
 const buildDistDirName = ".next-cli-build";
 const buildDistDir = path.join(appDir, buildDistDirName);
 
-// Exclude patterns for files/folders we don't want to copy
+// Exclude patterns for files/folders we don't want to copy.
+// IMPORTANT: match entry basename only — never use names that are also App Router
+// segments (e.g. "logs" would drop /api/pxpipe/logs and /api/usage/logs).
 const EXCLUDE_PATTERNS = [
-  "@img",           // Sharp image processing (not needed with unoptimized images)
-  "sharp",          // Sharp core lib (not needed with unoptimized images)
-  "detect-libc",    // Sharp dependency
-  ".env",           // Environment files
+  "@img", // Sharp image processing (not needed with unoptimized images)
+  "sharp", // Sharp core lib (not needed with unoptimized images)
+  "detect-libc", // Sharp dependency
+  ".env", // Environment files
   ".env.local",
   ".env.*.local",
-  "*.log",          // Log files
-  "tmp",            // Temp files
-  ".DS_Store",      // macOS files
+  "*.log", // Log files
+  "tmp", // Temp files
+  ".DS_Store", // macOS files
 ];
 
 function shouldExclude(name) {
-  return EXCLUDE_PATTERNS.some(pattern => {
+  return EXCLUDE_PATTERNS.some((pattern) => {
     if (pattern.includes("*")) {
-      const regex = new RegExp("^" + pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$");
+      const regex = new RegExp(
+        "^" +
+          pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") +
+          "$",
+      );
       return regex.test(name);
     }
     return name === pattern;
@@ -40,7 +46,7 @@ function copyRecursive(src, dest) {
     console.warn(`Warning: Source ${src} does not exist`);
     return;
   }
-  
+
   if (!fs.existsSync(dest)) {
     fs.mkdirSync(dest, { recursive: true });
   }
@@ -84,21 +90,28 @@ function copyRecursive(src, dest) {
 console.log("📦 Building 9Router CLI package with Next.js...\n");
 
 fs.mkdirSync(buildHomeDir, { recursive: true });
-fs.mkdirSync(path.join(buildHomeDir, "AppData", "Roaming"), { recursive: true });
+fs.mkdirSync(path.join(buildHomeDir, "AppData", "Roaming"), {
+  recursive: true,
+});
 fs.mkdirSync(path.join(buildHomeDir, "AppData", "Local"), { recursive: true });
 
-// Step 0: Sync version from app/cli/package.json to app/package.json
-console.log("0️⃣  Syncing version to app/package.json...");
-const cliPkg = JSON.parse(fs.readFileSync(path.join(cliDir, "package.json"), "utf8"));
+// Step 0: Verify app and CLI versions match without mutating release metadata.
+console.log("0️⃣  Verifying app/cli package versions...");
+const cliPkg = JSON.parse(
+  fs.readFileSync(path.join(cliDir, "package.json"), "utf8"),
+);
 const appPkgPath = path.join(appDir, "package.json");
 const appPkg = JSON.parse(fs.readFileSync(appPkgPath, "utf8"));
 if (appPkg.version !== cliPkg.version) {
-  appPkg.version = cliPkg.version;
-  fs.writeFileSync(appPkgPath, JSON.stringify(appPkg, null, 2) + "\n");
-  console.log(`✅ Version synced: ${cliPkg.version}\n`);
-} else {
-  console.log(`✅ Version already synced: ${cliPkg.version}\n`);
+  console.error(
+    `❌ Version mismatch: app/package.json=${appPkg.version}, cli/package.json=${cliPkg.version}`,
+  );
+  console.error(
+    "Update both package manifests before building the CLI package.",
+  );
+  process.exit(1);
 }
+console.log(`✅ Versions match: ${cliPkg.version}\n`);
 
 // Step 1: Build app with Next.js (workspace tracing root → traced node_modules in standalone).
 console.log("1️⃣  Building Next.js app...");
@@ -114,7 +127,7 @@ try {
       LOCALAPPDATA: path.join(buildHomeDir, "AppData", "Local"),
       NEXT_DIST_DIR: buildDistDirName,
       NEXT_TRACING_ROOT_MODE: "workspace",
-    }
+    },
   });
   console.log("✅ Next.js build completed\n");
 } catch (error) {
@@ -135,40 +148,46 @@ console.log("✅ Cleaned\n");
 console.log("3️⃣  Copying Next.js standalone build to app/cli/app...");
 const standaloneRoot = path.join(appDir, ".next", "standalone");
 const standaloneRootResolved = path.join(buildDistDir, "standalone");
-let standaloneRootToUse = fs.existsSync(standaloneRootResolved) ? standaloneRootResolved : standaloneRoot;
-// Next.js 16 nests standalone output under the project name when NEXT_TRACING_ROOT_MODE=workspace
-// e.g. .next-cli-build/standalone/9router/server.js
-const pkgName = path.basename(appDir);
-const nestedRoot = path.join(standaloneRootToUse, pkgName);
-if (fs.existsSync(path.join(nestedRoot, "server.js")) && !fs.existsSync(path.join(standaloneRootToUse, "server.js"))) {
-  console.log(`ℹ️  Detected nested standalone output: ${pkgName}/`);
-  standaloneRootToUse = nestedRoot;
+const standaloneRootToUse = fs.existsSync(standaloneRootResolved)
+  ? standaloneRootResolved
+  : standaloneRoot;
+let standaloneApp = null;
+if (fs.existsSync(path.join(standaloneRootToUse, "server.js"))) {
+  standaloneApp = standaloneRootToUse;
+} else if (fs.existsSync(path.join(standaloneRootToUse, "app", "server.js"))) {
+  standaloneApp = path.join(standaloneRootToUse, "app");
+} else if (fs.existsSync(standaloneRootToUse)) {
+  // Look for any subdirectory that contains server.js (e.g. "9router")
+  const subdirs = fs
+    .readdirSync(standaloneRootToUse, { withFileTypes: true })
+    .filter((dirent) => dirent.isDirectory())
+    .map((dirent) => path.join(standaloneRootToUse, dirent.name));
+  const found = subdirs.find((dir) =>
+    fs.existsSync(path.join(dir, "server.js")),
+  );
+  if (found) {
+    standaloneApp = found;
+  }
 }
-const standaloneApp = fs.existsSync(path.join(standaloneRootToUse, "server.js"))
-  ? standaloneRootToUse
-  : path.join(standaloneRootToUse, "app");
-if (!fs.existsSync(standaloneApp)) {
+
+if (!standaloneApp || !fs.existsSync(standaloneApp)) {
   console.error("❌ Next.js standalone build not found under .next/standalone");
-  console.error("Expected either .next/standalone/server.js or .next/standalone/app/");
+  console.error(
+    "Expected server.js to exist directly, under standalone/app/, or inside a standalone/<project>/ subdirectory",
+  );
   process.exit(1);
 }
 copyRecursive(standaloneApp, cliAppDir);
 
 // Older nested-app layout stores traced node_modules at standalone root.
 const standaloneNodeModules = path.join(standaloneRootToUse, "node_modules");
-if (standaloneApp !== standaloneRootToUse && fs.existsSync(standaloneNodeModules)) {
+if (
+  standaloneApp !== standaloneRootToUse &&
+  fs.existsSync(standaloneNodeModules)
+) {
   copyRecursive(standaloneNodeModules, path.join(cliAppDir, "node_modules"));
 }
 console.log("✅ Copied standalone build\n");
-
-// Step 3a: Copy custom server (injects real socket IP, strips spoofable XFF).
-const customServerSrc = path.join(appDir, "custom-server.js");
-if (fs.existsSync(customServerSrc)) {
-  fs.copyFileSync(customServerSrc, path.join(cliAppDir, "custom-server.js"));
-  console.log("✅ Copied custom-server.js\n");
-} else {
-  console.warn("⚠️  custom-server.js not found — server will run without real-IP injection\n");
-}
 
 // Step 3b: Ensure sql.js (pure JS fallback) bundled in app/cli/app/node_modules.
 // Strip better-sqlite3 (native) — it lives in ~/.9router/runtime to avoid
@@ -187,7 +206,9 @@ function ensureModuleInBundle(pkg) {
   ];
   const src = candidates.find((p) => fs.existsSync(p));
   if (!src) {
-    console.warn(`⚠️  ${pkg} not found locally — bundle will rely on node:sqlite or runtime install`);
+    console.warn(
+      `⚠️  ${pkg} not found locally — bundle will rely on node:sqlite or runtime install`,
+    );
     return;
   }
   fs.mkdirSync(path.dirname(dest), { recursive: true });
@@ -208,7 +229,10 @@ const staticSrc = path.join(appDir, ".next", "static");
 const staticSrcResolved = path.join(buildDistDir, "static");
 const staticDest = path.join(cliAppDir, buildDistDirName, "static");
 if (fs.existsSync(staticSrcResolved) || fs.existsSync(staticSrc)) {
-  copyRecursive(fs.existsSync(staticSrcResolved) ? staticSrcResolved : staticSrc, staticDest);
+  copyRecursive(
+    fs.existsSync(staticSrcResolved) ? staticSrcResolved : staticSrc,
+    staticDest,
+  );
   console.log("✅ Copied static files\n");
 } else {
   console.log("⏭️  No static files found\n");
@@ -228,10 +252,24 @@ if (fs.existsSync(publicSrc)) {
 // Step 6: Copy vendor-chunks (required for production)
 console.log("6️⃣  Copying vendor-chunks...");
 const vendorChunksSrc = path.join(appDir, ".next", "server", "vendor-chunks");
-const vendorChunksSrcResolved = path.join(buildDistDir, "server", "vendor-chunks");
-const vendorChunksDest = path.join(cliAppDir, buildDistDirName, "server", "vendor-chunks");
+const vendorChunksSrcResolved = path.join(
+  buildDistDir,
+  "server",
+  "vendor-chunks",
+);
+const vendorChunksDest = path.join(
+  cliAppDir,
+  buildDistDirName,
+  "server",
+  "vendor-chunks",
+);
 if (fs.existsSync(vendorChunksSrcResolved) || fs.existsSync(vendorChunksSrc)) {
-  copyRecursive(fs.existsSync(vendorChunksSrcResolved) ? vendorChunksSrcResolved : vendorChunksSrc, vendorChunksDest);
+  copyRecursive(
+    fs.existsSync(vendorChunksSrcResolved)
+      ? vendorChunksSrcResolved
+      : vendorChunksSrc,
+    vendorChunksDest,
+  );
   console.log("✅ Copied vendor-chunks\n");
 } else {
   console.log("⏭️  No vendor-chunks found\n");
@@ -257,6 +295,17 @@ if (fs.existsSync(updaterSrc)) {
   console.log("✅ Copied updater files\n");
 } else {
   console.log("⏭️  No updater files found\n");
+}
+
+// Step 7c: Copy observabilityWorker and DB files (dynamic Worker thread dependencies)
+console.log("7️⃣ c Copying observabilityWorker and DB files...");
+const dbSrc = path.join(appDir, "src", "lib", "db");
+const dbDest = path.join(cliAppDir, "src", "lib", "db");
+if (fs.existsSync(dbSrc)) {
+  copyRecursive(dbSrc, dbDest);
+  console.log("✅ Copied DB and worker files\n");
+} else {
+  console.log("⏭️  No DB files found\n");
 }
 
 // Step 8: Build MITM server (config driven - see app/cli/scripts/buildMitm.js)

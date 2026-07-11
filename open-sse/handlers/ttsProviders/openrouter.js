@@ -1,14 +1,11 @@
 // OpenRouter TTS — via chat completions + audio modality (SSE stream)
-import { PROVIDER_MEDIA } from "../../providers/index.js";
-
-const TTS_CFG = PROVIDER_MEDIA["openrouter"]?.ttsConfig || {};
-
-export default {
+const provider = {
   async synthesize(text, model, credentials) {
-    if (!credentials?.apiKey) throw new Error("No OpenRouter API key configured");
+    if (!credentials?.apiKey)
+      throw new Error("No OpenRouter API key configured");
 
     // model format: "tts-model/voice" e.g. "openai/gpt-4o-mini-tts/alloy"
-    let ttsModel = TTS_CFG.defaultModel;
+    let ttsModel = "openai/gpt-4o-mini-tts";
     let voice = "alloy";
     if (model && model.includes("/")) {
       const lastSlash = model.lastIndexOf("/");
@@ -24,12 +21,13 @@ export default {
       voice = model;
     }
 
-    const res = await fetch(TTS_CFG.baseUrl, {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${credentials.apiKey}`,
-        ...(TTS_CFG.headers || {}),
+        Authorization: `Bearer ${credentials.apiKey}`,
+        "HTTP-Referer": "https://endpoint-proxy.local",
+        "X-Title": "Endpoint Proxy",
       },
       body: JSON.stringify({
         model: ttsModel,
@@ -42,7 +40,9 @@ export default {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err?.error?.message || `OpenRouter TTS failed: ${res.status}`);
+      throw new Error(
+        err?.error?.message || `OpenRouter TTS failed: ${res.status}`,
+      );
     }
 
     // Parse SSE stream, accumulate base64 audio chunks
@@ -67,7 +67,10 @@ export default {
       }
     }
 
-    if (chunks.length === 0) throw new Error("OpenRouter TTS returned no audio data");
+    if (chunks.length === 0)
+      throw new Error("OpenRouter TTS returned no audio data");
     return { base64: chunks.join(""), format: "wav" };
   },
 };
+
+export default provider;

@@ -48,7 +48,9 @@ export function decodeJwtPayload(jwt) {
     if (parts.length !== 3) return null;
     const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
     const padding = (4 - (base64.length % 4)) % 4;
-    return JSON.parse(Buffer.from(`${base64}${"=".repeat(padding)}`, "base64").toString("utf8"));
+    return JSON.parse(
+      Buffer.from(`${base64}${"=".repeat(padding)}`, "base64").toString("utf8"),
+    );
   } catch {
     return null;
   }
@@ -90,13 +92,19 @@ export function normalizeKiroExternalIdpAuth(rawAuth) {
 
   const authMethod = normalizeString(input.auth_method || input.authMethod);
   if (authMethod && authMethod !== "external_idp") {
-    throw new Error("Only external_idp Kiro auth is supported by this importer");
+    throw new Error(
+      "Only external_idp Kiro auth is supported by this importer",
+    );
   }
 
   const accessToken = normalizeString(input.access_token || input.accessToken);
-  const refreshToken = normalizeString(input.refresh_token || input.refreshToken);
+  const refreshToken = normalizeString(
+    input.refresh_token || input.refreshToken,
+  );
   const clientId = normalizeString(input.client_id || input.clientId);
-  const tokenEndpoint = validateMicrosoftTokenEndpoint(input.token_endpoint || input.tokenEndpoint);
+  const tokenEndpoint = validateMicrosoftTokenEndpoint(
+    input.token_endpoint || input.tokenEndpoint,
+  );
   const profileArn = normalizeString(input.profile_arn || input.profileArn);
   const region = normalizeString(input.region) || DEFAULT_REGION;
   const scope = normalizeScope(input.scopes || input.scope);
@@ -108,7 +116,13 @@ export function normalizeKiroExternalIdpAuth(rawAuth) {
   if (!profileArn) throw new Error("profile_arn is required");
 
   const payload = decodeJwtPayload(accessToken);
-  const email = input.email || payload?.email || payload?.preferred_username || payload?.upn || payload?.sub || null;
+  const email =
+    input.email ||
+    payload?.email ||
+    payload?.preferred_username ||
+    payload?.upn ||
+    payload?.sub ||
+    null;
 
   return {
     accessToken,
@@ -127,13 +141,23 @@ export function normalizeKiroExternalIdpAuth(rawAuth) {
   };
 }
 
-export function buildExternalIdpRefreshParams(refreshToken, providerSpecificData = {}) {
-  const clientId = normalizeString(providerSpecificData.clientId || providerSpecificData.client_id);
-  const tokenEndpoint = validateMicrosoftTokenEndpoint(providerSpecificData.tokenEndpoint || providerSpecificData.token_endpoint);
-  const scope = normalizeScope(providerSpecificData.scope || providerSpecificData.scopes);
+export function buildExternalIdpRefreshParams(
+  refreshToken,
+  providerSpecificData = {},
+) {
+  const clientId = normalizeString(
+    providerSpecificData.clientId || providerSpecificData.client_id,
+  );
+  const tokenEndpoint = validateMicrosoftTokenEndpoint(
+    providerSpecificData.tokenEndpoint || providerSpecificData.token_endpoint,
+  );
+  const scope = normalizeScope(
+    providerSpecificData.scope || providerSpecificData.scopes,
+  );
 
   if (!refreshToken) throw new Error("refresh token is required");
-  if (!clientId) throw new Error("clientId is required for external_idp refresh");
+  if (!clientId)
+    throw new Error("clientId is required for external_idp refresh");
   if (!scope) throw new Error("scope is required for external_idp refresh");
 
   return {

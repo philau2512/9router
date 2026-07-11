@@ -1,17 +1,26 @@
 import { NextResponse } from "next/server";
-import { getTunnelStatus, getTailscaleStatus, getDownloadStatus } from "@/lib/tunnel";
+import {
+  getTunnelStatus,
+  getTailscaleStatus,
+  getDownloadStatus,
+} from "@/lib/tunnel";
 
-const STATUS_CACHE_TTL_MS = 3000; // coalesce rapid polls; underlying probes already cache 10s
-
-// Survive hot reload; one cache per process. Only tunnel/tailscale probes are cached —
-// download progress stays live so the enable/download UI updates smoothly.
-const statusCache = (global.__tunnelStatusCache ??= { value: null, fetchedAt: 0 });
+// Cache tunnel status for 3s — coalesces rapid polls; underlying probes
+// already cache at 10s. global survives Next.js hot reload. See upstream a4c5fa4e1.
+const STATUS_CACHE_TTL_MS = 3000;
+const statusCache = (global.__tunnelStatusCache ??= {
+  value: null,
+  fetchedAt: 0,
+});
 
 export async function GET() {
   try {
     let probes = statusCache.value;
     if (!probes || Date.now() - statusCache.fetchedAt >= STATUS_CACHE_TTL_MS) {
-      const [tunnel, tailscale] = await Promise.all([getTunnelStatus(), getTailscaleStatus()]);
+      const [tunnel, tailscale] = await Promise.all([
+        getTunnelStatus(),
+        getTailscaleStatus(),
+      ]);
       probes = { tunnel, tailscale };
       statusCache.value = probes;
       statusCache.fetchedAt = Date.now();

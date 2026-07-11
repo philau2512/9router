@@ -8,7 +8,7 @@
  *  - `xai`      → api.x.ai (API key / Grok Build OAuth PKCE)
  *  - `grok-web` → grok.com web SSO cookie
  */
-export default {
+const grokCliProvider = {
   id: "grok-cli",
   priority: 275,
   alias: "gcli",
@@ -64,8 +64,16 @@ export default {
   },
   models: [
     { id: "grok-4.5", name: "Grok 4.5" },
-    { id: "grok-4.5-high", name: "Grok 4.5 (High)", upstreamModelId: "grok-4.5" },
-    { id: "grok-4.5-medium", name: "Grok 4.5 (Medium)", upstreamModelId: "grok-4.5" },
+    {
+      id: "grok-4.5-high",
+      name: "Grok 4.5 (High)",
+      upstreamModelId: "grok-4.5",
+    },
+    {
+      id: "grok-4.5-medium",
+      name: "Grok 4.5 (Medium)",
+      upstreamModelId: "grok-4.5",
+    },
     { id: "grok-4.5-low", name: "Grok 4.5 (Low)", upstreamModelId: "grok-4.5" },
   ],
   features: {
@@ -84,3 +92,5 @@ export default {
     refreshLeadMs: 5 * 60 * 1000,
   },
 };
+
+export default grokCliProvider;

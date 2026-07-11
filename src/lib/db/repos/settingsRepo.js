@@ -2,7 +2,11 @@ import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
-const DEFAULT_HEADROOM_URL = process.env.HEADROOM_URL || "http://localhost:8787";
+
+// In-memory cache to avoid repeated SQLite reads per request
+let _settingsCache = null;
+let _settingsCacheTs = 0;
+const SETTINGS_CACHE_TTL_MS = 1000;
 
 const DEFAULT_SETTINGS = {
   cloudEnabled: false,
@@ -32,20 +36,17 @@ const DEFAULT_SETTINGS = {
   outboundProxyEnabled: false,
   outboundProxyUrl: "",
   outboundNoProxy: "",
+  connectionProxyHeadersTimeoutMs:
+    parseInt(process.env.CONNECTION_PROXY_HEADERS_TIMEOUT_MS) || 30000,
   mitmRouterBaseUrl: DEFAULT_MITM_ROUTER_BASE,
   dnsToolEnabled: {},
   rtkEnabled: true,
-  headroomEnabled: false,
-  headroomUrl: DEFAULT_HEADROOM_URL,
-  headroomCompressUserMessages: false,
   cavemanEnabled: false,
   cavemanLevel: "full",
-  ponytailEnabled: false,
-  ponytailLevel: "full",
-  pxpipeEnabled: false,
-  pxpipeAutoInstall: true,
-  pxpipeMinChars: 25000,
-  pxpipeTimeoutMs: 15000,
+  autoRetryOverloaded: true,
+  maxRetryAttempts: 3,
+  retryDelayMs: 2000,
+  midStreamResumeEnabled: true,
 };
 
 async function readRaw() {
@@ -74,8 +75,14 @@ function mergeWithDefaults(raw) {
 }
 
 export async function getSettings() {
+  const now = Date.now();
+  if (_settingsCache && now - _settingsCacheTs < SETTINGS_CACHE_TTL_MS) {
+    return _settingsCache;
+  }
   const raw = await readRaw();
-  return mergeWithDefaults(raw);
+  _settingsCache = mergeWithDefaults(raw);
+  _settingsCacheTs = now;
+  return _settingsCache;
 }
 
 // Atomic read-merge-write inside transaction (prevents losing concurrent updates)
@@ -88,9 +95,12 @@ export async function updateSettings(updates) {
     next = { ...current, ...updates };
     db.run(
       `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
-      [stringifyJson(next)]
+      [stringifyJson(next)],
     );
   });
+  // Invalidate cache so next getSettings() reads fresh data
+  _settingsCache = null;
+  _settingsCacheTs = 0;
   return mergeWithDefaults(next);
 }
 

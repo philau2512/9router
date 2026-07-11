@@ -23,7 +23,7 @@ export async function POST(request) {
   } catch (err) {
     return NextResponse.json(
       { error: `Invalid JSON body: ${err.message}` },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -42,7 +42,7 @@ export async function POST(request) {
   if (!Array.isArray(accounts) || accounts.length === 0) {
     return NextResponse.json(
       { error: "No accounts provided" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -80,7 +80,8 @@ export async function POST(request) {
       const needsPlanType = !psd.chatgptPlanType;
 
       if (needsEmail || needsAccountId || needsPlanType) {
-        const info = extractCodexAccountInfo(item.idToken || item.accessToken) || {};
+        const info =
+          extractCodexAccountInfo(item.idToken || item.accessToken) || {};
         if (needsEmail && info.email) item.email = info.email;
         if (needsAccountId && info.chatgptAccountId) {
           psd.chatgptAccountId = info.chatgptAccountId;
@@ -94,8 +95,14 @@ export async function POST(request) {
       }
 
       // Compute expiresAt from expiresIn if absent
-      if (!item.expiresAt && typeof item.expiresIn === "number" && item.expiresIn > 0) {
-        item.expiresAt = new Date(Date.now() + item.expiresIn * 1000).toISOString();
+      if (
+        !item.expiresAt &&
+        typeof item.expiresIn === "number" &&
+        item.expiresIn > 0
+      ) {
+        item.expiresAt = new Date(
+          Date.now() + item.expiresIn * 1000,
+        ).toISOString();
       }
 
       // Defaults aligned with OAuth-completed flow
@@ -112,7 +119,11 @@ export async function POST(request) {
       results.push({ index: i, ok: true, id: created.id });
       success++;
     } catch (e) {
-      results.push({ index: i, ok: false, error: e.message || "Unknown error" });
+      results.push({
+        index: i,
+        ok: false,
+        error: e.message || "Unknown error",
+      });
       failed++;
     }
   }

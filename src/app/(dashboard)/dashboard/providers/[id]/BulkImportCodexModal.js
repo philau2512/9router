@@ -84,11 +84,15 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
   const failedItems = result?.results?.filter((r) => !r.ok) || [];
 
   return (
-    <Modal isOpen={isOpen} title={translate("Bulk Add Codex Accounts")} onClose={handleClose}>
+    <Modal
+      isOpen={isOpen}
+      title={translate("Bulk Add Codex Accounts")}
+      onClose={handleClose}
+    >
       <div className="flex flex-col gap-4">
         <p className="text-xs text-text-muted">
           {translate(
-            "Paste an array of codex account JSON objects. Each must include accessToken (and ideally refreshToken, idToken)."
+            "Paste an array of codex account JSON objects. Each must include accessToken (and ideally refreshToken, idToken).",
           )}
         </p>
 
@@ -112,7 +116,9 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
               }`}
             >
               ✓ {result.success} {translate("added")}
-              {result.failed > 0 ? `, ✗ ${result.failed} ${translate("failed")}` : ""}
+              {result.failed > 0
+                ? `, ✗ ${result.failed} ${translate("failed")}`
+                : ""}
             </div>
             {failedItems.length > 0 && (
               <ul className="rounded border border-accent/20 bg-sidebar/50 p-2 text-xs font-mono max-h-40 overflow-y-auto">
@@ -134,7 +140,12 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
           >
             {submitting ? translate("Importing...") : translate("Import All")}
           </Button>
-          <Button onClick={handleClose} variant="ghost" fullWidth disabled={submitting}>
+          <Button
+            onClick={handleClose}
+            variant="ghost"
+            fullWidth
+            disabled={submitting}
+          >
             {translate("Close")}
           </Button>
         </div>

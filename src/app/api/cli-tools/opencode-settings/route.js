@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { NextResponse } from "next/server";
 import { exec } from "child_process";
@@ -18,7 +18,10 @@ const checkOpenCodeInstalled = async () => {
     const isWindows = os.platform() === "win32";
     const command = isWindows ? "where opencode" : "which opencode";
     const env = isWindows
-      ? { ...process.env, PATH: `${process.env.APPDATA}\\npm;${process.env.PATH}` }
+      ? {
+          ...process.env,
+          PATH: `${process.env.APPDATA}\\npm;${process.env.PATH}`,
+        }
       : process.env;
     await execAsync(command, { windowsHide: true, env });
     return true;
@@ -35,15 +38,11 @@ const checkOpenCodeInstalled = async () => {
 const readConfig = async () => {
   try {
     const content = await fs.readFile(getConfigPath(), "utf-8");
-    // opencode config files may use JSONC format (trailing commas, comments).
-    // Strip trailing commas before parsing to avoid SyntaxError on valid JSONC.
+    // Tolerate JSONC (trailing commas) and treat unparseable files as "no config"
+    // rather than throwing a 500 that the UI misreads as "tool not installed".
     const stripped = content.replace(/,(\s*[}\]])/g, "$1");
     return JSON.parse(stripped);
   } catch (error) {
-    if (error.code === "ENOENT") return null;
-    // If the config file exists but is unparseable (corrupted, exotic JSONC),
-    // treat it as "no config" rather than throwing a 500 that the UI
-    // misinterprets as "opencode not installed".
     return null;
   }
 };
@@ -75,28 +74,41 @@ export async function GET() {
       config,
       has9Router: has9RouterConfig(config),
       configPath: getConfigPath(),
-        opencode: {
-          models: Object.keys(modelMap),
-          activeModel: config?.model?.startsWith("9router/") ? config.model.replace(/^9router\//, "") : null,
-          baseURL: providerConfig?.options?.baseURL || null,
-        },
+      opencode: {
+        models: Object.keys(modelMap),
+        activeModel: config?.model?.startsWith("9router/")
+          ? config.model.replace(/^9router\//, "")
+          : null,
+        baseURL: providerConfig?.options?.baseURL || null,
+      },
     });
   } catch (error) {
     console.log("Error checking opencode settings:", error);
-    return NextResponse.json({ error: "Failed to check opencode settings" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to check opencode settings" },
+      { status: 500 },
+    );
   }
 }
 
 // POST - Apply 9Router as openai-compatible provider (multi-model support)
 export async function POST(request) {
   try {
-    const { baseUrl, apiKey, model, models, activeModel, subagentModel } = await request.json();
+    const { baseUrl, apiKey, model, models, activeModel, subagentModel } =
+      await request.json();
 
     // Accept either `model` (string, legacy) or `models` (array of strings)
-    const modelsArray = Array.isArray(models) ? models.slice() : (typeof model === "string" ? [model] : []);
+    const modelsArray = Array.isArray(models)
+      ? models.slice()
+      : typeof model === "string"
+        ? [model]
+        : [];
 
     if (!baseUrl || modelsArray.length === 0) {
-      return NextResponse.json({ error: "baseUrl and at least one model are required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "baseUrl and at least one model are required" },
+        { status: 400 },
+      );
     }
 
     const configDir = getConfigDir();
@@ -109,9 +121,13 @@ export async function POST(request) {
     try {
       const existing = await fs.readFile(configPath, "utf-8");
       config = JSON.parse(existing);
-    } catch { /* No existing config */ }
+    } catch {
+      /* No existing config */
+    }
 
-    const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
+    const normalizedBaseUrl = baseUrl.endsWith("/v1")
+      ? baseUrl
+      : `${baseUrl}/v1`;
     const keyToUse = apiKey || "sk_9router";
     const effectiveSubagentModel = subagentModel || modelsArray[0];
 
@@ -119,7 +135,11 @@ export async function POST(request) {
     if (!config.provider) config.provider = {};
 
     // Preserve any existing 9router provider entry and its models
-    const existingProvider = config.provider["9router"] || { npm: "@ai-sdk/openai-compatible", options: {}, models: {} };
+    const existingProvider = config.provider["9router"] || {
+      npm: "@ai-sdk/openai-compatible",
+      options: {},
+      models: {},
+    };
 
     // Merge options (overwrite baseURL/apiKey)
     existingProvider.options = {
@@ -134,7 +154,10 @@ export async function POST(request) {
     // Add or update entries for all requested models
     for (const m of modelsArray) {
       if (!m || typeof m !== "string") continue;
-      existingProvider.models[m] = { name: m, modalities: { input: ["text", "image"], output: ["text"] } };
+      existingProvider.models[m] = {
+        name: m,
+        modalities: { input: ["text", "image"], output: ["text"] },
+      };
     }
 
     // Save merged provider back
@@ -168,7 +191,10 @@ export async function POST(request) {
     });
   } catch (error) {
     console.log("Error applying opencode settings:", error);
-    return NextResponse.json({ error: "Failed to apply settings" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to apply settings" },
+      { status: 500 },
+    );
   }
 }
 
@@ -184,7 +210,10 @@ export async function PATCH(request) {
       config = JSON.parse(existing);
     } catch (error) {
       if (error.code === "ENOENT") {
-        return NextResponse.json({ success: true, message: "No config file found" });
+        return NextResponse.json({
+          success: true,
+          message: "No config file found",
+        });
       }
       throw error;
     }
@@ -204,7 +233,10 @@ export async function PATCH(request) {
     });
   } catch (error) {
     console.log("Error patching opencode settings:", error);
-    return NextResponse.json({ error: "Failed to patch settings" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to patch settings" },
+      { status: 500 },
+    );
   }
 }
 
@@ -221,7 +253,10 @@ export async function DELETE(request) {
       config = JSON.parse(existing);
     } catch (error) {
       if (error.code === "ENOENT") {
-        return NextResponse.json({ success: true, message: "No config file to reset" });
+        return NextResponse.json({
+          success: true,
+          message: "No config file to reset",
+        });
       }
       throw error;
     }
@@ -229,7 +264,7 @@ export async function DELETE(request) {
     // If specific model provided, remove just that model
     if (modelToRemove && config.provider?.["9router"]?.models) {
       delete config.provider["9router"].models[modelToRemove];
-      
+
       // If no models left, remove the provider
       if (Object.keys(config.provider["9router"].models).length === 0) {
         delete config.provider["9router"];
@@ -256,10 +291,15 @@ export async function DELETE(request) {
 
     return NextResponse.json({
       success: true,
-      message: modelToRemove ? `Model "${modelToRemove}" removed` : "9Router settings removed from OpenCode",
+      message: modelToRemove
+        ? `Model "${modelToRemove}" removed`
+        : "9Router settings removed from OpenCode",
     });
   } catch (error) {
     console.log("Error resetting opencode settings:", error);
-    return NextResponse.json({ error: "Failed to reset opencode settings" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to reset opencode settings" },
+      { status: 500 },
+    );
   }
 }

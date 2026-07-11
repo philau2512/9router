@@ -2,9 +2,56 @@
 
 import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
+import { LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
 import { useTheme } from "@/shared/hooks/useTheme";
 import ChangelogModal from "./ChangelogModal";
-import { ConfirmModal } from "./Modal";
+import NineRemotePromoModal from "./NineRemotePromoModal";
+import LanguageSwitcher from "./LanguageSwitcher";
+
+const LOCALE_INFO = {
+  en: { name: "English", flag: "🇺🇸" },
+  vi: { name: "Tiếng Việt", flag: "🇻🇳" },
+  "zh-CN": { name: "简体中文", flag: "🇨🇳" },
+  "zh-TW": { name: "繁體中文", flag: "🇹🇼" },
+  ja: { name: "日本語", flag: "🇯🇵" },
+  "pt-BR": { name: "Português (BR)", flag: "🇧🇷" },
+  "pt-PT": { name: "Português (PT)", flag: "🇵🇹" },
+  ko: { name: "한국어", flag: "🇰🇷" },
+  es: { name: "Español", flag: "🇪🇸" },
+  de: { name: "Deutsch", flag: "🇩🇪" },
+  fr: { name: "Français", flag: "🇫🇷" },
+  he: { name: "עברית", flag: "🇮🇱" },
+  ar: { name: "العربية", flag: "🇸🇦" },
+  ru: { name: "Русский", flag: "🇷🇺" },
+  pl: { name: "Polski", flag: "🇵🇱" },
+  cs: { name: "Čeština", flag: "🇨🇿" },
+  nl: { name: "Nederlands", flag: "🇳🇱" },
+  tr: { name: "Türkçe", flag: "🇹🇷" },
+  uk: { name: "Українська", flag: "🇺🇦" },
+  tl: { name: "Tagalog", flag: "🇵🇭" },
+  id: { name: "Indonesia", flag: "🇮🇩" },
+  th: { name: "ไทย", flag: "🇹🇭" },
+  hi: { name: "हिन्दी", flag: "🇮🇳" },
+  bn: { name: "বাংলা", flag: "🇧🇩" },
+  ur: { name: "اردو", flag: "🇵🇰" },
+  ro: { name: "Română", flag: "🇷🇴" },
+  sv: { name: "Svenska", flag: "🇸🇪" },
+  it: { name: "Italiano", flag: "🇮🇹" },
+  el: { name: "Ελληνικά", flag: "🇬🇷" },
+  hu: { name: "Magyar", flag: "🇭🇺" },
+  fi: { name: "Suomi", flag: "🇫🇮" },
+  da: { name: "Dansk", flag: "🇩🇰" },
+  no: { name: "Norsk", flag: "🇳🇴" },
+};
+
+function getLocaleFromCookie() {
+  if (typeof document === "undefined") return "en";
+  const cookie = document.cookie
+    .split(";")
+    .find((c) => c.trim().startsWith(`${LOCALE_COOKIE}=`));
+  const value = cookie ? decodeURIComponent(cookie.split("=")[1]) : "en";
+  return normalizeLocale(value);
+}
 
 function MenuItem({ icon, label, onClick, trailing, danger }) {
   return (
@@ -16,7 +63,9 @@ function MenuItem({ icon, label, onClick, trailing, danger }) {
           : "text-text-main hover:bg-black/5 dark:hover:bg-white/5"
       }`}
     >
-      <span className={`material-symbols-outlined text-[20px] ${danger ? "" : "text-text-muted"}`}>
+      <span
+        className={`material-symbols-outlined text-[20px] ${danger ? "" : "text-text-muted"}`}
+      >
         {icon}
       </span>
       <span className="flex-1 text-left">{label}</span>
@@ -36,21 +85,11 @@ MenuItem.propTypes = {
 export default function HeaderMenu({ onLogout }) {
   const [isOpen, setIsOpen] = useState(false);
   const [changelogOpen, setChangelogOpen] = useState(false);
-  const [shutdownOpen, setShutdownOpen] = useState(false);
-  const [isShuttingDown, setIsShuttingDown] = useState(false);
+  const [remoteOpen, setRemoteOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
+  const [locale, setLocale] = useState(() => getLocaleFromCookie());
   const { toggleTheme, isDark } = useTheme();
   const menuRef = useRef(null);
-
-  const handleShutdown = async () => {
-    setIsShuttingDown(true);
-    try {
-      await fetch("/api/version/shutdown", { method: "POST" });
-    } catch (e) {
-      // Expected to fail as server shuts down; ignore error
-    }
-    setIsShuttingDown(false);
-    setShutdownOpen(false);
-  };
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -60,11 +99,17 @@ export default function HeaderMenu({ onLogout }) {
     };
     if (isOpen) {
       document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [isOpen]);
 
   const close = () => setIsOpen(false);
+  const openLanguageModal = () => {
+    setLocale(getLocaleFromCookie());
+    close();
+    setLangOpen(true);
+  };
 
   return (
     <>
@@ -82,40 +127,61 @@ export default function HeaderMenu({ onLogout }) {
             <MenuItem
               icon="history"
               label="Change Log"
-              onClick={() => { close(); setChangelogOpen(true); }}
+              onClick={() => {
+                close();
+                setChangelogOpen(true);
+              }}
+            />
+            <MenuItem
+              icon="language"
+              label={LOCALE_INFO[locale]?.name || locale}
+              trailing={LOCALE_INFO[locale]?.flag || "🌐"}
+              onClick={openLanguageModal}
             />
             <MenuItem
               icon={isDark ? "light_mode" : "dark_mode"}
               label="Theme"
-              onClick={() => { toggleTheme(); close(); }}
+              onClick={() => {
+                toggleTheme();
+                close();
+              }}
             />
             <MenuItem
-              icon="power_settings_new"
-              label="Shutdown"
-              danger
-              onClick={() => { close(); setShutdownOpen(true); }}
+              icon="computer"
+              label="Remote"
+              onClick={() => {
+                close();
+                setRemoteOpen(true);
+              }}
             />
             <MenuItem
               icon="logout"
               label="Logout"
               danger
-              onClick={() => { close(); onLogout(); }}
+              onClick={() => {
+                close();
+                onLogout();
+              }}
             />
           </div>
         )}
       </div>
 
-      <ChangelogModal isOpen={changelogOpen} onClose={() => setChangelogOpen(false)} />
-      <ConfirmModal
-        isOpen={shutdownOpen}
-        onClose={() => setShutdownOpen(false)}
-        onConfirm={handleShutdown}
-        title="Close Proxy"
-        message="Are you sure you want to close the proxy server?"
-        confirmText="Close"
-        cancelText="Cancel"
-        variant="danger"
-        loading={isShuttingDown}
+      <ChangelogModal
+        isOpen={changelogOpen}
+        onClose={() => setChangelogOpen(false)}
+      />
+      <NineRemotePromoModal
+        isOpen={remoteOpen}
+        onClose={() => setRemoteOpen(false)}
+      />
+      <LanguageSwitcher
+        hideTrigger
+        isOpen={langOpen}
+        onClose={(nextLocale) => {
+          setLangOpen(false);
+          setLocale(nextLocale);
+        }}
       />
     </>
   );

@@ -1,7 +1,17 @@
 import { NextResponse } from "next/server";
 import { getChartData } from "@/lib/usageDb";
 
-const VALID_PERIODS = new Set(["today", "24h", "7d", "30d", "60d"]);
+const VALID_PERIODS = new Set([
+  "today",
+  "24h",
+  "7d",
+  "30d",
+  "60d",
+  "90d",
+  "180d",
+  "365d",
+  "all",
+]);
 
 export async function GET(request) {
   try {
@@ -16,6 +26,9 @@ export async function GET(request) {
     return NextResponse.json(data);
   } catch (error) {
     console.error("[API] Failed to get chart data:", error);
-    return NextResponse.json({ error: "Failed to fetch chart data" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch chart data" },
+      { status: 500 },
+    );
   }
 }

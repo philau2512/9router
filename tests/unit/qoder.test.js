@@ -36,7 +36,9 @@ describe("QODER_MODEL_MAP", () => {
   });
 
   it("exposes Qoder's latest model in the static provider catalog", () => {
-    expect(PROVIDER_MODELS.qd.some((model) => model.id === "qmodel_latest")).toBe(true);
+    expect(
+      PROVIDER_MODELS.qd.some((model) => model.id === "qmodel_latest"),
+    ).toBe(true);
   });
 });
 
@@ -75,7 +77,10 @@ describe("qoderEncodeBody", () => {
       "hello world this is a longer string for testing 0123456789",
     );
     for (const ch of encoded) {
-      expect(allowed.has(ch), `unexpected char in output: ${JSON.stringify(ch)}`).toBe(true);
+      expect(
+        allowed.has(ch),
+        `unexpected char in output: ${JSON.stringify(ch)}`,
+      ).toBe(true);
     }
   });
 
@@ -134,12 +139,15 @@ describe("initiateDeviceFlow", () => {
     );
     expect(flow.verificationUriComplete).toContain("challenge_method=S256");
     expect(flow.verificationUriComplete).toContain(`nonce=${flow.nonce}`);
-    expect(flow.verificationUriComplete).toContain(`machine_id=${flow.machineId}`);
+    expect(flow.verificationUriComplete).toContain(
+      `machine_id=${flow.machineId}`,
+    );
   });
 
   it("returns nonce and machineId as UUIDs", () => {
     const flow = initiateDeviceFlow();
-    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    const uuidRe =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
     expect(flow.nonce).toMatch(uuidRe);
     expect(flow.machineId).toMatch(uuidRe);
   });
@@ -155,7 +163,11 @@ describe("buildCosyHeaders", () => {
   };
 
   it("produces all required Cosy-* headers", () => {
-    const headers = buildCosyHeaders(Buffer.alloc(0), QODER_MODEL_LIST_URL, creds);
+    const headers = buildCosyHeaders(
+      Buffer.alloc(0),
+      QODER_MODEL_LIST_URL,
+      creds,
+    );
     const required = [
       "Authorization",
       "Cosy-Key",
@@ -181,17 +193,31 @@ describe("buildCosyHeaders", () => {
   });
 
   it("Authorization is a Bearer COSY token with payload+sig", () => {
-    const headers = buildCosyHeaders(Buffer.alloc(0), QODER_MODEL_LIST_URL, creds);
-    expect(headers.Authorization).toMatch(/^Bearer COSY\.[A-Za-z0-9+/=]+\.[a-f0-9]{32}$/);
+    const headers = buildCosyHeaders(
+      Buffer.alloc(0),
+      QODER_MODEL_LIST_URL,
+      creds,
+    );
+    expect(headers.Authorization).toMatch(
+      /^Bearer COSY\.[A-Za-z0-9+/=]+\.[a-f0-9]{32}$/,
+    );
   });
 
   it("Cosy-Sigpath strips the leading /algo prefix", () => {
-    const headers = buildCosyHeaders(Buffer.alloc(0), QODER_MODEL_LIST_URL, creds);
+    const headers = buildCosyHeaders(
+      Buffer.alloc(0),
+      QODER_MODEL_LIST_URL,
+      creds,
+    );
     expect(headers["Cosy-Sigpath"]).toBe("/api/v2/model/list");
   });
 
   it("Cosy-Sigpath also handles the encoded chat URL", () => {
-    const headers = buildCosyHeaders(Buffer.from("body", "utf8"), QODER_CHAT_URL_ENCODED, creds);
+    const headers = buildCosyHeaders(
+      Buffer.from("body", "utf8"),
+      QODER_CHAT_URL_ENCODED,
+      creds,
+    );
     expect(headers["Cosy-Sigpath"]).toBe(
       "/api/v2/service/pro/sse/agent_chat_generation",
     );
@@ -206,13 +232,21 @@ describe("buildCosyHeaders", () => {
   });
 
   it("empty body produces the canonical empty-MD5 hash", () => {
-    const headers = buildCosyHeaders(Buffer.alloc(0), QODER_MODEL_LIST_URL, creds);
+    const headers = buildCosyHeaders(
+      Buffer.alloc(0),
+      QODER_MODEL_LIST_URL,
+      creds,
+    );
     expect(headers["Cosy-Bodyhash"]).toBe("d41d8cd98f00b204e9800998ecf8427e");
     expect(headers["Cosy-Bodylength"]).toBe("0");
   });
 
   it("Cosy-Machineid + Cosy-Machinetoken match the supplied machineId", () => {
-    const headers = buildCosyHeaders(Buffer.alloc(0), QODER_MODEL_LIST_URL, creds);
+    const headers = buildCosyHeaders(
+      Buffer.alloc(0),
+      QODER_MODEL_LIST_URL,
+      creds,
+    );
     expect(headers["Cosy-Machineid"]).toBe("fixed-machine-id");
     expect(headers["Cosy-Machinetoken"]).toBe("fixed-machine-id");
   });
@@ -229,18 +263,28 @@ describe("buildCosyHeaders", () => {
 
   it("throws when userId is missing", () => {
     expect(() =>
-      buildCosyHeaders(Buffer.alloc(0), QODER_MODEL_LIST_URL, { ...creds, userId: "" }),
+      buildCosyHeaders(Buffer.alloc(0), QODER_MODEL_LIST_URL, {
+        ...creds,
+        userId: "",
+      }),
     ).toThrow(/user id is empty/);
   });
 
   it("throws when authToken is missing", () => {
     expect(() =>
-      buildCosyHeaders(Buffer.alloc(0), QODER_MODEL_LIST_URL, { ...creds, authToken: "" }),
+      buildCosyHeaders(Buffer.alloc(0), QODER_MODEL_LIST_URL, {
+        ...creds,
+        authToken: "",
+      }),
     ).toThrow(/auth token is empty/);
   });
 
   it("Cosy-User reflects the supplied userId verbatim", () => {
-    const headers = buildCosyHeaders(Buffer.alloc(0), QODER_MODEL_LIST_URL, creds);
+    const headers = buildCosyHeaders(
+      Buffer.alloc(0),
+      QODER_MODEL_LIST_URL,
+      creds,
+    );
     expect(headers["Cosy-User"]).toBe("test-user-id");
   });
 
@@ -249,8 +293,16 @@ describe("buildCosyHeaders", () => {
     // signature, Cosy-Key, X-Request-Id, and Cosy-Date (1s resolution)
     // can differ — but Cosy-User, Cosy-Bodyhash, Cosy-Bodylength,
     // Cosy-Sigpath, and the machineId-derived headers must be stable.
-    const a = buildCosyHeaders(Buffer.from("payload", "utf8"), QODER_CHAT_URL_ENCODED, creds);
-    const b = buildCosyHeaders(Buffer.from("payload", "utf8"), QODER_CHAT_URL_ENCODED, creds);
+    const a = buildCosyHeaders(
+      Buffer.from("payload", "utf8"),
+      QODER_CHAT_URL_ENCODED,
+      creds,
+    );
+    const b = buildCosyHeaders(
+      Buffer.from("payload", "utf8"),
+      QODER_CHAT_URL_ENCODED,
+      creds,
+    );
     expect(a["Cosy-User"]).toBe(b["Cosy-User"]);
     expect(a["Cosy-Bodyhash"]).toBe(b["Cosy-Bodyhash"]);
     expect(a["Cosy-Bodylength"]).toBe(b["Cosy-Bodylength"]);
@@ -410,7 +462,10 @@ describe("wrapQoderSSE", () => {
   // Regression for review finding #4: a final data: line without a trailing
   // newline used to be silently dropped from `buffer` in flush().
   it("drains a trailing partial line without a newline in flush()", async () => {
-    const inner = JSON.stringify({ choices: [{ delta: { content: "tail" } }], finish_reason: "stop" });
+    const inner = JSON.stringify({
+      choices: [{ delta: { content: "tail" } }],
+      finish_reason: "stop",
+    });
     // Note: NO trailing \n on the final line.
     const upstream = `data: ${JSON.stringify({ statusCodeValue: 200, body: inner })}`;
     const wrapped = wrapQoderSSE(makeResponse([upstream]), "qoder/auto");
@@ -424,7 +479,9 @@ describe("wrapQoderSSE", () => {
   // and assert the second envelope is NOT forwarded.
   it("does not forward chunks after [DONE] has been emitted", async () => {
     const errorEnv = JSON.stringify({ statusCodeValue: 500, body: "boom" });
-    const validInner = JSON.stringify({ choices: [{ delta: { content: "leak" } }] });
+    const validInner = JSON.stringify({
+      choices: [{ delta: { content: "leak" } }],
+    });
     const validEnv = JSON.stringify({ statusCodeValue: 200, body: validInner });
     const wrapped = wrapQoderSSE(
       makeResponse([`data: ${errorEnv}\n\ndata: ${validEnv}\n\n`]),
@@ -442,20 +499,34 @@ describe("wrapQoderSSE", () => {
   // We now strip them so the frame stays a single event.
   it("strips embedded newlines from inner body before forwarding", async () => {
     const innerWithNewlines = '{"choices":[{"delta":{"content":"a\nb"}}]}';
-    const env = JSON.stringify({ statusCodeValue: 200, body: innerWithNewlines });
-    const wrapped = wrapQoderSSE(makeResponse([`data: ${env}\n\n`]), "qoder/auto");
+    const env = JSON.stringify({
+      statusCodeValue: 200,
+      body: innerWithNewlines,
+    });
+    const wrapped = wrapQoderSSE(
+      makeResponse([`data: ${env}\n\n`]),
+      "qoder/auto",
+    );
     const out = await drain(wrapped);
     // The forwarded data: line should be a single event terminated by \n\n
     // and contain no internal \n other than the trailing pair.
-    const dataLine = out.split("\n\n").find((l) => l.startsWith("data: ") && !l.includes("[DONE]"));
+    const dataLine = out
+      .split("\n\n")
+      .find((l) => l.startsWith("data: ") && !l.includes("[DONE]"));
     expect(dataLine).toBeDefined();
     // Body sans "data: " prefix should be valid JSON.
     expect(() => JSON.parse(dataLine.slice("data: ".length))).not.toThrow();
   });
 
   it("upstream error envelope produces an error chunk + [DONE]", async () => {
-    const env = JSON.stringify({ statusCodeValue: 503, body: "service unavailable" });
-    const wrapped = wrapQoderSSE(makeResponse([`data: ${env}\n\n`]), "qoder/lite");
+    const env = JSON.stringify({
+      statusCodeValue: 503,
+      body: "service unavailable",
+    });
+    const wrapped = wrapQoderSSE(
+      makeResponse([`data: ${env}\n\n`]),
+      "qoder/lite",
+    );
     const out = await drain(wrapped);
     expect(out).toContain("[qoder error 503");
     expect(out).toContain("data: [DONE]\n\n");

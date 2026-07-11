@@ -1,51 +1,39 @@
-// Single source: build PROVIDERS + PROVIDER_MODELS from registry/{id}.js (transport + models co-located).
-import REGISTRY from "./registry/index.js";
-import { PROVIDER_DEFAULTS } from "./schema.js";
-import { normalizeModel } from "./models/schema.js";
-import { buildTtsProviderModels } from "../config/ttsModels.js";
+// Compatibility re-exports for upstream import paths.
+//
+// The fork stores provider data in open-sse/config/; this module bridges
+// the gap so code targeting open-sse/providers/* continues to work without
+// changing import paths across the codebase.
+//
+// Import pattern equivalence:
+//   upstream: import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js"
+//   fork:     same path now works via this package
 
-// oauth block is canonical for these fields; inject into transport so executors reading
-// this.config.{clientId,clientSecret,tokenUrl} keep working without duplicating in transport
-const OAUTH_INJECT_FIELDS = ["clientId", "clientSecret", "tokenUrl"];
+// ── Transport config + OAuth settings ─────────────────────────────────────
+export { PROVIDERS } from "../config/providers.js";
 
-// transport: re-apply shared default (format:"openai") + inject oauth-canonical fields
-function buildTransport(transport, oauth) {
-  const t = { ...transport };
-  if (!t.format) t.format = PROVIDER_DEFAULTS.format;
-  if (oauth) {
-    for (const f of OAUTH_INJECT_FIELDS) {
-      if (t[f] === undefined && oauth[f] !== undefined) t[f] = oauth[f];
-    }
-  }
-  return t;
-}
+// ── Model lists (keyed by alias, matching upstream PROVIDERS export shape) ─
+export {
+  PROVIDER_MODELS,
+  PROVIDER_ID_TO_ALIAS,
+  getModelsByProviderId,
+  getModelTargetFormat,
+} from "../config/providerModels.js";
 
-const MEDIA_KEYS = new Set([
-  "serviceKinds", "ttsConfig", "sttConfig", "embeddingConfig",
-  "imageConfig", "imageToTextConfig", "videoConfig", "musicConfig",
-  "searchViaChat", "searchConfig", "fetchConfig",
-  "modelsFetcher", "mediaPriority", "hiddenKinds",
-]);
+// ── PROVIDER_MEDIA re-export ───────────────────────────────────────────────
+// Upstream ttsProviders/gemini.js imports PROVIDER_MEDIA from providers/index.js.
+// In the fork, TTS config lives in config/ttsModels.js under TTS_MODELS_CONFIG.
+import { TTS_MODELS_CONFIG } from "../config/ttsModels.js";
+export const PROVIDER_MEDIA = TTS_MODELS_CONFIG;
 
-export const PROVIDERS = {};
-export const PROVIDER_MODELS = {};
-export const PROVIDER_OAUTH = {};
-export const PROVIDER_MEDIA = {};
-for (const entry of REGISTRY) {
-  if (entry.transport) {
-    PROVIDERS[entry.id] = buildTransport(entry.transport, entry.oauth);
-    if (entry.transports) PROVIDERS[entry.id].transports = entry.transports;
-  }
-  if (entry.models !== undefined) PROVIDER_MODELS[entry.alias || entry.id] = entry.models.map(normalizeModel);
-  if (entry.oauth) PROVIDER_OAUTH[entry.id] = entry.oauth;
-  // Build PROVIDER_MEDIA from top-level fields (post-migration) + legacy entry.media
-  const mediaFields = {};
-  for (const k of MEDIA_KEYS) {
-    if (entry[k] !== undefined) mediaFields[k] = entry[k];
-  }
-  if (entry.media) Object.assign(mediaFields, entry.media);
-  if (Object.keys(mediaFields).length) PROVIDER_MEDIA[entry.id] = mediaFields;
-}
+// ── Model capabilities (contextWindow, vision, reasoning, thinkingFormat…) ─
+export {
+  DEFAULT_CAPABILITIES,
+  MODEL_CAPABILITIES,
+  PROVIDER_CAPABILITIES,
+  PATTERN_CAPABILITIES,
+  getCapabilitiesForModel,
+  capabilitiesFromServiceKind,
+} from "./capabilities.js";
 
-// TTS model/voice tables keyed by special names (openai-tts-models, ...), not provider ids
-Object.assign(PROVIDER_MODELS, buildTtsProviderModels());
+// ── Provider registry (for future upstream registry-based imports) ─────────
+export { default as REGISTRY } from "./registry/index.js";

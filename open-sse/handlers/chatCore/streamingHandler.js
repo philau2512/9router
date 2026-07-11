@@ -1,54 +1,161 @@
 import { FORMATS } from "../../translator/formats.js";
 import { needsTranslation } from "../../translator/index.js";
-import { createSSETransformStreamWithLogger, createPassthroughStreamWithLogger } from "../../utils/stream.js";
+import {
+  createSSETransformStreamWithLogger,
+  createPassthroughStreamWithLogger,
+  createObjectTranslateStreamWithLogger,
+} from "../../utils/stream.js";
 import { pipeWithDisconnect } from "../../utils/streamHandler.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamHelpers.js";
-import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
+import {
+  buildRequestDetail,
+  extractRequestConfig,
+  saveUsageStats,
+} from "./requestDetail.js";
 import { saveRequestDetail } from "@/lib/usageDb.js";
-import { SSE_HEADERS_CORS as SSE_HEADERS } from "../../utils/sseConstants.js";
+import * as log from "../../../src/sse/utils/logger.js";
 
-// Codex returns Responses API SSE → which client format to translate INTO, by request sourceFormat.
-// Gemini-family all map to ANTIGRAVITY decoder; unknown sources fall back to OPENAI.
-const CODEX_SOURCE_TO_TARGET = {
-  [FORMATS.OPENAI_RESPONSES]: FORMATS.OPENAI_RESPONSES,
-  [FORMATS.CLAUDE]: FORMATS.CLAUDE,
-  [FORMATS.ANTIGRAVITY]: FORMATS.ANTIGRAVITY,
-  [FORMATS.GEMINI]: FORMATS.ANTIGRAVITY,
-  [FORMATS.GEMINI_CLI]: FORMATS.ANTIGRAVITY,
+const SSE_HEADERS = {
+  "Content-Type": "text/event-stream",
+  "Cache-Control": "no-cache",
+  Connection: "keep-alive",
+  "Access-Control-Allow-Origin": "*",
 };
 
 /**
  * Determine which SSE transform stream to use based on provider/format.
  */
-function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey }) {
-  const isDroidCLI = userAgent?.toLowerCase().includes("droid") || userAgent?.toLowerCase().includes("codex-cli");
-  // Responses-API providers (e.g. codex) emit Responses SSE → translate into client format
-  const isResponsesProvider = PROVIDERS[provider]?.format === FORMATS.OPENAI_RESPONSES;
-  const needsCodexTranslation = isResponsesProvider && targetFormat === FORMATS.OPENAI_RESPONSES && !isDroidCLI;
+function buildTransformStream({
+  provider,
+  sourceFormat,
+  targetFormat,
+  userAgent,
+  reqLogger,
+  toolNameMap,
+  model,
+  connectionId,
+  body,
+  onStreamComplete,
+  apiKey,
+  streamStateTracker,
+  targetModelAlias = null,
+  // Phase 3 (option c): when true, the translate transform consumes parsed
+  // OpenAI objects (from Kiro's object-mode decode) instead of SSE bytes.
+  objectInput = false,
+}) {
+  const isDroidCLI =
+    userAgent?.toLowerCase().includes("droid") ||
+    userAgent?.toLowerCase().includes("codex-cli");
+  const needsCodexTranslation =
+    provider === "codex" &&
+    targetFormat === FORMATS.OPENAI_RESPONSES &&
+    !isDroidCLI;
 
   if (needsCodexTranslation) {
-    const codexTarget = CODEX_SOURCE_TO_TARGET[sourceFormat] || FORMATS.OPENAI;
-    return createSSETransformStreamWithLogger(FORMATS.OPENAI_RESPONSES, codexTarget, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey);
+    let codexTarget;
+    if (sourceFormat === FORMATS.OPENAI_RESPONSES)
+      codexTarget = FORMATS.OPENAI_RESPONSES;
+    else if (sourceFormat === FORMATS.CLAUDE) codexTarget = FORMATS.CLAUDE;
+    else if (
+      sourceFormat === FORMATS.ANTIGRAVITY ||
+      sourceFormat === FORMATS.GEMINI ||
+      sourceFormat === FORMATS.GEMINI_CLI
+    )
+      codexTarget = FORMATS.ANTIGRAVITY;
+    else codexTarget = FORMATS.OPENAI;
+    return createSSETransformStreamWithLogger(
+      FORMATS.OPENAI_RESPONSES,
+      codexTarget,
+      provider,
+      reqLogger,
+      toolNameMap,
+      model,
+      connectionId,
+      body,
+      onStreamComplete,
+      apiKey,
+      streamStateTracker,
+    );
   }
 
-  if (needsTranslation(targetFormat, sourceFormat)) {
-    return createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey);
+  // needsTranslation signature is (sourceFormat, targetFormat) — pass in order.
+  // Symmetric today, but keep call sites consistent to avoid latent misrouting
+  // if a format-specific branch is ever added. (Red Team S3 Finding 16)
+  if (needsTranslation(sourceFormat, targetFormat)) {
+    // Phase 3 (option c): object-input translate transform when Kiro hands off
+    // parsed OpenAI objects (skips serialize->reparse); same args otherwise.
+    const build = objectInput
+      ? createObjectTranslateStreamWithLogger
+      : createSSETransformStreamWithLogger;
+    return build(
+      targetFormat,
+      sourceFormat,
+      provider,
+      reqLogger,
+      toolNameMap,
+      model,
+      connectionId,
+      body,
+      onStreamComplete,
+      apiKey,
+      streamStateTracker,
+    );
   }
 
-  return createPassthroughStreamWithLogger(provider, reqLogger, model, connectionId, body, onStreamComplete, apiKey);
+  return createPassthroughStreamWithLogger(
+    provider,
+    reqLogger,
+    model,
+    connectionId,
+    body,
+    onStreamComplete,
+    apiKey,
+    streamStateTracker,
+    targetModelAlias,
+  );
 }
 
 /**
  * Handle streaming response — pipe provider SSE through transform stream to client.
  */
-export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, streamController, onStreamComplete, streamDetailId, pxpipe, reqTag, log }) {
+export async function handleStreamingResponse({
+  providerResponse,
+  provider,
+  model,
+  sourceFormat,
+  targetFormat,
+  userAgent,
+  body,
+  stream,
+  translatedBody,
+  finalBody,
+  requestStartTime,
+  connectionId,
+  apiKey,
+  clientRawRequest,
+  onRequestSuccess,
+  reqLogger,
+  toolNameMap,
+  streamController,
+  onStreamComplete,
+  credentials,
+  midStreamResumeEnabled,
+  timing,
+  streamDetailId,
+  // Phase 3 (option c): Kiro's object-mode decode stream when the fused path is
+  // active (streaming Kiro request needing translation). Null otherwise.
+  kiroObjectStream = null,
+}) {
   if (onRequestSuccess) {
     Promise.resolve()
       .then(onRequestSuccess)
-      .catch(err => {
-        console.error("[ChatCore] onRequestSuccess failed:", err?.message || err);
+      .catch((err) => {
+        console.error(
+          "[ChatCore] onRequestSuccess failed:",
+          err?.message || err,
+        );
       });
   }
 
@@ -57,87 +164,254 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   // "failed to pipe response" and crashes the chat router. Read the body,
   // pull a short human-readable message from the <title>, sanitize it, and
   // return a clean JSON error instead. The message is stripped of HTML tags
-  // and clamped so untrusted upstream text never reaches the client verbatim
-  // (the UI may render error.message as HTML).
-  const upstreamContentType = (providerResponse.headers.get('content-type') || '').toLowerCase();
-  if (upstreamContentType && !upstreamContentType.includes('text/event-stream') && !upstreamContentType.includes('application/json')) {
-    const bodyText = await providerResponse.text().catch(() => '');
+  // and clamped so untrusted upstream text never reaches the client verbatim.
+  const upstreamContentType = (
+    providerResponse.headers?.get("content-type") || ""
+  ).toLowerCase();
+  if (
+    upstreamContentType &&
+    !upstreamContentType.includes("text/event-stream") &&
+    !upstreamContentType.includes("application/json")
+  ) {
+    const bodyText = await providerResponse.text().catch(() => "");
     const titleMatch = bodyText.match(/<title>([^<]+)<\/title>/i);
-    const sanitizedTitle = (titleMatch?.[1] || '').replace(/<[^>]*>/g, '').replace(/[\r\n]+/g, ' ').trim().slice(0, 160);
-    const shortMsg = sanitizedTitle
-      || (bodyText.length < 200 ? bodyText.replace(/<[^>]*>/g, '').trim().slice(0, 160) : `Upstream returned non-SSE response (${upstreamContentType})`);
+    const sanitizedTitle = (titleMatch?.[1] || "")
+      .replace(/<[^>]*>/g, "")
+      .replace(/[\r\n]+/g, " ")
+      .trim()
+      .slice(0, 160);
+    const shortMsg =
+      sanitizedTitle ||
+      (bodyText.length < 200
+        ? bodyText
+            .replace(/<[^>]*>/g, "")
+            .trim()
+            .slice(0, 160)
+        : `Upstream returned non-SSE response (${upstreamContentType})`);
     const status = providerResponse.status || 502;
-    if (log?.errorLine) log.errorLine(reqTag, "✗", `BLOCKED ${status} · ${provider}/${model} · non-SSE (${upstreamContentType})\n    ${shortMsg}`);
-    else console.warn(`[STREAM] ${provider} | ${model} | blocked pipe: ${shortMsg} [${status}]`);
+    console.warn(
+      `[STREAM] ${provider} | ${model} | blocked pipe: ${shortMsg} [${status}]`,
+    );
     streamController?.handleError?.(new Error(`upstream non-SSE: ${status}`));
     return {
       success: false,
-      response: new Response(JSON.stringify({ error: { message: `[${status}]: ${shortMsg}` } }), {
-        status,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      }),
+      response: new Response(
+        JSON.stringify({ error: { message: `[${status}]: ${shortMsg}` } }),
+        {
+          status,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        },
+      ),
     };
   }
 
-  const transformStream = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey });
-
   // Responses passthrough: synthesize response.failed + [DONE] if the stream aborts/stalls before a terminal event
-  const isResponsesPassthrough = sourceFormat === FORMATS.OPENAI_RESPONSES && targetFormat === FORMATS.OPENAI_RESPONSES;
-  const onAbortTerminal = isResponsesPassthrough ? buildAbortedResponsesTerminalBytes : null;
-  const stallTimeoutMs = PROVIDERS[provider]?.stallTimeoutMs || STREAM_STALL_TIMEOUT_MS;
-  const transformedBody = pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal, stallTimeoutMs);
+  const isResponsesPassthrough =
+    sourceFormat === FORMATS.OPENAI_RESPONSES &&
+    targetFormat === FORMATS.OPENAI_RESPONSES;
+  const onAbortTerminal = isResponsesPassthrough
+    ? buildAbortedResponsesTerminalBytes
+    : null;
+  // Per-provider stall timeout override (e.g. Qoder reasoning models need 120s)
+  const stallTimeoutMs =
+    PROVIDERS[provider]?.stallTimeoutMs || STREAM_STALL_TIMEOUT_MS;
 
-  saveRequestDetail(buildRequestDetail({
-    provider, model, connectionId,
-    latency: { ttft: 0, total: Date.now() - requestStartTime },
-    tokens: { prompt_tokens: 0, completion_tokens: 0 },
-    request: extractRequestConfig(body, stream),
-    providerRequest: finalBody || translatedBody || null,
-    providerResponse: "[Streaming - raw response not captured]",
-    response: { content: "[Streaming in progress...]", thinking: null, type: "streaming" },
-    pxpipe,
-    status: "success"
-  }, { id: streamDetailId })).catch(err => {
-    console.error("[RequestDetail] Failed to save streaming request:", err.message);
+  // Track accumulated content for semantic stall detection and mid-stream resume
+  const streamStateTracker = {
+    accumulatedContent: "",
+    accumulatedThinking: "",
+    totalContentLength: 0,
+  };
+
+  // streamDetailId is generated by buildOnStreamComplete so both the
+  // placeholder write (0 tokens) and final write (real usage) share the
+  // same id and the ON CONFLICT(id) upsert merges them into one row.
+  const wrappedOnStreamComplete = (contentObj, usage, ttftAt) =>
+    onStreamComplete?.(contentObj, usage, ttftAt, streamDetailId);
+
+  const targetModelAlias =
+    typeof body?.model === "string" && body.model !== model ? body.model : null;
+  const transformStream = buildTransformStream({
+    provider,
+    sourceFormat,
+    targetFormat,
+    userAgent,
+    reqLogger,
+    toolNameMap,
+    model,
+    connectionId,
+    body,
+    onStreamComplete: wrappedOnStreamComplete,
+    apiKey,
+    streamStateTracker,
+    targetModelAlias,
+    objectInput: !!kiroObjectStream,
+  });
+
+  const resumeCtx = midStreamResumeEnabled
+    ? {
+        body,
+        provider,
+        model,
+        credentials,
+        sourceFormat,
+        targetFormat,
+        userAgent,
+        apiKey,
+        connectionId,
+        toolNameMap,
+        reqLogger,
+        clientRawRequest,
+      }
+    : null;
+
+  const transformedBody = pipeWithDisconnect(
+    providerResponse,
+    transformStream,
+    streamController,
+    onAbortTerminal,
+    streamStateTracker,
+    timing,
+    stallTimeoutMs,
+    model,
+    provider,
+    resumeCtx,
+    // Phase 3 (option c): feed Kiro's object-mode decode stream through the
+    // stall tap + object-input translate transform. Byte body used otherwise.
+    kiroObjectStream,
+  );
+
+  setImmediate(() => {
+    saveRequestDetail(
+      buildRequestDetail(
+        {
+          provider,
+          model,
+          connectionId,
+          latency: { ttft: 0, total: Date.now() - requestStartTime },
+          tokens: { prompt_tokens: 0, completion_tokens: 0 },
+          request: extractRequestConfig(body, stream),
+          providerRequest: finalBody || translatedBody || null,
+          providerResponse: "[Streaming - raw response not captured]",
+          response: {
+            content: "[Streaming in progress...]",
+            thinking: null,
+            type: "streaming",
+          },
+          status: "success",
+        },
+        { id: streamDetailId },
+      ),
+    ).catch((err) => {
+      console.error(
+        "[RequestDetail] Failed to save streaming request:",
+        err.message,
+      );
+    });
   });
 
   return {
     success: true,
-    response: new Response(transformedBody, { headers: SSE_HEADERS })
+    response: new Response(transformedBody, { headers: SSE_HEADERS }),
   };
 }
 
 /**
  * Build onStreamComplete callback for streaming usage tracking.
  */
-export function buildOnStreamComplete({ provider, model, connectionId, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log }) {
+export function buildOnStreamComplete({
+  provider,
+  model,
+  connectionId,
+  apiKey,
+  requestStartTime,
+  body,
+  stream,
+  finalBody,
+  translatedBody,
+  clientRawRequest,
+  timing,
+}) {
+  // Generate a shared id so the placeholder row (0 tokens) and the final row
+  // (real usage) target the same DB record via ON CONFLICT(id) upsert.
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-
-  const onStreamComplete = (contentObj, usage, ttftAt) => {
+  const onStreamComplete = (
+    contentObj,
+    usage,
+    ttftAt,
+    sharedStreamDetailId,
+  ) => {
+    const resolvedId = sharedStreamDetailId ?? streamDetailId;
+    const total = Date.now() - requestStartTime;
     const latency = {
-      ttft: ttftAt ? ttftAt - requestStartTime : Date.now() - requestStartTime,
-      total: Date.now() - requestStartTime
+      ttft: ttftAt ? ttftAt - requestStartTime : total,
+      total,
     };
+    // R2-F6: distinguish fast-path PASSTHROUGH (no accumulatedContent) from truly empty
     const safeContent = contentObj?.content || "[Empty streaming response]";
     const safeThinking = contentObj?.thinking || null;
 
-    saveRequestDetail(buildRequestDetail({
-      provider, model, connectionId,
-      latency,
-      tokens: usage || { prompt_tokens: 0, completion_tokens: 0 },
-      request: extractRequestConfig(body, stream),
-      providerRequest: finalBody || translatedBody || null,
-      providerResponse: safeContent,
-      response: { content: safeContent, thinking: safeThinking, type: "streaming" },
-      pxpipe,
-      status: "success"
-    }, { id: streamDetailId })).catch(err => {
-      console.error("[RequestDetail] Failed to update streaming content:", err.message);
+    if (timing) {
+      log.ttft(`${provider.toUpperCase()} | ${model}`, {
+        total,
+        ttft: latency.ttft,
+        parse: timing.requestParsedAt
+          ? timing.requestParsedAt - requestStartTime
+          : undefined,
+        authModel: timing.requestReadyAt
+          ? timing.requestReadyAt - requestStartTime
+          : undefined,
+        upstreamStart: timing.upstreamFetchStartedAt
+          ? timing.upstreamFetchStartedAt - requestStartTime
+          : undefined,
+        upstreamFirstByte: timing.upstreamFirstByteAt
+          ? timing.upstreamFirstByteAt - requestStartTime
+          : undefined,
+        clientFirstChunk: timing.clientFirstChunkAt
+          ? timing.clientFirstChunkAt - requestStartTime
+          : undefined,
+      });
+    }
+
+    saveRequestDetail(
+      buildRequestDetail(
+        {
+          provider,
+          model,
+          connectionId,
+          latency,
+          tokens: usage || { prompt_tokens: 0, completion_tokens: 0 },
+          request: extractRequestConfig(body, stream),
+          providerRequest: finalBody || translatedBody || null,
+          providerResponse: safeContent,
+          response: {
+            content: safeContent,
+            thinking: safeThinking,
+            type: "streaming",
+          },
+          status: "success",
+        },
+        resolvedId ? { id: resolvedId } : {},
+      ),
+    ).catch((err) => {
+      console.error(
+        "[RequestDetail] Failed to update streaming content:",
+        err.message,
+      );
     });
 
-    // Persist stream usage to DB (no console line; the "📊 done" line below is authoritative)
-    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, label: "STREAM USAGE", silent: true });
-    if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency }));
+    saveUsageStats({
+      provider,
+      model,
+      tokens: usage,
+      connectionId,
+      apiKey,
+      endpoint: clientRawRequest?.endpoint,
+      label: "STREAM USAGE",
+    });
   };
 
   return { onStreamComplete, streamDetailId };

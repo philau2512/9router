@@ -10,8 +10,9 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-// Mock DNS so the SSRF guard treats example.com as public.
-vi.mock("node:dns/promises", () => ({ lookup: async () => ({ address: "93.184.216.34" }) }));
+// Mock DNS lookup so SSRF guard resolves example.com to a public IP.
+const lookupMock = vi.fn();
+vi.mock("node:dns/promises", () => ({ lookup: (...a) => lookupMock(...a) }));
 
 import { CodexExecutor } from "../../open-sse/executors/codex.js";
 import * as proxyFetchModule from "../../open-sse/utils/proxyFetch.js";
@@ -19,26 +20,27 @@ import * as proxyFetchModule from "../../open-sse/utils/proxyFetch.js";
 const IMAGE_1MB_BYTES = 1024 * 1024;
 const REMOTE_URL = "https://example.com/big.jpg";
 const DATA_URI = "data:image/png;base64,iVBORw0KGgo=";
-// JPEG magic bytes (FF D8 FF) so magic-byte verification passes.
-const JPEG_MAGIC = [0xff, 0xd8, 0xff];
 
 function makeImageBuffer(sizeBytes) {
   const buf = new Uint8Array(sizeBytes);
-  for (let i = 0; i < JPEG_MAGIC.length; i++) buf[i] = JPEG_MAGIC[i];
-  for (let i = JPEG_MAGIC.length; i < sizeBytes; i++) buf[i] = i & 0xff;
-  return buf;
+  for (let i = 0; i < sizeBytes; i++) buf[i] = i & 0xff;
+  return buf.buffer;
 }
 
-// Mock a streaming Response body (getReader) as the hardened fetcher expects.
-function mockImageFetch(sizeBytes) {
-  const bytes = makeImageBuffer(sizeBytes);
+function mockImageFetch(sizeBytes, mimeType = "image/jpeg") {
+  const bytes = new Uint8Array(makeImageBuffer(sizeBytes));
   return {
     ok: true,
+    headers: { get: (k) => (k === "Content-Type" ? mimeType : null) },
+    arrayBuffer: async () => makeImageBuffer(sizeBytes),
     body: {
       getReader() {
         let sent = false;
         return {
-          read: async () => sent ? { done: true } : (sent = true, { done: false, value: bytes }),
+          read: async () =>
+            sent
+              ? { done: true, value: undefined }
+              : ((sent = true), { done: false, value: bytes }),
           cancel: async () => {},
         };
       },
@@ -51,6 +53,9 @@ describe("CodexExecutor image handling", () => {
 
   beforeEach(() => {
     originalFetch = global.fetch;
+    // Default: example.com resolves to a public IP (SSRF guard passes)
+    lookupMock.mockReset();
+    lookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
   });
 
   afterEach(() => {
@@ -68,7 +73,10 @@ describe("CodexExecutor image handling", () => {
           role: "user",
           content: [
             { type: "input_text", text: "describe this" },
-            { type: "image_url", image_url: { url: REMOTE_URL, detail: "high" } },
+            {
+              type: "image_url",
+              image_url: { url: REMOTE_URL, detail: "high" },
+            },
           ],
         },
       ],
@@ -76,8 +84,13 @@ describe("CodexExecutor image handling", () => {
 
     await executor.prefetchImages(body);
 
-    const imgBlock = body.input[0].content.find((c) => c.type === "input_image");
-    expect(imgBlock, "input_image block must be present after prefetch").toBeDefined();
+    const imgBlock = body.input[0].content.find(
+      (c) => c.type === "input_image",
+    );
+    expect(
+      imgBlock,
+      "input_image block must be present after prefetch",
+    ).toBeDefined();
     expect(imgBlock.image_url.startsWith("data:image/jpeg;base64,")).toBe(true);
     expect(imgBlock.detail).toBe("high");
 
@@ -102,13 +115,17 @@ describe("CodexExecutor image handling", () => {
 
     await executor.prefetchImages(body);
 
-    const imgBlock = body.input[0].content.find((c) => c.type === "input_image");
+    const imgBlock = body.input[0].content.find(
+      (c) => c.type === "input_image",
+    );
     expect(imgBlock.image_url).toBe(DATA_URI);
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it("falls back to original URL when remote fetch fails", async () => {
-    global.fetch = vi.fn(async () => { throw new Error("network down"); });
+    global.fetch = vi.fn(async () => {
+      throw new Error("network down");
+    });
 
     const executor = new CodexExecutor();
     const body = {
@@ -122,7 +139,9 @@ describe("CodexExecutor image handling", () => {
 
     await executor.prefetchImages(body);
 
-    const imgBlock = body.input[0].content.find((c) => c.type === "input_image");
+    const imgBlock = body.input[0].content.find(
+      (c) => c.type === "input_image",
+    );
     expect(imgBlock.image_url).toBe(REMOTE_URL);
   });
 
@@ -130,10 +149,12 @@ describe("CodexExecutor image handling", () => {
     global.fetch = vi.fn(async () => mockImageFetch(IMAGE_1MB_BYTES));
 
     let capturedBodyString = null;
-    vi.spyOn(proxyFetchModule, "proxyAwareFetch").mockImplementation(async (url, init) => {
-      capturedBodyString = init.body;
-      return { ok: true, status: 200, headers: new Map() };
-    });
+    vi.spyOn(proxyFetchModule, "proxyAwareFetch").mockImplementation(
+      async (url, init) => {
+        capturedBodyString = init.body;
+        return { ok: true, status: 200, headers: new Map() };
+      },
+    );
 
     const executor = new CodexExecutor();
     const body = {
@@ -155,7 +176,9 @@ describe("CodexExecutor image handling", () => {
     expect(capturedBodyString).toBeTypeOf("string");
     expect(capturedBodyString).not.toBe("{}");
     const parsed = JSON.parse(capturedBodyString);
-    const imgBlock = parsed.input[0].content.find((c) => c.type === "input_image");
+    const imgBlock = parsed.input[0].content.find(
+      (c) => c.type === "input_image",
+    );
     expect(imgBlock.image_url.startsWith("data:image/jpeg;base64,")).toBe(true);
   });
 });

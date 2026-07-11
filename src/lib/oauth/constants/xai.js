@@ -4,10 +4,9 @@
  * Source of truth: router-for-me/CLIProxyAPI internal/auth/xai/types.go
  * Mirrors the upstream Go constants 1:1.
  */
-import { PROVIDERS } from "open-sse/providers/index.js";
 
-// xAI client_id for OAuth (PKCE public client) — single source: registry xai.transport
-export const XAI_CLIENT_ID = PROVIDERS["xai"]?.clientId;
+// xAI client_id for OAuth (PKCE public client)
+export const XAI_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828";
 
 // OAuth issuer + endpoints
 export const XAI_ISSUER = "https://auth.x.ai";
@@ -16,7 +15,8 @@ export const XAI_TOKEN_ENDPOINT_PATH = "/oauth2/token";
 export const XAI_DISCOVERY_PATH = "/.well-known/openid-configuration";
 
 // Scopes (space-separated, matches Go upstream)
-export const XAI_SCOPE = "openid profile email offline_access grok-cli:access api:access";
+export const XAI_SCOPE =
+  "openid profile email offline_access grok-cli:access api:access";
 
 // xAI inference API base URL
 export const XAI_API_BASE = "https://api.x.ai/v1";

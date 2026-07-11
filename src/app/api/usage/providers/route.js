@@ -10,7 +10,7 @@ import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
 export async function GET() {
   try {
     // Query DISTINCT provider column directly — avoids parsing every row's
-    // full JSON blob (can be hundreds of MB), which previously caused OOM.
+    // full JSON blob (can be hundreds of MB). OOM fix. See upstream b25e10160.
     const providerIds = await getDistinctProviders();
 
     const providerNodes = await getProviderNodes();
@@ -19,12 +19,13 @@ export async function GET() {
       nodeMap[node.id] = node.name;
     }
 
-    const providers = providerIds.map(providerId => {
+    const providers = providerIds.map((providerId) => {
       let name = providerId;
       if (nodeMap[providerId]) {
         name = nodeMap[providerId];
       } else {
-        const providerConfig = getProviderByAlias(providerId) || AI_PROVIDERS[providerId];
+        const providerConfig =
+          getProviderByAlias(providerId) || AI_PROVIDERS[providerId];
         if (providerConfig?.name) name = providerConfig.name;
       }
       return { id: providerId, name };
@@ -35,7 +36,7 @@ export async function GET() {
     console.error("[API] Failed to get providers:", error);
     return NextResponse.json(
       { error: "Failed to fetch providers" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -10,14 +10,23 @@ describe("stripUnsupportedParams", () => {
           role: "user",
           content: [
             { type: "text", text: "hello " },
-            { type: "image_url", image_url: { url: "data:image/png;base64,xx" } },
+            {
+              type: "image_url",
+              image_url: { url: "data:image/png;base64,xx" },
+            },
             { type: "text", text: "world" },
           ],
         },
       ],
     };
 
-    expect(() => stripUnsupportedParams("cloudflare-ai", "@cf/meta/llama-3.1-8b-instruct", body)).not.toThrow();
+    expect(() =>
+      stripUnsupportedParams(
+        "cloudflare-ai",
+        "@cf/meta/llama-3.1-8b-instruct",
+        body,
+      ),
+    ).not.toThrow();
     expect(body.messages[0].content).toBe("hello world");
   });
 
@@ -29,27 +38,30 @@ describe("stripUnsupportedParams", () => {
     expect(body).toEqual({ top_p: 1 });
   });
 
-  it("clamps VolcEngine Ark GLM max token fields to the model output ceiling", () => {
+  it("drops reasoning-related params for xAI provider", () => {
     const body = {
-      max_tokens: 131072,
-      max_completion_tokens: 131072,
-      max_output_tokens: 131072,
+      model: "grok-build-0.1",
+      messages: [{ role: "user", content: "hello" }],
+      temperature: 0.7,
+      reasoning: { effort: "medium" },
+      reasoning_effort: "medium",
+      thinking: { type: "enabled", budget_tokens: 1024 },
     };
 
-    stripUnsupportedParams("volcengine-ark", "GLM-5.2", body);
+    stripUnsupportedParams("xai", "grok-build-0.1", body);
 
-    expect(body).toEqual({
-      max_tokens: 128000,
-      max_completion_tokens: 128000,
-      max_output_tokens: 128000,
-    });
+    expect(body.reasoning).toBeUndefined();
+    expect(body.reasoning_effort).toBeUndefined();
+    expect(body.thinking).toBeUndefined();
+    expect(body.temperature).toBe(0.7); // should be preserved
   });
 
-  it("keeps VolcEngine Ark GLM max tokens when already under the ceiling", () => {
-    const body = { max_tokens: 64000 };
+  it("clamps Volcengine Ark GLM-5 max_tokens to model output ceiling", () => {
+    const body = { max_tokens: 200000, temperature: 0.7 };
 
-    stripUnsupportedParams("volcengine-ark", "GLM-5.2", body);
+    stripUnsupportedParams("volcengine-ark", "glm-5.2", body);
 
-    expect(body.max_tokens).toBe(64000);
+    expect(body.max_tokens).toBe(128000);
+    expect(body.temperature).toBe(0.7);
   });
 });

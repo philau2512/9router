@@ -1,24 +1,28 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import PropTypes from "prop-types";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import HeaderMenu from "@/shared/components/HeaderMenu";
-import HeaderLanguage from "@/shared/components/HeaderLanguage";
 import ThemeToggle from "@/shared/components/ThemeToggle";
 import DonateModal from "@/shared/components/DonateModal";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS } from "@/shared/constants/config";
-import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS } from "@/shared/constants/providers";
+import {
+  MEDIA_PROVIDER_KINDS,
+  AI_PROVIDERS,
+} from "@/shared/constants/providers";
 import { translate } from "@/i18n/runtime";
 
 const getPageInfo = (pathname) => {
   if (!pathname) return { title: "", description: "", breadcrumbs: [] };
 
   // Media provider detail: /dashboard/media-providers/[kind]/[id]
-  const mediaDetailMatch = pathname.match(/\/media-providers\/([^/]+)\/([^/]+)$/);
+  const mediaDetailMatch = pathname.match(
+    /\/media-providers\/([^/]+)\/([^/]+)$/,
+  );
   if (mediaDetailMatch) {
     const kindId = mediaDetailMatch[1];
     const providerId = mediaDetailMatch[2];
@@ -28,9 +32,18 @@ const getPageInfo = (pathname) => {
       title: provider?.name || providerId,
       description: "",
       breadcrumbs: [
-        { label: "Media Providers", href: `/dashboard/media-providers/${kindId}` },
-        { label: kindConfig?.label || kindId, href: `/dashboard/media-providers/${kindId}` },
-        { label: provider?.name || providerId, image: `/providers/${providerId}.png` },
+        {
+          label: "Media Providers",
+          href: `/dashboard/media-providers/${kindId}`,
+        },
+        {
+          label: kindConfig?.label || kindId,
+          href: `/dashboard/media-providers/${kindId}`,
+        },
+        {
+          label: provider?.name || providerId,
+          image: `/providers/${providerId}.png`,
+        },
       ],
     };
   }
@@ -91,6 +104,13 @@ const getPageInfo = (pathname) => {
       icon: "bar_chart",
       breadcrumbs: [],
     };
+  if (pathname.includes("/key-budgets"))
+    return {
+      title: "Key Budgets",
+      description: "Manage per-API-key budget limits and remaining usage",
+      icon: "account_balance_wallet",
+      breadcrumbs: [],
+    };
   if (pathname.includes("/auth-files"))
     return {
       title: "Auth Files",
@@ -112,13 +132,6 @@ const getPageInfo = (pathname) => {
       icon: "security",
       breadcrumbs: [],
     };
-  if (pathname.includes("/token-saver"))
-    return {
-      title: "Token Saver",
-      description: "Compress prompts and outputs to save tokens",
-      icon: "savings",
-      breadcrumbs: [],
-    };
   if (pathname.includes("/cli-tools"))
     return {
       title: "CLI Tools",
@@ -136,7 +149,8 @@ const getPageInfo = (pathname) => {
   if (pathname.includes("/skills"))
     return {
       title: "Agent Skills",
-      description: "Copy a link and paste to your AI to use 9Router — no install needed",
+      description:
+        "Copy a link and paste to your AI to use 9Router — no install needed",
       icon: "extension",
       breadcrumbs: [],
     };
@@ -180,6 +194,7 @@ const getPageInfo = (pathname) => {
 
 export default function Header({ onMenuClick, showMenuButton = true }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [displayName, setDisplayName] = useState("");
   const [loginMethod, setLoginMethod] = useState("");
   const [donateOpen, setDonateOpen] = useState(false);
@@ -197,7 +212,9 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
         if (!res.ok) return;
         const data = await res.json();
         if (!cancelled) {
-          setDisplayName(data?.displayName || data?.oidcName || data?.oidcEmail || "");
+          setDisplayName(
+            data?.displayName || data?.oidcName || data?.oidcEmail || "",
+          );
           setLoginMethod(data?.loginMethod || "");
         }
       } catch {
@@ -218,7 +235,8 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
     try {
       const res = await fetch("/api/auth/logout", { method: "POST" });
       if (res.ok) {
-        window.location.assign("/login");
+        router.push("/login");
+        router.refresh();
       }
     } catch (err) {
       console.error("Failed to logout:", err);
@@ -231,8 +249,10 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
       <div className="flex items-center gap-3 lg:hidden shrink-0">
         {showMenuButton && (
           <button
+            type="button"
             onClick={onMenuClick}
             className="text-text-main hover:text-primary transition-colors"
+            aria-label="Open navigation menu"
           >
             <span className="material-symbols-outlined">menu</span>
           </button>
@@ -304,7 +324,9 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
       <div className="flex items-center gap-1 shrink-0">
         {displayName && loginMethod === "OIDC" && (
           <div className="hidden sm:flex items-center max-w-[220px] px-3 py-1.5 rounded-full border border-border bg-surface/70 text-xs text-text-muted truncate">
-            <span className="material-symbols-outlined text-[14px] mr-1.5 text-primary">person</span>
+            <span className="material-symbols-outlined text-[14px] mr-1.5 text-primary">
+              person
+            </span>
             <span className="truncate">{displayName}</span>
             <span className="ml-2 shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
               OIDC
@@ -317,11 +339,12 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
           className="flex items-center gap-1.5 px-3 h-8 rounded-lg border border-pink-500/30 bg-pink-500/10 text-pink-600 dark:text-pink-400 hover:bg-pink-500/20 transition-colors text-sm font-medium"
           aria-label="Donate"
         >
-          <span className="material-symbols-outlined text-[18px]">volunteer_activism</span>
+          <span className="material-symbols-outlined text-[18px]">
+            volunteer_activism
+          </span>
           <span className="hidden sm:inline">Donate</span>
         </button>
         <ThemeToggle />
-        <HeaderLanguage />
         <HeaderMenu onLogout={handleLogout} />
       </div>
       <DonateModal isOpen={donateOpen} onClose={() => setDonateOpen(false)} />
@@ -347,6 +370,7 @@ function HeaderSearch() {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder={placeholder}
+        aria-label={placeholder || "Search"}
         className="w-full h-8 pl-7 pr-7 rounded-lg border border-border bg-surface/60 text-sm focus:outline-none focus:border-primary/50 transition-colors"
       />
       {query && (

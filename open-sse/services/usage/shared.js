@@ -1,5 +1,6 @@
 /**
- * Shared usage helpers (cross-provider)
+ * Shared usage helpers (cross-provider).
+ * Created for upstream a11937cdd (grok-cli usage).
  */
 
 import { PROVIDERS } from "../../providers/index.js";
@@ -9,35 +10,27 @@ import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 export const U = (id) => PROVIDERS[id]?.usage || {};
 
 /**
- * Parse reset date/time to ISO string
- * Handles multiple formats: Unix timestamp (ms), ISO date string, etc.
+ * Parse reset date/time to ISO string.
+ * Handles multiple formats: Unix timestamp (ms/s), ISO date string, etc.
  */
 export function parseResetTime(resetValue) {
   if (!resetValue) return null;
-
   try {
-    // If it's already a Date object
-    if (resetValue instanceof Date) {
-      return resetValue.toISOString();
+    if (resetValue instanceof Date) return resetValue.toISOString();
+    if (typeof resetValue === "number") {
+      return new Date(
+        resetValue < 1e12 ? resetValue * 1000 : resetValue,
+      ).toISOString();
     }
-
-    // Unix timestamps from provider APIs may be seconds or milliseconds.
-    if (typeof resetValue === 'number') {
-      return new Date(resetValue < 1e12 ? resetValue * 1000 : resetValue).toISOString();
-    }
-
-    // If it's a numeric string, treat it like a Unix timestamp too.
-    if (typeof resetValue === 'string') {
+    if (typeof resetValue === "string") {
       if (/^\d+$/.test(resetValue)) {
-        const timestamp = Number(resetValue);
-        return new Date(timestamp < 1e12 ? timestamp * 1000 : timestamp).toISOString();
+        const ts = Number(resetValue);
+        return new Date(ts < 1e12 ? ts * 1000 : ts).toISOString();
       }
       return new Date(resetValue).toISOString();
     }
-
     return null;
-  } catch (error) {
-    console.warn(`Failed to parse reset time: ${resetValue}`, error);
+  } catch {
     return null;
   }
 }
@@ -53,17 +46,30 @@ export function toFiniteNumber(value, fallback = 0) {
 
 export function normalizeCloudCodeProjectId(project) {
   if (typeof project === "string") return project.trim() || null;
-  if (project && typeof project === "object" && typeof project.id === "string") {
+  if (
+    project &&
+    typeof project === "object" &&
+    typeof project.id === "string"
+  ) {
     return project.id.trim() || null;
   }
   return null;
 }
 
-export async function fetchWithTimeout(url, opts, ms = 10000, proxyOptions = null) {
+export async function fetchWithTimeout(
+  url,
+  opts,
+  ms = 10000,
+  proxyOptions = null,
+) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), ms);
   try {
-    return await proxyAwareFetch(url, { ...opts, signal: controller.signal }, proxyOptions);
+    return await proxyAwareFetch(
+      url,
+      { ...opts, signal: controller.signal },
+      proxyOptions,
+    );
   } finally {
     clearTimeout(timeoutId);
   }
