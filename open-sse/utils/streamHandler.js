@@ -308,7 +308,7 @@ export function createDisconnectAwareStream(
 
               let newTransformStream;
               if (
-                needsTranslation(resumeCtx.targetFormat, resumeCtx.sourceFormat)
+                needsTranslation(resumeCtx.sourceFormat, resumeCtx.targetFormat)
               ) {
                 newTransformStream = createSSETransformStreamWithLogger(
                   resumeCtx.targetFormat,

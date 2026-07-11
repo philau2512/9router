@@ -70,9 +70,11 @@ export function createSSEStream(options = {}) {
     apiKey = null,
     streamStateTracker = null,
     targetModelAlias = null,
-    armStall = null,
-    onUpstreamFirstByte = null,
-    onClearStall = null,
+    // Phase 4 (Option A): the inline armStall/onUpstreamFirstByte/onClearStall
+    // hooks were never wired by any caller (always null in production) — the
+    // real stall reset lives in pipeWithDisconnect's upstreamStallTap. Dead
+    // plumbing removed. Do NOT re-add here; stall detection belongs at the
+    // upstream-byte layer, not the SSE-output transform.
   } = options;
 
   let buffer = "";
@@ -126,15 +128,8 @@ export function createSSEStream(options = {}) {
   let streamDoneSent = false; // track duplicate [DONE] across transform + flush
   const outputItemCollector = createOutputItemCollector(); // Phase 4: Codex output reconstruction
 
-  let upstreamFirstByteRecorded = false;
-
   return new TransformStream({
     transform(chunk, controller) {
-      armStall?.(); // Phase 4: inline stall reset (was upstreamStallTap)
-      if (onUpstreamFirstByte && !upstreamFirstByteRecorded) {
-        upstreamFirstByteRecorded = true;
-        onUpstreamFirstByte();
-      }
       if (!ttftAt) ttftAt = Date.now();
       const text = decoder.decode(chunk, { stream: true });
       if (!firstRawChunkLogged) {
@@ -147,10 +142,16 @@ export function createSSEStream(options = {}) {
       buffer += text;
       reqLogger?.appendProviderChunk?.(text);
 
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
+      // Phase 5(a): iterate complete lines via indexOf instead of allocating a
+      // whole lines[] array from split("\n") each chunk. The partial-line carry
+      // is preserved (the incomplete trailing segment stays in `buffer`) and
+      // lines are processed strictly in order, so a Responses `event:` line is
+      // still seen before its paired `data:` line within the same chunk.
+      let lineStart = 0;
+      let nlIdx;
+      while ((nlIdx = buffer.indexOf("\n", lineStart)) !== -1) {
+        const line = buffer.slice(lineStart, nlIdx);
+        lineStart = nlIdx + 1;
         const trimmed = line.trim();
         if (isDebugEnabled && trimmed) {
           sseLineCount++;
@@ -171,6 +172,19 @@ export function createSSEStream(options = {}) {
 
         // Passthrough mode: normalize and forward
         if (mode === STREAM_MODE.PASSTHROUGH) {
+          // Upstream-emitted [DONE] (e.g. Kiro's own transform emits it): forward
+          // once and mark it sent so flush() does not append a SECOND [DONE].
+          // (Red Team S3 / Phase 3 double-DONE fix)
+          if (trimmed.startsWith("data:") && trimmed.slice(5).trim() === "[DONE]") {
+            if (!streamDoneSent) {
+              const doneOutput = "data: [DONE]\n\n";
+              reqLogger?.appendConvertedChunk?.(doneOutput);
+              controller.enqueue(sharedEncoder.encode(doneOutput));
+              streamDoneSent = true;
+            }
+            continue;
+          }
+
           let output;
           let injectedUsage = false;
 
@@ -549,11 +563,13 @@ export function createSSEStream(options = {}) {
           }
         }
       }
+      // Keep only the incomplete trailing segment (after the last newline) for
+      // the next chunk. Equivalent to the old `buffer = lines.pop() || ""`.
+      buffer = lineStart > 0 ? buffer.slice(lineStart) : buffer;
       updateTracker();
     },
 
     flush(controller) {
-      onClearStall?.(); // Phase 4: clear stall on upstream EOF
       const evtSummary =
         Object.entries(eventTypeCounts)
           .map(([k, v]) => `${k}=${v}`)
@@ -760,9 +776,6 @@ export function createSSETransformStreamWithLogger(
   onStreamComplete = null,
   apiKey = null,
   streamStateTracker = null,
-  armStall = null,
-  onUpstreamFirstByte = null,
-  onClearStall = null,
 ) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
@@ -777,9 +790,6 @@ export function createSSETransformStreamWithLogger(
     onStreamComplete,
     apiKey,
     streamStateTracker,
-    armStall,
-    onUpstreamFirstByte,
-    onClearStall,
   });
 }
 
@@ -793,9 +803,6 @@ export function createPassthroughStreamWithLogger(
   apiKey = null,
   streamStateTracker = null,
   targetModelAlias = null,
-  armStall = null,
-  onUpstreamFirstByte = null,
-  onClearStall = null,
 ) {
   return createSSEStream({
     mode: STREAM_MODE.PASSTHROUGH,
@@ -808,8 +815,5 @@ export function createPassthroughStreamWithLogger(
     apiKey,
     streamStateTracker,
     targetModelAlias,
-    armStall,
-    onUpstreamFirstByte,
-    onClearStall,
   });
 }

@@ -40,9 +40,6 @@ function buildTransformStream({
   apiKey,
   streamStateTracker,
   targetModelAlias = null,
-  armStall = null,
-  onUpstreamFirstByte = null,
-  onClearStall = null,
 }) {
   const isDroidCLI =
     userAgent?.toLowerCase().includes("droid") ||
@@ -79,7 +76,10 @@ function buildTransformStream({
     );
   }
 
-  if (needsTranslation(targetFormat, sourceFormat)) {
+  // needsTranslation signature is (sourceFormat, targetFormat) — pass in order.
+  // Symmetric today, but keep call sites consistent to avoid latent misrouting
+  // if a format-specific branch is ever added. (Red Team S3 Finding 16)
+  if (needsTranslation(sourceFormat, targetFormat)) {
     return createSSETransformStreamWithLogger(
       targetFormat,
       sourceFormat,
@@ -105,9 +105,6 @@ function buildTransformStream({
     apiKey,
     streamStateTracker,
     targetModelAlias,
-    armStall,
-    onUpstreamFirstByte,
-    onClearStall,
   );
 }
 

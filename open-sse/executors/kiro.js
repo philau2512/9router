@@ -5,6 +5,13 @@ import { refreshKiroToken } from "../services/tokenRefresh.js";
 import { resolveKiroRequestProfileArn } from "../config/kiroConstants.js";
 import { fetchKiroProfileArn } from "../../src/lib/oauth/kiro-provider-helpers.js";
 
+// Phase 2 hot-path: module-scope decoder/encoder reused across every frame and
+// chunk. Frames are decoded as COMPLETE length-prefixed slices, so a shared
+// non-streaming decoder is correct. Do NOT switch this to { stream: true } or
+// share it across partial frames.
+const _kiroDecoder = new TextDecoder("utf-8");
+const _kiroEncoder = new TextEncoder();
+
 /**
  * KiroExecutor - Executor for Kiro AI (AWS CodeWhisperer)
  * Uses AWS CodeWhisperer streaming API with AWS EventStream binary format
@@ -148,8 +155,13 @@ export class KiroExecutor extends BaseExecutor {
    * Using TransformStream instead of ReadableStream.pull() to avoid Workers timeout
    */
   transformEventStreamToSSE(response, model) {
-    let buffer = new Uint8Array(0);
-    let readOffset = 0;
+    // Phase 2 hot-path: growable accumulator instead of a per-chunk
+    // `new Uint8Array(remaining + chunk.length)` full-copy. We keep a backing
+    // buffer with writePos/readOffset and only realloc/compact when the tail
+    // has no room, turning the previous quadratic total copy into linear.
+    let backing = new Uint8Array(16384);
+    let writePos = 0; // bytes written into backing
+    let readOffset = 0; // bytes already consumed by the parser
     let chunkIndex = 0;
     const responseId = `chatcmpl-${Date.now()}`;
     const created = Math.floor(Date.now() / 1000);
@@ -169,31 +181,44 @@ export class KiroExecutor extends BaseExecutor {
 
     const transformStream = new TransformStream({
       async transform(chunk, controller) {
-        // Tối ưu hóa: Dọn dẹp buffer đã đọc và ghép nối chunk mới
-        const remainingLength = buffer.length - readOffset;
-        const newBuffer = new Uint8Array(remainingLength + chunk.length);
-        if (remainingLength > 0) {
-          newBuffer.set(buffer.subarray(readOffset));
+        // Append the incoming chunk into spare tail capacity. Only realloc/compact
+        // when the tail can't hold it — amortized O(1) append instead of the old
+        // per-chunk full-buffer copy.
+        if (writePos + chunk.length > backing.length) {
+          const remaining = writePos - readOffset;
+          const needed = remaining + chunk.length;
+          if (needed > backing.length) {
+            // Grow: at least double, but always large enough for this chunk
+            // (handles a single chunk larger than the whole current buffer).
+            const newCap = Math.max(backing.length * 2, needed);
+            const grown = new Uint8Array(newCap);
+            if (remaining > 0) grown.set(backing.subarray(readOffset, writePos));
+            backing = grown;
+          } else if (remaining > 0) {
+            // Fits after reclaiming the consumed prefix: compact in place once.
+            backing.copyWithin(0, readOffset, writePos);
+          }
+          writePos = remaining;
+          readOffset = 0;
         }
-        newBuffer.set(chunk, remainingLength);
-        buffer = newBuffer;
-        readOffset = 0;
+        backing.set(chunk, writePos);
+        writePos += chunk.length;
 
-        // Parse events from buffer
+        // Parse events from the unread region [readOffset, writePos)
         let iterations = 0;
         const maxIterations = 1000;
-        while (buffer.length - readOffset >= 16 && iterations < maxIterations) {
+        while (writePos - readOffset >= 16 && iterations < maxIterations) {
           iterations++;
           const view = new DataView(
-            buffer.buffer,
-            buffer.byteOffset + readOffset,
+            backing.buffer,
+            backing.byteOffset + readOffset,
           );
           const totalLength = view.getUint32(0, false);
 
-          if (totalLength < 16 || totalLength > buffer.length - readOffset)
+          if (totalLength < 16 || totalLength > writePos - readOffset)
             break;
 
-          const eventData = buffer.subarray(
+          const eventData = backing.subarray(
             readOffset,
             readOffset + totalLength,
           );
@@ -237,7 +262,7 @@ export class KiroExecutor extends BaseExecutor {
               chunkIndex++;
               state.reasoningChunkCount++;
               controller.enqueue(
-                new TextEncoder().encode(
+                _kiroEncoder.encode(
                   `data: ${JSON.stringify(reasoningChunk)}\n\n`,
                 ),
               );
@@ -306,7 +331,7 @@ export class KiroExecutor extends BaseExecutor {
             };
             chunkIndex++;
             controller.enqueue(
-              new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`),
+              _kiroEncoder.encode(`data: ${JSON.stringify(chunk)}\n\n`),
             );
           }
 
@@ -347,7 +372,7 @@ export class KiroExecutor extends BaseExecutor {
               chunkIndex++;
               state.reasoningChunkCount++;
               controller.enqueue(
-                new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`),
+                _kiroEncoder.encode(`data: ${JSON.stringify(chunk)}\n\n`),
               );
             }
           }
@@ -369,7 +394,7 @@ export class KiroExecutor extends BaseExecutor {
             };
             chunkIndex++;
             controller.enqueue(
-              new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`),
+              _kiroEncoder.encode(`data: ${JSON.stringify(chunk)}\n\n`),
             );
           }
 
@@ -420,7 +445,7 @@ export class KiroExecutor extends BaseExecutor {
                 };
                 chunkIndex++;
                 controller.enqueue(
-                  new TextEncoder().encode(
+                  _kiroEncoder.encode(
                     `data: ${JSON.stringify(startChunk)}\n\n`,
                   ),
                 );
@@ -463,7 +488,7 @@ export class KiroExecutor extends BaseExecutor {
                 };
                 chunkIndex++;
                 controller.enqueue(
-                  new TextEncoder().encode(
+                  _kiroEncoder.encode(
                     `data: ${JSON.stringify(argsChunk)}\n\n`,
                   ),
                 );
@@ -512,11 +537,11 @@ export class KiroExecutor extends BaseExecutor {
             }
 
             controller.enqueue(
-              new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`),
+              _kiroEncoder.encode(`data: ${JSON.stringify(chunk)}\n\n`),
             );
 
             if (!state.doneEmitted) {
-              controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+              controller.enqueue(_kiroEncoder.encode("data: [DONE]\n\n"));
               state.doneEmitted = true;
             }
           }
@@ -614,7 +639,7 @@ export class KiroExecutor extends BaseExecutor {
             }
 
             controller.enqueue(
-              new TextEncoder().encode(
+              _kiroEncoder.encode(
                 `data: ${JSON.stringify(finishChunk)}\n\n`,
               ),
             );
@@ -640,7 +665,7 @@ export class KiroExecutor extends BaseExecutor {
 
         // Send final done message
         if (!state.doneEmitted) {
-          controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+          controller.enqueue(_kiroEncoder.encode("data: [DONE]\n\n"));
           state.doneEmitted = true;
         }
       },
@@ -705,8 +730,8 @@ function parseEventFrame(data) {
       offset++;
       if (offset + nameLen > data.length) break;
 
-      const name = new TextDecoder().decode(
-        data.slice(offset, offset + nameLen),
+      const name = _kiroDecoder.decode(
+        data.subarray(offset, offset + nameLen),
       );
       offset += nameLen;
 
@@ -719,8 +744,8 @@ function parseEventFrame(data) {
         offset += 2;
         if (offset + valueLen > data.length) break;
 
-        const value = new TextDecoder().decode(
-          data.slice(offset, offset + valueLen),
+        const value = _kiroDecoder.decode(
+          data.subarray(offset, offset + valueLen),
         );
         offset += valueLen;
         headers[name] = value;
@@ -735,8 +760,8 @@ function parseEventFrame(data) {
 
     let payload = null;
     if (payloadEnd > payloadStart) {
-      const payloadStr = new TextDecoder().decode(
-        data.slice(payloadStart, payloadEnd),
+      const payloadStr = _kiroDecoder.decode(
+        data.subarray(payloadStart, payloadEnd),
       );
 
       // Skip empty or whitespace-only payloads
