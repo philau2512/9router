@@ -719,6 +719,11 @@ export const MODEL_PRICING = {
     reasoning: 3.0,
     cache_creation: 0.5,
   },
+  "grok-4.5": {
+    input: 4,
+    output: 18,
+    cached: 0.5
+  },
 
   // === OpenRouter fallback ===
   auto: {

@@ -12,12 +12,13 @@ const buildHomeDir = path.join(cliDir, ".build-home");
 const buildDistDirName = ".next-cli-build";
 const buildDistDir = path.join(appDir, buildDistDirName);
 
-// Exclude patterns for files/folders we don't want to copy
+// Exclude patterns for files/folders we don't want to copy.
+// IMPORTANT: match entry basename only — never use names that are also App Router
+// segments (e.g. "logs" would drop /api/pxpipe/logs and /api/usage/logs).
 const EXCLUDE_PATTERNS = [
   "@img", // Sharp image processing (not needed with unoptimized images)
   "sharp", // Sharp core lib (not needed with unoptimized images)
   "detect-libc", // Sharp dependency
-  "logs", // Runtime logs
   ".env", // Environment files
   ".env.local",
   ".env.*.local",
