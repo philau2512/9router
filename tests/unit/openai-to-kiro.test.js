@@ -208,8 +208,8 @@ describe("buildKiroPayload", () => {
     });
   });
 
-  describe("profileArn fallback", () => {
-    it("should fallback to builder-id profileArn when missing in credentials", () => {
+  describe("profileArn resolution", () => {
+    it("omits profileArn for builder-id with no stored ARN (executor discovers it)", () => {
       const body = {
         messages: [{ role: "user", content: "Hello" }],
       };
@@ -225,12 +225,33 @@ describe("buildKiroPayload", () => {
         true,
         credentials,
       );
-      expect(result.profileArn).toBe(
-        "arn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX",
-      );
+      // No stored ARN yet: buildKiroPayload emits nothing. The executor's
+      // ListAvailableProfiles discovery populates the real per-account ARN
+      // before the request goes out (a hardcoded ARN would 403; omitting
+      // permanently would 400).
+      expect(result.profileArn || "").toBe("");
     });
 
-    it("should fallback to social profileArn when authMethod is google/github", () => {
+    it("USES the account's own stored ARN for builder-id (discovered, real)", () => {
+      const realArn =
+        "arn:aws:codewhisperer:us-east-1:111122223333:profile/REALBUILDERID";
+      const result = buildKiroPayload(
+        "claude-sonnet-4.6",
+        { messages: [{ role: "user", content: "Hello" }] },
+        true,
+        {
+          providerSpecificData: {
+            profileArn: realArn,
+            authMethod: "builder-id",
+          },
+        },
+      );
+      // A Builder ID account's own discovered ARN is the ONLY value that works;
+      // it must be sent, not ignored.
+      expect(result.profileArn).toBe(realArn);
+    });
+
+    it("falls back to social shared profileArn when authMethod is google/github", () => {
       const body = {
         messages: [{ role: "user", content: "Hello" }],
       };
@@ -252,50 +273,46 @@ describe("buildKiroPayload", () => {
     });
   });
 
-  // Regression: 403 "User is not authorized to make this call."
-  // Free-tier Builder ID / social tokens are authorized ONLY on the shared
-  // profile. An account-specific ARN that leaked into storage (e.g. scraped
-  // from Kiro IDE profile.json during auto-import) must be IGNORED — sending
-  // it triggered the 403. Account-bound methods keep their own ARN.
-  describe("profileArn leak guard (403 regression)", () => {
-    const LEAKED_ARN =
-      "arn:aws:codewhisperer:us-east-1:111122223333:profile/LEAKEDACCOUNT";
-
-    it("ignores a leaked account-specific ARN for builder-id and uses the shared default", () => {
+  // Every chat-capable Kiro account has its OWN real per-account profileArn.
+  // The gateway rejects a missing ARN (400 "profileArn is required") and a
+  // wrong/placeholder ARN (403 "User is not authorized"). So we always prefer
+  // the account's own stored/discovered ARN.
+  describe("profileArn always prefers the account's own ARN", () => {
+    it("uses the stored ARN for builder-id", () => {
+      const ownArn =
+        "arn:aws:codewhisperer:us-east-1:111122223333:profile/OWNBUILDERID";
       const result = buildKiroPayload(
         "claude-sonnet-4.6",
         { messages: [{ role: "user", content: "Hello" }] },
         true,
         {
           providerSpecificData: {
-            profileArn: LEAKED_ARN,
+            profileArn: ownArn,
             authMethod: "builder-id",
           },
         },
       );
-      expect(result.profileArn).toBe(
-        "arn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX",
-      );
+      expect(result.profileArn).toBe(ownArn);
     });
 
-    it("ignores a leaked ARN for imported tokens and uses the shared default", () => {
+    it("uses the stored ARN for imported tokens", () => {
+      const ownArn =
+        "arn:aws:codewhisperer:us-east-1:222233334444:profile/OWNIMPORTED";
       const result = buildKiroPayload(
         "claude-sonnet-4.6",
         { messages: [{ role: "user", content: "Hello" }] },
         true,
         {
           providerSpecificData: {
-            profileArn: LEAKED_ARN,
+            profileArn: ownArn,
             authMethod: "imported",
           },
         },
       );
-      expect(result.profileArn).toBe(
-        "arn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX",
-      );
+      expect(result.profileArn).toBe(ownArn);
     });
 
-    it("keeps the account's own ARN for account-bound api_key auth", () => {
+    it("uses the stored ARN for account-bound api_key auth", () => {
       const ownArn =
         "arn:aws:codewhisperer:us-east-1:444455556666:profile/OWNACCOUNT";
       const result = buildKiroPayload(
@@ -312,7 +329,7 @@ describe("buildKiroPayload", () => {
       expect(result.profileArn).toBe(ownArn);
     });
 
-    it("does not send a shared-default ARN for account-bound auth with no stored profile (token default)", () => {
+    it("omits profileArn for idc with no stored ARN (executor discovers it)", () => {
       const result = buildKiroPayload(
         "claude-sonnet-4.6",
         { messages: [{ role: "user", content: "Hello" }] },
@@ -324,8 +341,7 @@ describe("buildKiroPayload", () => {
           },
         },
       );
-      // Empty/omitted so CodeWhisperer uses the token's own default profile;
-      // crucially NOT the shared builder-id default (which would 403).
+      // No stored ARN: the executor's discovery step fills it in before send.
       expect(result.profileArn || "").toBe("");
     });
   });

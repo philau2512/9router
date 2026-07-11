@@ -39,13 +39,15 @@ export class KiroExecutor extends BaseExecutor {
       }
     }
 
-    // Inject profileArn header. Resolution is centralized in
-    // resolveKiroRequestProfileArn: account-bound methods send their own ARN
-    // (or nothing, letting the token use its default profile); free-tier
-    // Builder ID / social send the shared default and NEVER an account-specific
-    // ARN that leaked into storage — that mismatch is what triggers
-    // 403 "User is not authorized to make this call."
-    const profileArn = resolveKiroRequestProfileArn(credentials);
+    // Inject profileArn header, ENDPOINT-AWARE. The correct value depends on
+    // which host this attempt targets (buildUrl stashes it on
+    // credentials.__kiroResolvedUrl just before this runs):
+    //   - kiro.dev surface  -> free-tier Builder ID needs the shared AAAA ARN
+    //   - amazonaws surface -> free-tier Builder ID must OMIT the ARN
+    // Sending the wrong one for the endpoint yields 400 (omit on kiro.dev) or
+    // 403 (AAAA on amazonaws). Account-specific ARNs (idc/api_key) always win.
+    const endpoint = credentials?.__kiroResolvedUrl;
+    const profileArn = resolveKiroRequestProfileArn(credentials, { endpoint });
     if (profileArn) {
       headers["x-amzn-codewhisperer-profile-arn"] = profileArn;
     }
@@ -53,7 +55,19 @@ export class KiroExecutor extends BaseExecutor {
     return headers;
   }
 
+  // Endpoint-aware body profileArn. The translator sets an initial value before
+  // the fallback loop, but the correct value is endpoint-specific, so we
+  // reconcile it here (transformRequest runs per-endpoint inside the loop).
   transformRequest(model, body, stream, credentials) {
+    const endpoint = credentials?.__kiroResolvedUrl;
+    const profileArn = resolveKiroRequestProfileArn(credentials, { endpoint });
+    if (body && typeof body === "object") {
+      if (profileArn) {
+        body.profileArn = profileArn;
+      } else {
+        delete body.profileArn;
+      }
+    }
     return body;
   }
 
@@ -91,10 +105,19 @@ export class KiroExecutor extends BaseExecutor {
         .map(regionalize);
       const others = baseUrls.filter((u) => !u.includes("amazonaws.com"));
       const ordered = amazon.length > 0 ? [...amazon, ...others] : baseUrls;
-      return ordered[urlIndex] || ordered[0];
+      const resolved = ordered[urlIndex] || ordered[0];
+      // Stash the resolved URL on the (per-request) credentials so buildHeaders
+      // and transformRequest can pick the endpoint-correct profileArn.
+      if (credentials) credentials.__kiroResolvedUrl = resolved;
+      return resolved;
     }
 
-    return super.buildUrl(model, stream, urlIndex, credentials);
+    const resolved = super.buildUrl(model, stream, urlIndex, credentials);
+    // Same endpoint stash for the default (kiro.dev-first) surface, so
+    // free-tier Builder ID sends the shared ARN on kiro.dev and omits it on
+    // the amazonaws fallback hosts.
+    if (credentials) credentials.__kiroResolvedUrl = resolved;
+    return resolved;
   }
 
   /**
@@ -115,10 +138,21 @@ export class KiroExecutor extends BaseExecutor {
     const { credentials } = args;
     const authMethod = credentials?.providerSpecificData?.authMethod;
 
-    // IDC tokens may not carry profileArn when provisioned cross-region.
-    // Discover and inject the ARN before building headers for the request.
-    // Port of upstream PR #2355.
-    if (authMethod === "idc" && !credentials?.providerSpecificData?.profileArn) {
+    // Dynamic profile ARN discovery (ported from Kiro-Go's ResolveProfileArn).
+    //
+    // Only ACCOUNT-BOUND methods (idc / api_key / external_idp) can resolve
+    // their own ARN via ListAvailableProfiles. Free-tier Builder ID CANNOT —
+    // that call returns 403 "AWS Builder ID is not supported for this
+    // operation" (verified empirically) — so builder-id relies on the
+    // endpoint-aware shared ARN in resolveKiroRequestProfileArn instead of
+    // discovery. Social gets its ARN from the token-refresh response.
+    const canDiscover =
+      authMethod === "idc" ||
+      authMethod === "api_key" ||
+      authMethod === "external_idp";
+    const needsDiscovery =
+      !credentials?.providerSpecificData?.profileArn && canDiscover;
+    if (needsDiscovery) {
       const callerRegion =
         credentials?.providerSpecificData?.region || "us-east-1";
       try {
@@ -133,10 +167,21 @@ export class KiroExecutor extends BaseExecutor {
             profileArn: discovered.arn,
             region: discovered.region,
           };
+          // Persist so subsequent requests skip discovery (best-effort).
+          if (typeof args.onProfileArnDiscovered === "function") {
+            try {
+              await args.onProfileArnDiscovered({
+                profileArn: discovered.arn,
+                region: discovered.region,
+              });
+            } catch {
+              /* non-fatal */
+            }
+          }
         }
       } catch (err) {
         // Non-fatal: proceed without profileArn, let upstream return the error
-        console.warn(`[Kiro] IDC profile ARN discovery failed: ${err.message}`);
+        console.warn(`[Kiro] Profile ARN discovery failed for ${authMethod}: ${err.message}`);
       }
     }
 
@@ -212,7 +257,40 @@ export class KiroExecutor extends BaseExecutor {
       totalContentLength: 0,
       contextUsagePercentage: 0,
       inThinking: false,
+      // Feature 3 (ported from Kiro-Go): cumulative text normalization.
+      // Kiro upstream sometimes sends CUMULATIVE content chunks where
+      // chunk N = full text up to that point (not just the delta).
+      // We track the last emitted content and reasoning text to detect
+      // overlap and emit only the new delta portion.
+      lastAssistantContent: "",
+      lastReasoningContent: "",
     };
+
+    // Ported from Kiro-Go normalizeChunk(): detect cumulative text and extract delta.
+    // If chunk == previous text, return "" (duplicate). If chunk starts with
+    // previous, return only the new suffix. If previous starts with chunk, it's
+    // a late re-delivery — skip. Otherwise check for overlap and return the new part.
+    function normalizeChunk(chunk, previous) {
+      if (!chunk) return { text: "", updated: previous };
+      if (!previous) return { text: chunk, updated: chunk };
+      if (chunk === previous) return { text: "", updated: previous };
+      if (chunk.startsWith(previous)) {
+        return { text: chunk.slice(previous.length), updated: chunk };
+      }
+      if (previous.startsWith(chunk)) return { text: "", updated: previous };
+      // Check suffix/prefix overlap. Only consider overlaps of 8+ chars to
+      // avoid false positives on trivial single-char matches (e.g. a trailing
+      // space matching the leading space of the next delta). Kiro cumulative
+      // mode always has substantial overlap (dozens to hundreds of chars).
+      const maxOverlap = Math.min(previous.length, chunk.length);
+      for (let i = maxOverlap; i >= 8; i--) {
+        if (previous.endsWith(chunk.slice(0, i))) {
+          return { text: chunk.slice(i), updated: previous + chunk.slice(i) };
+        }
+      }
+      // No meaningful overlap: treat as fresh delta
+      return { text: chunk, updated: previous + chunk };
+    }
 
     const transformStream = new TransformStream({
       async transform(chunk, controller) {
@@ -342,6 +420,15 @@ export class KiroExecutor extends BaseExecutor {
               // Nothing left to emit as regular content after stripping thinking
               continue;
             }
+
+            // Feature 3: normalize cumulative text (Kiro-Go port).
+            // Kiro upstream may send chunk N as the FULL text up to that point.
+            // normalizeChunk extracts only the new delta portion.
+            const norm = normalizeChunk(content, state.lastAssistantContent);
+            state.lastAssistantContent = norm.updated;
+            content = norm.text;
+            if (!content) continue;
+
             state.totalContentLength += content.length;
 
             const chunk = {

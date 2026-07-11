@@ -18,60 +18,75 @@
 export const KIRO_AGENTIC_SUFFIX = "-agentic";
 export const KIRO_THINKING_SUFFIX = "-thinking";
 
-// Public default CodeWhisperer profile ARNs (us-east-1), keyed by auth method.
-// Used when an account cannot resolve its own profileArn. Builder ID and social
-// (Google/GitHub) sign-ins map to different shared profiles.
+// Shared CodeWhisperer profile ARNs. These are ENDPOINT-SPECIFIC — the same
+// account needs a DIFFERENT profileArn depending on which host it hits. This
+// was verified empirically against a real Builder ID account (see matrix below,
+// generateAssistantResponse):
+//
+//   endpoint                              omit profileArn   AAAACCCCXXXX
+//   runtime.us-east-1.kiro.dev            400 "required"    200 OK
+//   codewhisperer.us-east-1.amazonaws     200 OK            403 "not authorized"
+//   q.us-east-1.amazonaws                 200 OK            403 "not authorized"
+//
+// So for a free-tier Builder ID account (which CANNOT resolve its own ARN —
+// ListAvailableProfiles returns 403 "AWS Builder ID is not supported"):
+//   * kiro.dev surface  -> MUST send the shared builder ARN (AAAACCCCXXXX)
+//   * amazonaws surface -> MUST omit the ARN entirely
+// Social (google/github) tokens carry their own real ARN from token refresh.
 export const KIRO_DEFAULT_PROFILE_ARNS = {
+  // kiro.dev shared free-tier Builder ID profile (required on that surface).
   "builder-id":
     "arn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX",
   social: "arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK",
 };
 
-// Back-compat single default (Builder ID).
-export const KIRO_DEFAULT_PROFILE_ARN = KIRO_DEFAULT_PROFILE_ARNS["builder-id"];
-
-/** Resolve the shared default profileArn for a given auth method. */
-export function resolveDefaultProfileArn(authMethod) {
-  const social = authMethod === "google" || authMethod === "github";
-  return social
-    ? KIRO_DEFAULT_PROFILE_ARNS.social
-    : KIRO_DEFAULT_PROFILE_ARNS["builder-id"];
+/** True when the resolved request URL targets the kiro.dev gateway surface. */
+export function isKiroDevEndpoint(url) {
+  return typeof url === "string" && url.includes("kiro.dev");
 }
 
-// Auth methods whose token is bound to a specific account/profile. These send
-// their OWN resolved profileArn (or an empty string, so CodeWhisperer falls
-// back to the token's default profile) and must NEVER use the shared default
-// ARN — that ARN belongs to a different account and yields
-// 403 "User is not authorized to make this call."
-const ACCOUNT_BOUND_AUTH_METHODS = new Set(["api_key", "idc", "external_idp"]);
-
-/** True when the auth method binds the token to its own CodeWhisperer profile. */
-export function isAccountBoundAuthMethod(authMethod) {
-  return ACCOUNT_BOUND_AUTH_METHODS.has(authMethod);
+/**
+ * Last-resort shared profileArn for a given auth method + endpoint when no
+ * account-specific ARN is available.
+ * - social (google/github): shared social profile.
+ * - builder-id / imported / unknown free-tier: shared builder ARN ONLY on the
+ *   kiro.dev surface; "" (omit) on the amazonaws surface.
+ */
+export function resolveDefaultProfileArn(authMethod, endpoint) {
+  if (authMethod === "google" || authMethod === "github") {
+    return KIRO_DEFAULT_PROFILE_ARNS.social;
+  }
+  // Free-tier Builder ID (and imported/unknown): endpoint-dependent.
+  return isKiroDevEndpoint(endpoint)
+    ? KIRO_DEFAULT_PROFILE_ARNS["builder-id"]
+    : "";
 }
 
 /**
  * Single source of truth for the profileArn sent with a Kiro request.
  *
- * - Account-bound (api_key / idc / external_idp): use the account's own
- *   profileArn, or "" so CodeWhisperer uses the token's default profile. Never
- *   the shared default (belongs to another account -> 403).
- * - Shared free-tier (builder-id / social / google / github / imported /
- *   unknown): free-tier Builder ID / social tokens are ONLY authorized on the
- *   shared profile. Any account-specific ARN that leaked into storage (via IDE
- *   auto-import or a refresh-time ARN patch) is IGNORED here — always send the
- *   shared default, which every free-tier token is authorized to call.
+ * ENDPOINT-AWARE (see the matrix on KIRO_DEFAULT_PROFILE_ARNS):
+ * - An account-specific ARN (stored on the credential, e.g. IDC/api_key/social
+ *   discovered ARN) always wins — it's the account's own profile.
+ * - Otherwise, free-tier Builder ID accounts have NO discoverable profile, so
+ *   we use the endpoint-specific shared value: AAAACCCCXXXX on kiro.dev, omit
+ *   on amazonaws. Sending the wrong one for the endpoint yields 400 (omit on
+ *   kiro.dev) or 403 (AAAA on amazonaws).
  *
  * @param {object} credentials Credential object with providerSpecificData
- * @returns {string} profileArn to send ('' means "omit / use token default")
+ * @param {object} [opts]
+ * @param {string} [opts.endpoint] The resolved request URL for this attempt.
+ * @returns {string} profileArn to send ('' means "omit the ARN")
  */
-export function resolveKiroRequestProfileArn(credentials) {
+export function resolveKiroRequestProfileArn(credentials, opts = {}) {
   const psd = credentials?.providerSpecificData || {};
-  const authMethod = psd.authMethod;
-  if (isAccountBoundAuthMethod(authMethod)) {
-    return psd.profileArn || "";
+  const endpoint = opts.endpoint;
+  // A real, account-specific ARN (not the shared builder placeholder) always wins.
+  const stored = psd.profileArn;
+  if (stored && stored !== KIRO_DEFAULT_PROFILE_ARNS["builder-id"]) {
+    return stored;
   }
-  return resolveDefaultProfileArn(authMethod);
+  return resolveDefaultProfileArn(psd.authMethod, endpoint);
 }
 
 export const KIRO_THINKING_BUDGET_DEFAULT = 16000;

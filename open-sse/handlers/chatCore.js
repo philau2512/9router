@@ -85,6 +85,7 @@ export async function handleChatCore({
   credentials,
   log,
   onCredentialsRefreshed,
+  onProfileArnDiscovered,
   onRequestSuccess,
   onDisconnect,
   clientRawRequest,
@@ -498,6 +499,7 @@ export async function handleChatCore({
       log,
       proxyOptions,
       emitObjects: wantKiroObjects,
+      onProfileArnDiscovered,
     });
     providerResponse = result.response;
     providerUrl = result.url;
@@ -580,6 +582,7 @@ export async function handleChatCore({
             log,
             proxyOptions,
             emitObjects: wantKiroObjects,
+            onProfileArnDiscovered,
           });
           if (retryResult.response.ok) {
             providerResponse = retryResult.response;

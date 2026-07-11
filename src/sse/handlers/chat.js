@@ -426,6 +426,19 @@ async function handleSingleModelChat(
           testStatus: "active",
         });
       },
+      // Persist a freshly discovered Kiro profileArn so later requests skip the
+      // ListAvailableProfiles round-trip (and survive restarts). Merges into the
+      // existing providerSpecificData rather than overwriting it.
+      onProfileArnDiscovered: async ({ profileArn, region }) => {
+        await updateProviderCredentials(credentials.connectionId, {
+          existingProviderSpecificData: credentials.providerSpecificData,
+          providerSpecificData: {
+            ...(credentials.providerSpecificData || {}),
+            profileArn,
+            ...(region ? { region } : {}),
+          },
+        });
+      },
       onRequestSuccess: async () => {
         await clearAccountError(credentials.connectionId, credentials, model);
       },
