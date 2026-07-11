@@ -425,6 +425,92 @@ export function useProviderDetailConnections({
     }
   };
 
+  const copySelectedNames = async () => {
+    const names = selectedConnections
+      .map((conn) => conn.name || conn.email || conn.displayName)
+      .filter((value) => typeof value === "string" && value.trim().length > 0);
+
+    if (names.length === 0) {
+      alert("No selected names to copy.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(names.join("\n"));
+    } catch (error) {
+      console.log("Error copying selected names:", error);
+      alert("Failed to copy selected names.");
+    }
+  };
+
+  const handleToggleActiveSelected = async (isActive) => {
+    if (selectedConnectionIds.length === 0) return;
+
+    try {
+      let failed = 0;
+      for (const connectionId of selectedConnectionIds) {
+        try {
+          const res = await updateProviderConnection(connectionId, { isActive });
+          if (!res.ok) failed += 1;
+        } catch (error) {
+          console.log("Error updating connection status:", connectionId, error);
+          failed += 1;
+        }
+      }
+
+      const updatedIds = new Set(selectedConnectionIds);
+      applyConnections(
+        connectionsRef.current.map((conn) =>
+          updatedIds.has(conn.id) ? { ...conn, isActive } : conn,
+        ),
+      );
+
+      if (failed > 0) {
+        alert(`Updated active status with ${failed} failed request(s).`);
+      }
+    } catch (error) {
+      console.log("Error toggling active on selected connections:", error);
+      await fetchConnections();
+    }
+  };
+
+  const handleSetAllSelectedActive = async () => {
+    if (selectedConnectionIds.length === 0) return;
+
+    try {
+      let failed = 0;
+      for (const connectionId of selectedConnectionIds) {
+        try {
+          const res = await updateProviderConnection(connectionId, {
+            testStatus: "active",
+            lastError: null,
+            lastErrorAt: null,
+          });
+          if (!res.ok) failed += 1;
+        } catch (error) {
+          console.log("Error setting connection status active:", connectionId, error);
+          failed += 1;
+        }
+      }
+
+      const updatedIds = new Set(selectedConnectionIds);
+      applyConnections(
+        connectionsRef.current.map((conn) =>
+          updatedIds.has(conn.id)
+            ? { ...conn, testStatus: "active", lastError: null, lastErrorAt: null }
+            : conn,
+        ),
+      );
+
+      if (failed > 0) {
+        alert(`Set active with ${failed} failed request(s).`);
+      }
+    } catch (error) {
+      console.log("Error setting selected connections active:", error);
+      await fetchConnections();
+    }
+  };
+
   const toggleSelectConnection = (connectionId, isShift = false) => {
     const currentIndex = displayedConnections.findIndex(
       (conn) => conn.id === connectionId,
@@ -904,6 +990,9 @@ export function useProviderDetailConnections({
     handleSwapPriority,
     setSelectedConnectionsAutoRefresh,
     copySelectedEmails,
+    copySelectedNames,
+    handleToggleActiveSelected,
+    handleSetAllSelectedActive,
     toggleSelectConnection,
     selectedConnections,
     allSelected,

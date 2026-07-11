@@ -182,6 +182,9 @@ export default function ProviderDetailPage() {
     handleSwapPriority,
     setSelectedConnectionsAutoRefresh,
     copySelectedEmails,
+    copySelectedNames,
+    handleToggleActiveSelected,
+    handleSetAllSelectedActive,
     toggleSelectConnection,
     selectedConnections,
     allSelected,
@@ -497,6 +500,9 @@ export default function ProviderDetailPage() {
         setSelectedConnectionsAutoRefresh={setSelectedConnectionsAutoRefresh}
         handleManualRefreshSelected={handleManualRefreshSelected}
         copySelectedEmails={copySelectedEmails}
+        copySelectedNames={copySelectedNames}
+        handleToggleActiveSelected={handleToggleActiveSelected}
+        handleSetAllSelectedActive={handleSetAllSelectedActive}
         clearSelection={clearSelection}
         clearManualRefreshResults={clearManualRefreshResults}
         handleToggleConnectionsSort={handleToggleConnectionsSort}
