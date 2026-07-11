@@ -122,54 +122,74 @@ export default function ComboFormModal({
       .catch(() => {});
   }, [isOpen]);
 
-  const validateName = useCallback((value) => {
-    if (!value.trim()) {
-      setNameError("Name is required");
-      return false;
-    }
-    const full = forcePrefix + value;
-    if (!VALID_NAME_REGEX.test(full)) {
-      setNameError("Only letters, numbers, -, _ and . allowed");
-      return false;
-    }
-    setNameError("");
-    return true;
-  }, [forcePrefix]);
+  const validateName = useCallback(
+    (value) => {
+      if (!value.trim()) {
+        setNameError("Name is required");
+        return false;
+      }
+      const full = forcePrefix + value;
+      if (!VALID_NAME_REGEX.test(full)) {
+        setNameError("Only letters, numbers, -, _ and . allowed");
+        return false;
+      }
+      setNameError("");
+      return true;
+    },
+    [forcePrefix],
+  );
 
-  const handleNameChange = useCallback((e) => {
-    let value = e.target.value;
-    // If user types prefix manually, strip it (we always prepend)
-    if (forcePrefix && value.startsWith(forcePrefix))
-      value = value.slice(forcePrefix.length);
-    setName(value);
-    if (value) validateName(value);
-    else setNameError("");
-  }, [forcePrefix, validateName]);
+  const handleNameChange = useCallback(
+    (e) => {
+      let value = e.target.value;
+      // If user types prefix manually, strip it (we always prepend)
+      if (forcePrefix && value.startsWith(forcePrefix))
+        value = value.slice(forcePrefix.length);
+      setName(value);
+      if (value) validateName(value);
+      else setNameError("");
+    },
+    [forcePrefix, validateName],
+  );
 
-  const handleAddModel = useCallback((model) => {
-    if (!models.includes(model.value)) setModels([...models, model.value]);
-  }, [models]);
+  const handleAddModel = useCallback(
+    (model) => {
+      if (!models.includes(model.value)) setModels([...models, model.value]);
+    },
+    [models],
+  );
 
-  const handleDeselectModel = useCallback((model) => {
-    setModels(models.filter((m) => m !== model.value));
-  }, [models]);
+  const handleDeselectModel = useCallback(
+    (model) => {
+      setModels(models.filter((m) => m !== model.value));
+    },
+    [models],
+  );
 
-  const handleRemoveModel = useCallback((i) =>
-    setModels(models.filter((_, idx) => idx !== i)), [models]);
+  const handleRemoveModel = useCallback(
+    (i) => setModels(models.filter((_, idx) => idx !== i)),
+    [models],
+  );
 
-  const handleMoveUp = useCallback((i) => {
-    if (i === 0) return;
-    const a = [...models];
-    [a[i - 1], a[i]] = [a[i], a[i - 1]];
-    setModels(a);
-  }, [models]);
+  const handleMoveUp = useCallback(
+    (i) => {
+      if (i === 0) return;
+      const a = [...models];
+      [a[i - 1], a[i]] = [a[i], a[i - 1]];
+      setModels(a);
+    },
+    [models],
+  );
 
-  const handleMoveDown = useCallback((i) => {
-    if (i === models.length - 1) return;
-    const a = [...models];
-    [a[i], a[i + 1]] = [a[i + 1], a[i]];
-    setModels(a);
-  }, [models]);
+  const handleMoveDown = useCallback(
+    (i) => {
+      if (i === models.length - 1) return;
+      const a = [...models];
+      [a[i], a[i + 1]] = [a[i + 1], a[i]];
+      setModels(a);
+    },
+    [models],
+  );
 
   const handleSave = useCallback(async () => {
     if (!validateName(name)) return;

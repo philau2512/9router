@@ -33,7 +33,9 @@ export function __setGotScrapingLoaderForTest(loader) {
   _gotScraping = null;
   _gotScrapingChecked = false;
   _gotScrapingLoader =
-    typeof loader === "function" ? loader : () => eval('import("got-scraping")');
+    typeof loader === "function"
+      ? loader
+      : () => eval('import("got-scraping")');
 }
 
 async function getGotScraping() {

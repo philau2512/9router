@@ -92,7 +92,8 @@ function stripStoredItemReferences(body) {
     if (typeof item === "string" && SERVER_ID_PATTERN.test(item)) return false;
     if (item && typeof item === "object" && !Array.isArray(item)) {
       if (item.type === "item_reference") return false;
-      if (typeof item.id === "string" && SERVER_ID_PATTERN.test(item.id)) delete item.id;
+      if (typeof item.id === "string" && SERVER_ID_PATTERN.test(item.id))
+        delete item.id;
     }
     return true;
   });
@@ -123,17 +124,26 @@ function normalizeGrokCliTools(body) {
     }
 
     const isFunction =
-      type === "function" || type === "" || tool.function || typeof tool.name === "string";
+      type === "function" ||
+      type === "" ||
+      tool.function ||
+      typeof tool.name === "string";
     if (!isFunction || HOSTED_TOOL_TYPES.has(type)) {
       return HOSTED_TOOL_TYPES.has(type);
     }
 
     const fn =
-      tool.function && typeof tool.function === "object" && !Array.isArray(tool.function)
+      tool.function &&
+      typeof tool.function === "object" &&
+      !Array.isArray(tool.function)
         ? tool.function
         : null;
     const rawName =
-      typeof tool.name === "string" ? tool.name : typeof fn?.name === "string" ? fn.name : "";
+      typeof tool.name === "string"
+        ? tool.name
+        : typeof fn?.name === "string"
+          ? fn.name
+          : "";
     const name = rawName.trim();
     if (!name) return false;
 
@@ -144,9 +154,13 @@ function normalizeGrokCliTools(body) {
           ? fn.description
           : "";
     const parameters =
-      tool.parameters && typeof tool.parameters === "object" && !Array.isArray(tool.parameters)
+      tool.parameters &&
+      typeof tool.parameters === "object" &&
+      !Array.isArray(tool.parameters)
         ? tool.parameters
-        : fn?.parameters && typeof fn.parameters === "object" && !Array.isArray(fn.parameters)
+        : fn?.parameters &&
+            typeof fn.parameters === "object" &&
+            !Array.isArray(fn.parameters)
           ? fn.parameters
           : { type: "object", properties: {} };
 
@@ -159,9 +173,16 @@ function normalizeGrokCliTools(body) {
     return true;
   });
 
-  if (body.tool_choice && typeof body.tool_choice === "object" && !Array.isArray(body.tool_choice)) {
+  if (
+    body.tool_choice &&
+    typeof body.tool_choice === "object" &&
+    !Array.isArray(body.tool_choice)
+  ) {
     if (body.tool_choice.type === "function") {
-      const n = typeof body.tool_choice.name === "string" ? body.tool_choice.name.trim() : "";
+      const n =
+        typeof body.tool_choice.name === "string"
+          ? body.tool_choice.name.trim()
+          : "";
       if (!n || !validNames.has(n)) delete body.tool_choice;
     }
   }
@@ -213,12 +234,17 @@ export class GrokCliExecutor extends BaseExecutor {
     // Ensure token-auth marker is present even if headers map was overridden
     headers["x-xai-token-auth"] = this.config.tokenAuth || "xai-grok-cli";
     headers["x-grok-client-identifier"] =
-      this.config.clientIdentifier || headers["x-grok-client-identifier"] || "grok-pager";
+      this.config.clientIdentifier ||
+      headers["x-grok-client-identifier"] ||
+      "grok-pager";
     headers["x-grok-client-version"] =
       this.config.clientVersion || headers["x-grok-client-version"] || "0.2.93";
     headers["x-authenticateresponse"] = "authenticate-response";
 
-    const sessionId = this._currentSessionId || credentials?.connectionId || crypto.randomUUID();
+    const sessionId =
+      this._currentSessionId ||
+      credentials?.connectionId ||
+      crypto.randomUUID();
     const reqId = this._currentReqId || crypto.randomUUID();
     headers["x-grok-session-id"] = sessionId;
     // CLI uses the same id for conv + session on chat turns
@@ -229,7 +255,8 @@ export class GrokCliExecutor extends BaseExecutor {
     if (this._agentId) headers["x-grok-agent-id"] = this._agentId;
 
     // Surface model override (CLI always sets this)
-    if (this._currentModel) headers["x-grok-model-override"] = this._currentModel;
+    if (this._currentModel)
+      headers["x-grok-model-override"] = this._currentModel;
 
     if (this.config.compactionAt) {
       headers["x-compaction-at"] = String(this.config.compactionAt);
@@ -239,7 +266,8 @@ export class GrokCliExecutor extends BaseExecutor {
     // fall back either way so OAuth connections always fingerprint like the CLI.
     const psd = credentials?.providerSpecificData || {};
     const email = psd.email || credentials?.email;
-    const userId = psd.userId || credentials?.userId || credentials?.providerUserId;
+    const userId =
+      psd.userId || credentials?.userId || credentials?.providerUserId;
     if (email) headers["x-email"] = email;
     if (userId) headers["x-userid"] = userId;
 
@@ -292,7 +320,10 @@ export class GrokCliExecutor extends BaseExecutor {
         body.input = body.messages.map((m) => ({
           type: "message",
           role: m.role || "user",
-          content: typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? ""),
+          content:
+            typeof m.content === "string"
+              ? m.content
+              : JSON.stringify(m.content ?? ""),
         }));
         delete body.messages;
       } else {
@@ -306,7 +337,10 @@ export class GrokCliExecutor extends BaseExecutor {
     normalizeGrokCliTools(body);
 
     // Turn index after input is finalized (user-message count, monotonic per session)
-    this._currentTurnIdx = resolveGrokCliTurnIdx(this._currentSessionId, body.input);
+    this._currentTurnIdx = resolveGrokCliTurnIdx(
+      this._currentSessionId,
+      body.input,
+    );
 
     body.stream = true;
     body.store = false;
@@ -320,7 +354,8 @@ export class GrokCliExecutor extends BaseExecutor {
     resolvedModel = getModelUpstreamId("gcli", resolvedModel) || resolvedModel;
     // Also try provider id key
     if (resolvedModel === (body.model || model)) {
-      resolvedModel = getModelUpstreamId("grok-cli", resolvedModel) || resolvedModel;
+      resolvedModel =
+        getModelUpstreamId("grok-cli", resolvedModel) || resolvedModel;
     }
     body.model = resolvedModel;
     this._currentModel = resolvedModel;

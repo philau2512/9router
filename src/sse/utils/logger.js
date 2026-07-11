@@ -144,7 +144,7 @@ let tagCursor = 0;
 
 // Pick next tag in round-robin order.
 export function nextTag() {
-  return REQ_TAGS[(tagCursor++) % REQ_TAGS.length];
+  return REQ_TAGS[tagCursor++ % REQ_TAGS.length];
 }
 
 // Deterministically pick a tag from a seed string (stable per session/connectionId).

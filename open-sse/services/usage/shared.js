@@ -18,7 +18,9 @@ export function parseResetTime(resetValue) {
   try {
     if (resetValue instanceof Date) return resetValue.toISOString();
     if (typeof resetValue === "number") {
-      return new Date(resetValue < 1e12 ? resetValue * 1000 : resetValue).toISOString();
+      return new Date(
+        resetValue < 1e12 ? resetValue * 1000 : resetValue,
+      ).toISOString();
     }
     if (typeof resetValue === "string") {
       if (/^\d+$/.test(resetValue)) {
@@ -44,17 +46,30 @@ export function toFiniteNumber(value, fallback = 0) {
 
 export function normalizeCloudCodeProjectId(project) {
   if (typeof project === "string") return project.trim() || null;
-  if (project && typeof project === "object" && typeof project.id === "string") {
+  if (
+    project &&
+    typeof project === "object" &&
+    typeof project.id === "string"
+  ) {
     return project.id.trim() || null;
   }
   return null;
 }
 
-export async function fetchWithTimeout(url, opts, ms = 10000, proxyOptions = null) {
+export async function fetchWithTimeout(
+  url,
+  opts,
+  ms = 10000,
+  proxyOptions = null,
+) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), ms);
   try {
-    return await proxyAwareFetch(url, { ...opts, signal: controller.signal }, proxyOptions);
+    return await proxyAwareFetch(
+      url,
+      { ...opts, signal: controller.signal },
+      proxyOptions,
+    );
   } finally {
     clearTimeout(timeoutId);
   }

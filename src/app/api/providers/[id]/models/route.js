@@ -9,8 +9,11 @@ import {
   refreshGoogleToken,
   updateProviderCredentials,
 } from "@/sse/services/tokenRefresh";
+import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
+import { resolveCodexModels } from "open-sse/services/codexModels.js";
+import { resolveAntigravityModels } from "open-sse/services/antigravityModels.js";
 
 const GEMINI_CLI_MODELS_URL =
   "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
@@ -161,22 +164,66 @@ const PROVIDER_MODELS_CONFIG = {
     authPrefix: "Bearer ",
     parseResponse: (data) => data.data || [],
   },
+  // Codex + Antigravity use the shared Phase 1 resolvers (proper client_version,
+  // chatgpt-account-id / project_id, prod→daily→sandbox fallback, TTL cache).
+  // On failure they return no models → UI falls back to the static catalog.
   codex: {
-    url: "https://chatgpt.com/backend-api/codex/models?client_version=1.0.0",
-    method: "GET",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    authHeader: "Authorization",
-    authPrefix: "Bearer ",
-    parseResponse: parseCodexModels,
+    customResolver: async (connection) => {
+      const resolvedProxy = await resolveConnectionProxyConfig(
+        connection.providerSpecificData || {},
+      );
+      let warning;
+      try {
+        const result = await resolveCodexModels(
+          {
+            accessToken: connection.accessToken,
+            providerSpecificData: connection.providerSpecificData || {},
+            connectionId: connection.id,
+          },
+          { log: console, proxyOptions: resolvedProxy },
+        );
+        if (result?.models?.length) {
+          // Keep parity with the old inline config: expose -review variants too.
+          return { models: appendCodexReviewModels(result.models) };
+        }
+        warning = "Codex returned no models; falling back to static catalog.";
+      } catch (error) {
+        warning = `Failed to fetch Codex models: ${error.message}`;
+        console.log(
+          "Failed to fetch Codex models dynamically, falling back to static:",
+          error.message,
+        );
+      }
+      return { models: [], warning };
+    },
   },
   antigravity: {
-    url: "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:models",
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    authHeader: "Authorization",
-    authPrefix: "Bearer ",
-    body: {},
-    parseResponse: (data) => data.models || [],
+    customResolver: async (connection) => {
+      const resolvedProxy = await resolveConnectionProxyConfig(
+        connection.providerSpecificData || {},
+      );
+      let warning;
+      try {
+        const result = await resolveAntigravityModels(
+          {
+            accessToken: connection.accessToken,
+            providerSpecificData: connection.providerSpecificData || {},
+            connectionId: connection.id,
+          },
+          { log: console, proxyOptions: resolvedProxy },
+        );
+        if (result?.models?.length) return { models: result.models };
+        warning =
+          "Antigravity returned no models; falling back to static catalog.";
+      } catch (error) {
+        warning = `Failed to fetch Antigravity models: ${error.message}`;
+        console.log(
+          "Failed to fetch Antigravity models dynamically, falling back to static:",
+          error.message,
+        );
+      }
+      return { models: [], warning };
+    },
   },
   github: {
     url: "https://api.githubcopilot.com/models",
@@ -273,6 +320,9 @@ const PROVIDER_MODELS_CONFIG = {
   // Custom resolvers (non-OpenAI-shaped APIs / token-refresh flows)
   kiro: {
     customResolver: async (connection) => {
+      const resolvedProxy = await resolveConnectionProxyConfig(
+        connection.providerSpecificData || {},
+      );
       const credentials = {
         accessToken: connection.accessToken,
         refreshToken: connection.refreshToken,
@@ -283,6 +333,7 @@ const PROVIDER_MODELS_CONFIG = {
       try {
         const result = await resolveKiroModels(credentials, {
           log: console,
+          proxyOptions: resolvedProxy,
           onCredentialsRefreshed: async (refreshed) => {
             if (refreshed?.accessToken) {
               await updateProviderCredentials(connection.id, {

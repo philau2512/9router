@@ -63,7 +63,9 @@ function renderLine(line, onIdClick) {
   }
 
   // Parse ID pattern: [reqId] or [reqId:connId]
-  const match = line.match(/^(\[\d{2}:\d{2}:\d{2}\]\s+)?\[([a-z0-9]{6})(?::([a-z0-9]{6}))?\](.*)$/i);
+  const match = line.match(
+    /^(\[\d{2}:\d{2}:\d{2}\]\s+)?\[([a-z0-9]{6})(?::([a-z0-9]{6}))?\](.*)$/i,
+  );
   if (match) {
     const timeStr = match[1] || "";
     const reqId = match[2];
@@ -159,7 +161,9 @@ export default function ConsoleLogClient() {
   };
 
   const filteredLogs = filterText
-    ? logs.filter((line) => line.toLowerCase().includes(filterText.toLowerCase()))
+    ? logs.filter((line) =>
+        line.toLowerCase().includes(filterText.toLowerCase()),
+      )
     : logs;
 
   return (

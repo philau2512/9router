@@ -10,7 +10,7 @@ import {
   resolveKiroThinkingBudget,
   buildThinkingSystemPrefix,
   KIRO_AGENTIC_SYSTEM_PROMPT,
-  resolveDefaultProfileArn,
+  resolveKiroRequestProfileArn,
 } from "../../config/kiroConstants.js";
 
 /** Render a single tool call as a readable text line. */
@@ -643,17 +643,12 @@ export function buildKiroPayload(model, body, stream, credentials) {
     upstreamModel,
   );
 
-  // api_key / idc / external_idp carry an account-specific (or token-bound)
-  // profile. The shared builder-id/social default ARN belongs to a different
-  // account and triggers 403 "bearer token invalid", so never fall back to it —
-  // send the resolved ARN, or an empty string so CodeWhisperer uses the token's
-  // own default profile. Only OAuth/social keep the shared placeholder.
-  const authMethod = credentials?.providerSpecificData?.authMethod;
-  const accountBoundAuth =
-    authMethod === "api_key" || authMethod === "idc" || authMethod === "external_idp";
-  const profileArn = accountBoundAuth
-    ? (credentials?.providerSpecificData?.profileArn || "")
-    : (credentials?.providerSpecificData?.profileArn || resolveDefaultProfileArn(authMethod));
+  // Resolve the profileArn to send. See resolveKiroRequestProfileArn:
+  // account-bound methods send their own ARN (or "" to use the token default);
+  // free-tier Builder ID / social send the shared default and NEVER an
+  // account-specific ARN that leaked into storage (root cause of 403
+  // "User is not authorized to make this call.").
+  const profileArn = resolveKiroRequestProfileArn(credentials);
 
   let finalContent = currentMessage?.userInputMessage?.content || "";
   const timestamp = new Date().toISOString();

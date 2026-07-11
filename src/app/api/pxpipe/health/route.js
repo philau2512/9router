@@ -8,7 +8,10 @@ export async function POST() {
     const result = await runHealthCheck();
     return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json({ healthy: false, checks: [], error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { healthy: false, checks: [], error: error.message },
+      { status: 500 },
+    );
   }
 }
 

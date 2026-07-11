@@ -308,7 +308,7 @@ export function createDisconnectAwareStream(
 
               let newTransformStream;
               if (
-                needsTranslation(resumeCtx.targetFormat, resumeCtx.sourceFormat)
+                needsTranslation(resumeCtx.sourceFormat, resumeCtx.targetFormat)
               ) {
                 newTransformStream = createSSETransformStreamWithLogger(
                   resumeCtx.targetFormat,
@@ -453,6 +453,13 @@ export function pipeWithDisconnect(
   model = null,
   provider = null,
   resumeCtx = null,
+  // Phase 3 (option c): when set, pipe THIS stream (Kiro's object-mode decode
+  // output) through the stall tap + transform instead of providerResponse.body.
+  // The transform is the object-input translate builder, so its output is bytes
+  // and everything downstream (tap byte-count is guarded for non-byte chunks,
+  // client Response) is unchanged. Resume path is unaffected: it re-executes the
+  // provider in byte mode and rebuilds a byte transform.
+  bodyOverride = null,
 ) {
   let stallTimer = null;
   let semanticStallTimer = null;
@@ -620,7 +627,11 @@ export function pipeWithDisconnect(
     },
   });
 
-  const transformedBody = providerResponse.body
+  // Phase 3 (option c): pipe the object-mode source when provided, else the
+  // provider's byte body. Either way the stall tap (byte-count guarded) and the
+  // transform (object-input translate when overridden) run identically.
+  const pipeSource = bodyOverride || providerResponse.body;
+  const transformedBody = pipeSource
     .pipeThrough(upstreamStallTap)
     .pipeThrough(transformStream);
 

@@ -51,7 +51,9 @@ export async function resolveClinepassModels(credentials) {
     if (!Array.isArray(rawList)) return null;
 
     const models = rawList
-      .filter((m) => typeof m?.id === "string" && m.id.startsWith("cline-pass/"))
+      .filter(
+        (m) => typeof m?.id === "string" && m.id.startsWith("cline-pass/"),
+      )
       .map((m) => ({
         id: m.id,
         name: m.name || m.id,

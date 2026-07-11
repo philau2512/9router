@@ -97,7 +97,10 @@ export function calculateCostFromTokens(tokens, pricing) {
   const cacheCreationTokens = tokens.cache_creation_input_tokens || 0;
   // prompt_tokens is cache-inclusive (see canonicalizeUsage): cached + cache_creation
   // are subsets, so subtract both to avoid charging them at the full input rate.
-  const nonCachedInput = Math.max(0, inputTokens - cachedTokens - cacheCreationTokens);
+  const nonCachedInput = Math.max(
+    0,
+    inputTokens - cachedTokens - cacheCreationTokens,
+  );
 
   cost += nonCachedInput * (pricing.input / 1000000);
 

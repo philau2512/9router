@@ -11,6 +11,9 @@ export async function POST() {
     await loadPxpipe();
     return NextResponse.json(getPxpipeStatus());
   } catch (error) {
-    return NextResponse.json({ error: error.message, code: error.code || null }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message, code: error.code || null },
+      { status: 500 },
+    );
   }
 }

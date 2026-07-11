@@ -238,7 +238,8 @@ export function prepareClaudeRequest(
   // or shrink budget if it meets/exceeds the ceiling.
   if (body.thinking?.type === "enabled" && body.thinking.budget_tokens) {
     const ceiling =
-      getCapabilitiesForModel(provider, body.model).maxOutput || DEFAULT_MAX_TOKENS;
+      getCapabilitiesForModel(provider, body.model).maxOutput ||
+      DEFAULT_MAX_TOKENS;
     if (body.thinking.budget_tokens >= body.max_tokens) {
       body.max_tokens = Math.min(body.thinking.budget_tokens + 1024, ceiling);
       if (body.thinking.budget_tokens >= body.max_tokens) {

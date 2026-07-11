@@ -70,7 +70,8 @@ function aggregateByProvider(byProvider, stats) {
     stats.byProvider[prov].requests += p.requests || 0;
     stats.byProvider[prov].promptTokens += p.promptTokens || 0;
     stats.byProvider[prov].completionTokens += p.completionTokens || 0;
-    stats.byProvider[prov].cachedTokens = (stats.byProvider[prov].cachedTokens || 0) + (p.cachedTokens || 0);
+    stats.byProvider[prov].cachedTokens =
+      (stats.byProvider[prov].cachedTokens || 0) + (p.cachedTokens || 0);
     stats.byProvider[prov].cost += p.cost || 0;
   }
 }
@@ -91,7 +92,8 @@ function aggregateByModel(byModel, stats, dateKey, providerNodeNameMap) {
     stats.byModel[statsKey].requests += m.requests || 0;
     stats.byModel[statsKey].promptTokens += m.promptTokens || 0;
     stats.byModel[statsKey].completionTokens += m.completionTokens || 0;
-    stats.byModel[statsKey].cachedTokens = (stats.byModel[statsKey].cachedTokens || 0) + (m.cachedTokens || 0);
+    stats.byModel[statsKey].cachedTokens =
+      (stats.byModel[statsKey].cachedTokens || 0) + (m.cachedTokens || 0);
     stats.byModel[statsKey].cost += m.cost || 0;
     if (dateKey > (stats.byModel[statsKey].lastUsed || ""))
       stats.byModel[statsKey].lastUsed = dateKey;
@@ -124,7 +126,8 @@ function aggregateByAccount(
     stats.byAccount[accountKey].requests += a.requests || 0;
     stats.byAccount[accountKey].promptTokens += a.promptTokens || 0;
     stats.byAccount[accountKey].completionTokens += a.completionTokens || 0;
-    stats.byAccount[accountKey].cachedTokens = (stats.byAccount[accountKey].cachedTokens || 0) + (a.cachedTokens || 0);
+    stats.byAccount[accountKey].cachedTokens =
+      (stats.byAccount[accountKey].cachedTokens || 0) + (a.cachedTokens || 0);
     stats.byAccount[accountKey].cost += a.cost || 0;
     if (dateKey > (stats.byAccount[accountKey].lastUsed || ""))
       stats.byAccount[accountKey].lastUsed = dateKey;
@@ -164,7 +167,8 @@ function aggregateByApiKey(
     stats.byApiKey[apiKeyKey].requests += ak.requests || 0;
     stats.byApiKey[apiKeyKey].promptTokens += ak.promptTokens || 0;
     stats.byApiKey[apiKeyKey].completionTokens += ak.completionTokens || 0;
-    stats.byApiKey[apiKeyKey].cachedTokens = (stats.byApiKey[apiKeyKey].cachedTokens || 0) + (ak.cachedTokens || 0);
+    stats.byApiKey[apiKeyKey].cachedTokens =
+      (stats.byApiKey[apiKeyKey].cachedTokens || 0) + (ak.cachedTokens || 0);
     stats.byApiKey[apiKeyKey].cost += ak.cost || 0;
     if (dateKey > (stats.byApiKey[apiKeyKey].lastUsed || ""))
       stats.byApiKey[apiKeyKey].lastUsed = dateKey;
@@ -188,7 +192,8 @@ function aggregateByEndpoint(byEndpoint, stats, dateKey, providerNodeNameMap) {
     stats.byEndpoint[epKey].requests += ep.requests || 0;
     stats.byEndpoint[epKey].promptTokens += ep.promptTokens || 0;
     stats.byEndpoint[epKey].completionTokens += ep.completionTokens || 0;
-    stats.byEndpoint[epKey].cachedTokens = (stats.byEndpoint[epKey].cachedTokens || 0) + (ep.cachedTokens || 0);
+    stats.byEndpoint[epKey].cachedTokens =
+      (stats.byEndpoint[epKey].cachedTokens || 0) + (ep.cachedTokens || 0);
     stats.byEndpoint[epKey].cost += ep.cost || 0;
     if (dateKey > (stats.byEndpoint[epKey].lastUsed || ""))
       stats.byEndpoint[epKey].lastUsed = dateKey;
@@ -257,7 +262,8 @@ function aggregateLiveHistory(
     const tokens = parseJson(r.tokens, {}) || {};
     const promptTokens = tokens.prompt_tokens || 0;
     const completionTokens = tokens.completion_tokens || 0;
-    const cachedTokens = tokens.cached_tokens || tokens.cache_read_input_tokens || 0;
+    const cachedTokens =
+      tokens.cached_tokens || tokens.cache_read_input_tokens || 0;
     const entryCost = r.cost || 0;
     const providerDisplayName = providerNodeNameMap[r.provider] || r.provider;
 
@@ -500,7 +506,14 @@ export async function getUsageStats(period = "all") {
   const useDailySummary = period !== "24h" && period !== "today";
 
   if (useDailySummary) {
-    const periodDays = { "7d": 7, "30d": 30, "60d": 60, "90d": 90, "180d": 180, "365d": 365 };
+    const periodDays = {
+      "7d": 7,
+      "30d": 30,
+      "60d": 60,
+      "90d": 90,
+      "180d": 180,
+      "365d": 365,
+    };
     const maxDays = periodDays[period] || null;
     const dayRows = loadDaysInRange(db, maxDays);
     aggregateDailyData(

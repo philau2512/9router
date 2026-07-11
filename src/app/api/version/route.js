@@ -6,7 +6,10 @@ const NPM_PACKAGE_NAME = "9router";
 // Cache npm latest-version lookup for 1 hour — avoids repeat network calls on
 // every dashboard load. global survives Next.js hot reload. See upstream a4c5fa4e1.
 const VERSION_CACHE_TTL_MS = 60 * 60 * 1000;
-const versionCache = (global.__npmVersionCache ??= { value: null, fetchedAt: 0 });
+const versionCache = (global.__npmVersionCache ??= {
+  value: null,
+  fetchedAt: 0,
+});
 
 // Fetch latest version from npm registry
 function fetchLatestVersion() {
@@ -46,7 +49,10 @@ function compareVersions(a, b) {
 
 export async function GET() {
   let latestVersion = versionCache.value;
-  if (!latestVersion || Date.now() - versionCache.fetchedAt >= VERSION_CACHE_TTL_MS) {
+  if (
+    !latestVersion ||
+    Date.now() - versionCache.fetchedAt >= VERSION_CACHE_TTL_MS
+  ) {
     latestVersion = await fetchLatestVersion();
     versionCache.value = latestVersion;
     versionCache.fetchedAt = Date.now();

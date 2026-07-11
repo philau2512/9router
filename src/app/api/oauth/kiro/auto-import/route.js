@@ -102,43 +102,44 @@ export async function GET() {
     }
 
     // Read profileArn from Kiro IDE's profile.json.
-    // Important: the runtime gateway requires us-east-1 in the ARN regardless
-    // of the IDC region, so we normalize the region in the ARN to us-east-1.
+    //
+    // Only IDC (organization) tokens are bound to their own account profile and
+    // need this ARN. For Builder ID / social / imported free-tier tokens the
+    // scraped ARN is account-specific and NOT one those tokens are authorized to
+    // call — sending it yields 403 "User is not authorized to make this call."
+    // Those methods must use the shared default profile at request time, so we
+    // deliberately DO NOT persist a scraped ARN for them (leave it null).
+    const isIdc = authMethod === "idc";
     let profileArn = null;
-    const kiroProfilePaths = [
-      join(
-        process.env.APPDATA || join(homedir(), "AppData", "Roaming"),
-        "Kiro",
-        "User",
-        "globalStorage",
-        "kiro.kiroagent",
-        "profile.json",
-      ),
-      join(
-        homedir(),
-        ".config",
-        "Kiro",
-        "User",
-        "globalStorage",
-        "kiro.kiroagent",
-        "profile.json",
-      ),
-    ];
+    const kiroProfilePaths = !isIdc
+      ? []
+      : [
+          join(
+            process.env.APPDATA || join(homedir(), "AppData", "Roaming"),
+            "Kiro",
+            "User",
+            "globalStorage",
+            "kiro.kiroagent",
+            "profile.json",
+          ),
+          join(
+            homedir(),
+            ".config",
+            "Kiro",
+            "User",
+            "globalStorage",
+            "kiro.kiroagent",
+            "profile.json",
+          ),
+        ];
+    // IDC only: preserve the ARN exactly as-is — it carries the account's real
+    // service region, which the regional CodeWhisperer surface requires.
     for (const profilePath of kiroProfilePaths) {
       try {
         const profileContent = await readFile(profilePath, "utf-8");
         const profileData = JSON.parse(profileContent);
         if (profileData.arn) {
-          // IDC ARNs carry the actual service region — preserve as-is.
-          // Builder ID / social ARNs stay normalized to us-east-1 (gateway requirement).
-          // PR #2314 / Validation Session 1: guard authMethod === "idc".
-          const isIdc = authMethod === "idc";
-          profileArn = isIdc
-            ? profileData.arn
-            : profileData.arn.replace(
-                /arn:aws:codewhisperer:[^:]+:/,
-                "arn:aws:codewhisperer:us-east-1:",
-              );
+          profileArn = profileData.arn;
           break;
         }
       } catch (error) {

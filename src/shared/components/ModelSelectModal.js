@@ -684,7 +684,9 @@ export default function ModelSelectModal({
                       {!isPlaceholder && (
                         <span
                           className={`text-[9px] font-mono mt-0.5 block truncate leading-none ${
-                            isSelected || isAdded ? "text-white/70" : "text-text-muted"
+                            isSelected || isAdded
+                              ? "text-white/70"
+                              : "text-text-muted"
                           }`}
                         >
                           {model.id}

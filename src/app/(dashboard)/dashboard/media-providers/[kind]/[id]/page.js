@@ -219,10 +219,61 @@ const KIND_EXAMPLE_CONFIG = {
   },
   video: {
     inputLabel: "Prompt",
-    inputPlaceholder: "A serene lake at sunset",
-    defaultInput: "A serene lake at sunset",
+    inputPlaceholder: "A serene lake at sunset, cinematic, 4k",
+    defaultInput: "A serene lake at sunset, cinematic, 4k",
     bodyKey: "prompt",
-    defaultResponse: `{\n  "data": [\n    { "url": "..." }\n  ]\n}`,
+    defaultResponse: `{\n  "request_id": "...",\n  "status": "pending"\n}`,
+    // Sample params — only non-empty values are sent. When no video models are
+    // registered for the provider, all fields show; otherwise they filter by
+    // the selected model's `params` list.
+    extraFields: [
+      {
+        key: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        default: "16:9",
+        options: ["", "16:9", "9:16", "1:1", "4:3", "3:4"],
+      },
+      {
+        key: "resolution",
+        label: "Resolution",
+        type: "select",
+        default: "720p",
+        options: ["", "480p", "720p", "1080p"],
+      },
+      {
+        key: "duration_seconds",
+        label: "Duration (s)",
+        type: "number",
+        default: 5,
+        min: 1,
+        max: 60,
+      },
+      {
+        key: "fps",
+        label: "FPS",
+        type: "number",
+        default: 24,
+        min: 1,
+        max: 60,
+      },
+      { key: "n", label: "n", type: "number", default: 1, min: 1, max: 4 },
+      { key: "seed", label: "Seed", type: "number", default: "", min: 0 },
+      {
+        key: "operation",
+        label: "Operation",
+        type: "select",
+        default: "",
+        options: ["", "generations", "edits", "extensions"],
+      },
+      {
+        key: "request_id",
+        label: "Poll request_id",
+        type: "text",
+        default: "",
+        placeholder: "leave empty to create; set to poll status",
+      },
+    ],
   },
   music: {
     inputLabel: "Prompt",
@@ -1226,15 +1277,25 @@ function GenericExampleCard({ providerId, kind }) {
   const exConfig = KIND_EXAMPLE_CONFIG[kind];
   const safeExConfig = exConfig || {};
 
-  // Get models for this kind (e.g., type="image")
-  const kindModels = getModelsByProviderId(providerId).filter(
-    (m) => m.type === kind,
-  );
+  // Built-in models for this kind (e.g. type="image") + custom models from DB
+  const builtinKindModels = getModelsByProviderId(providerId).filter((m) => {
+    if (m.kinds) return m.kinds.includes(kind);
+    return (m.type || "llm") === kind;
+  });
+  const [customKindModels, setCustomKindModels] = useState([]);
+  const kindModels = [
+    ...builtinKindModels,
+    ...customKindModels.filter(
+      (m) => !builtinKindModels.some((b) => b.id === m.id),
+    ),
+  ];
   // Kinds that need a model identifier in the request (image/video/music)
   const KIND_NEEDS_MODEL = new Set(["image", "video", "music", "imageToText"]);
   const needsModel = KIND_NEEDS_MODEL.has(kind);
   const allowManualModel = needsModel && kindModels.length === 0;
-  const [selectedModel, setSelectedModel] = useState(kindModels[0]?.id ?? "");
+  const [selectedModel, setSelectedModel] = useState(
+    builtinKindModels[0]?.id ?? "",
+  );
   const selectedModelObj = kindModels.find((m) => m.id === selectedModel);
   const supportsEdit = !!selectedModelObj?.capabilities?.includes("edit");
   const supportsMask = !!selectedModelObj?.capabilities?.includes("mask");
@@ -1296,6 +1357,40 @@ function GenericExampleCard({ providerId, kind }) {
 
     return () => clearTimeout(timer);
   }, [providerId]);
+
+  // Merge custom models so Example dropdown matches ModelsCard (Add Model)
+  useEffect(() => {
+    const loadCustom = () => {
+      fetch("/api/models/custom", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((d) => {
+          const list = (d.models || []).filter(
+            (m) =>
+              m.providerAlias === providerAlias && (m.type || "llm") === kind,
+          );
+          setCustomKindModels(list);
+        })
+        .catch(() => {});
+    };
+    loadCustom();
+    window.addEventListener("focus", loadCustom);
+    window.addEventListener("customModelChanged", loadCustom);
+    return () => {
+      window.removeEventListener("focus", loadCustom);
+      window.removeEventListener("customModelChanged", loadCustom);
+    };
+  }, [providerAlias, kind]);
+
+  // Keep selection valid when custom models arrive / list changes
+  const kindModelIds = kindModels.map((m) => m.id).join("\0");
+  useEffect(() => {
+    if (!needsModel) return;
+    if (!kindModelIds) return;
+    const ids = kindModelIds.split("\0");
+    if (!selectedModel || !ids.includes(selectedModel)) {
+      queueMicrotask(() => setSelectedModel(ids[0]));
+    }
+  }, [kindModelIds, needsModel, selectedModel]);
 
   // Safe to early-return now that all hooks are declared
   if (!kindConfig || !exConfig) return null;
@@ -1658,14 +1753,28 @@ function GenericExampleCard({ providerId, kind }) {
           </Row>
         )}
 
-        {/* Extra fields — for kinds without model concept (webSearch/webFetch), show all; otherwise filter by model.params */}
+        {/* Extra fields — webSearch/webFetch: all fields; media models: filter by model.params.
+            Custom models without params get the common image option set so Add Model still has controls. */}
         {(exConfig.extraFields || [])
-          .filter(
-            (f) =>
-              kindModels.length === 0 ||
-              (Array.isArray(selectedModelObj?.params) &&
-                selectedModelObj.params.includes(f.key)),
-          )
+          .filter((f) => {
+            if (kindModels.length === 0) return true;
+            if (Array.isArray(selectedModelObj?.params)) {
+              return selectedModelObj.params.includes(f.key);
+            }
+            // Custom / unknown model: show standard image options
+            if (kind === "image") {
+              return [
+                "n",
+                "size",
+                "quality",
+                "background",
+                "response_format",
+                "image_detail",
+                "output_format",
+              ].includes(f.key);
+            }
+            return false;
+          })
           .map((f) => (
             <Row key={f.key} label={f.label}>
               {f.type === "select" ? (
@@ -2421,35 +2530,40 @@ export default function MediaProviderDetailPage() {
         />
       )}
 
-      {/* Provider Info — config-driven, supports searchConfig, fetchConfig, ttsConfig, embeddingConfig, searchViaChat */}
+      {/* Provider Info — only for kinds that own the config (not searchViaChat on image pages) */}
       {!isCustom &&
-        (provider.searchConfig ||
-          provider.fetchConfig ||
-          provider.ttsConfig ||
-          provider.sttConfig ||
-          provider.embeddingConfig ||
-          provider.searchViaChat) && (
-          <ProviderInfoCard
-            config={
-              kind === "webFetch"
-                ? provider.fetchConfig
+        (() => {
+          const infoConfig =
+            kind === "webFetch"
+              ? provider.fetchConfig
+              : kind === "webSearch"
+                ? provider.searchConfig ||
+                  (provider.searchViaChat
+                    ? {
+                        mode: "chat-completions",
+                        defaultModel: provider.searchViaChat.defaultModel,
+                        pricingUrl: provider.searchViaChat.pricingUrl,
+                        freeTier: provider.searchViaChat.freeTier,
+                      }
+                    : null)
                 : kind === "tts"
                   ? provider.ttsConfig
                   : kind === "stt"
                     ? provider.sttConfig
                     : kind === "embedding"
                       ? provider.embeddingConfig
-                      : provider.searchConfig || {
-                          mode: "chat-completions",
-                          defaultModel: provider.searchViaChat?.defaultModel,
-                          pricingUrl: provider.searchViaChat?.pricingUrl,
-                          freeTier: provider.searchViaChat?.freeTier,
-                        }
-            }
-            provider={provider}
-            title={`${kindConfig.label} Config`}
-          />
-        )}
+                      : kind === "image"
+                        ? provider.imageConfig
+                        : null;
+          if (!infoConfig) return null;
+          return (
+            <ProviderInfoCard
+              config={infoConfig}
+              provider={provider}
+              title={`${kindConfig.label} Config`}
+            />
+          );
+        })()}
 
       {/* Example — per kind */}
       {kind === "embedding" && (

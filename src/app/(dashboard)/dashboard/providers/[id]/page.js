@@ -110,7 +110,11 @@ export default function ProviderDetailPage() {
     providerId === "xai" ? "Grok Build OAuth" : "OAuth";
   const apiKeyConnectionLabel =
     providerId === "xai" ? "xAI API Key" : "API Key";
-  const models = getModelsByProviderId(providerId);
+  const staticModels = getModelsByProviderId(providerId);
+  // Live catalog fetched from /api/providers/{id}/models (codex/antigravity use
+  // the Phase 1 dynamic resolvers; kiro/gemini-cli etc. via their resolvers).
+  // null = not fetched / failed → panel keeps the static catalog.
+  const [liveModels, setLiveModels] = useState(null);
   const providerAlias = getProviderAlias(providerId);
   const providerStorageAlias = isCompatible ? providerId : providerAlias;
   const providerDisplayAlias = isCompatible
@@ -178,6 +182,9 @@ export default function ProviderDetailPage() {
     handleSwapPriority,
     setSelectedConnectionsAutoRefresh,
     copySelectedEmails,
+    copySelectedNames,
+    handleToggleActiveSelected,
+    handleSetAllSelectedActive,
     toggleSelectConnection,
     selectedConnections,
     allSelected,
@@ -203,12 +210,63 @@ export default function ProviderDetailPage() {
     handleWarmupSingle,
     clearWarmupResults,
     handleClearSelectedErrors,
+    activeJsonConnection,
+    handleViewJson,
+    setActiveJsonConnection,
   } = useProviderDetailConnections({
     providerId,
     isCompatible,
     onProviderNodeLoaded: setProviderNode,
     onThinkingModeLoaded: setThinkingMode,
   });
+
+  // Dynamic model fetch for the "Available Models" panel: for OAuth providers
+  // with a live catalog (codex/antigravity/kiro/gemini-cli/...), pull the live
+  // list from /api/providers/{id}/models (which routes codex/antigravity through
+  // the Phase 1 resolvers) and overlay it on the static catalog. Fail-open:
+  // any error keeps the static list.
+  useEffect(() => {
+    if (isCompatible) {
+      queueMicrotask(() => setLiveModels(null));
+      return;
+    }
+    const activeConnection = (connections || []).find(
+      (conn) => conn && conn.id && conn.isActive !== false,
+    );
+    if (!activeConnection) {
+      queueMicrotask(() => setLiveModels(null));
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/providers/${activeConnection.id}/models`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const fetched = Array.isArray(data?.models) ? data.models : [];
+        if (!cancelled && fetched.length > 0) {
+          setLiveModels(fetched);
+        }
+      } catch {
+        // fail-open: keep static catalog
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [connections, isCompatible, providerId]);
+
+  // Overlay live models on the static catalog (union by id, live metadata wins).
+  const models = (() => {
+    if (!liveModels || liveModels.length === 0) return staticModels;
+    const byId = new Map((staticModels || []).map((m) => [m.id, m]));
+    for (const lm of liveModels) {
+      const id = lm?.id || lm?.name || lm?.model;
+      if (!id) continue;
+      byId.set(id, { ...(byId.get(id) || {}), ...lm, id });
+    }
+    return Array.from(byId.values());
+  })();
 
   const openOAuthConnection = () => {
     setShowOAuthModal(true);
@@ -442,6 +500,9 @@ export default function ProviderDetailPage() {
         setSelectedConnectionsAutoRefresh={setSelectedConnectionsAutoRefresh}
         handleManualRefreshSelected={handleManualRefreshSelected}
         copySelectedEmails={copySelectedEmails}
+        copySelectedNames={copySelectedNames}
+        handleToggleActiveSelected={handleToggleActiveSelected}
+        handleSetAllSelectedActive={handleSetAllSelectedActive}
         clearSelection={clearSelection}
         clearManualRefreshResults={clearManualRefreshResults}
         handleToggleConnectionsSort={handleToggleConnectionsSort}
@@ -451,6 +512,7 @@ export default function ProviderDetailPage() {
         handleWarmupSelected={handleWarmupSelected}
         handleWarmupSingle={handleWarmupSingle}
         clearWarmupResults={clearWarmupResults}
+        onViewJson={handleViewJson}
         handleAutoPriorityVisibleConnections={
           handleAutoPriorityVisibleConnections
         }
@@ -492,9 +554,7 @@ export default function ProviderDetailPage() {
             },
           });
         }}
-        hasErroredSelection={
-          selectedConnections.some((c) => c.lastError)
-        }
+        hasErroredSelection={selectedConnections.some((c) => c.lastError)}
         handleRunOneByOneTest={handleRunOneByOneTest}
         handleStopOneByOneTest={handleStopOneByOneTest}
         openBulkProxyModal={openBulkProxyModal}
@@ -629,6 +689,8 @@ export default function ProviderDetailPage() {
         onAgRiskConfirm={handleAgRiskConfirm}
         confirmState={confirmState}
         onCloseConfirm={() => setConfirmState(null)}
+        activeJsonConnection={activeJsonConnection}
+        onCloseJsonModal={() => setActiveJsonConnection(null)}
       />
     </div>
   );

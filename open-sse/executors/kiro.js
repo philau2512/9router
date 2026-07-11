@@ -2,8 +2,15 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { randomUUID } from "crypto";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
-import { resolveDefaultProfileArn } from "../config/kiroConstants.js";
+import { resolveKiroRequestProfileArn } from "../config/kiroConstants.js";
 import { fetchKiroProfileArn } from "../../src/lib/oauth/kiro-provider-helpers.js";
+
+// Phase 2 hot-path: module-scope decoder/encoder reused across every frame and
+// chunk. Frames are decoded as COMPLETE length-prefixed slices, so a shared
+// non-streaming decoder is correct. Do NOT switch this to { stream: true } or
+// share it across partial frames.
+const _kiroDecoder = new TextDecoder("utf-8");
+const _kiroEncoder = new TextEncoder();
 
 /**
  * KiroExecutor - Executor for Kiro AI (AWS CodeWhisperer)
@@ -32,12 +39,15 @@ export class KiroExecutor extends BaseExecutor {
       }
     }
 
-    // Inject profileArn header — required by Kiro/CodeWhisperer gateway for all auth methods.
-    // Without this header, the API returns 403 "User is not authorized to make this call."
-    // Fallback to public default ARN when not stored (e.g. old connections pre-fix).
-    const profileArn =
-      credentials?.providerSpecificData?.profileArn ||
-      resolveDefaultProfileArn(authMethod);
+    // Inject profileArn header, ENDPOINT-AWARE. The correct value depends on
+    // which host this attempt targets (buildUrl stashes it on
+    // credentials.__kiroResolvedUrl just before this runs):
+    //   - kiro.dev surface  -> free-tier Builder ID needs the shared AAAA ARN
+    //   - amazonaws surface -> free-tier Builder ID must OMIT the ARN
+    // Sending the wrong one for the endpoint yields 400 (omit on kiro.dev) or
+    // 403 (AAAA on amazonaws). Account-specific ARNs (idc/api_key) always win.
+    const endpoint = credentials?.__kiroResolvedUrl;
+    const profileArn = resolveKiroRequestProfileArn(credentials, { endpoint });
     if (profileArn) {
       headers["x-amzn-codewhisperer-profile-arn"] = profileArn;
     }
@@ -45,7 +55,19 @@ export class KiroExecutor extends BaseExecutor {
     return headers;
   }
 
+  // Endpoint-aware body profileArn. The translator sets an initial value before
+  // the fallback loop, but the correct value is endpoint-specific, so we
+  // reconcile it here (transformRequest runs per-endpoint inside the loop).
   transformRequest(model, body, stream, credentials) {
+    const endpoint = credentials?.__kiroResolvedUrl;
+    const profileArn = resolveKiroRequestProfileArn(credentials, { endpoint });
+    if (body && typeof body === "object") {
+      if (profileArn) {
+        body.profileArn = profileArn;
+      } else {
+        delete body.profileArn;
+      }
+    }
     return body;
   }
 
@@ -83,10 +105,19 @@ export class KiroExecutor extends BaseExecutor {
         .map(regionalize);
       const others = baseUrls.filter((u) => !u.includes("amazonaws.com"));
       const ordered = amazon.length > 0 ? [...amazon, ...others] : baseUrls;
-      return ordered[urlIndex] || ordered[0];
+      const resolved = ordered[urlIndex] || ordered[0];
+      // Stash the resolved URL on the (per-request) credentials so buildHeaders
+      // and transformRequest can pick the endpoint-correct profileArn.
+      if (credentials) credentials.__kiroResolvedUrl = resolved;
+      return resolved;
     }
 
-    return super.buildUrl(model, stream, urlIndex, credentials);
+    const resolved = super.buildUrl(model, stream, urlIndex, credentials);
+    // Same endpoint stash for the default (kiro.dev-first) surface, so
+    // free-tier Builder ID sends the shared ARN on kiro.dev and omits it on
+    // the amazonaws fallback hosts.
+    if (credentials) credentials.__kiroResolvedUrl = resolved;
+    return resolved;
   }
 
   /**
@@ -107,16 +138,28 @@ export class KiroExecutor extends BaseExecutor {
     const { credentials } = args;
     const authMethod = credentials?.providerSpecificData?.authMethod;
 
-    // IDC tokens may not carry profileArn when provisioned cross-region.
-    // Discover and inject the ARN before building headers for the request.
-    // Port of upstream PR #2355.
-    if (authMethod === "idc" && !credentials?.providerSpecificData?.profileArn) {
+    // Dynamic profile ARN discovery (ported from Kiro-Go's ResolveProfileArn).
+    //
+    // Only ACCOUNT-BOUND methods (idc / api_key / external_idp) can resolve
+    // their own ARN via ListAvailableProfiles. Free-tier Builder ID CANNOT —
+    // that call returns 403 "AWS Builder ID is not supported for this
+    // operation" (verified empirically) — so builder-id relies on the
+    // endpoint-aware shared ARN in resolveKiroRequestProfileArn instead of
+    // discovery. Social gets its ARN from the token-refresh response.
+    const canDiscover =
+      authMethod === "idc" ||
+      authMethod === "api_key" ||
+      authMethod === "external_idp";
+    const needsDiscovery =
+      !credentials?.providerSpecificData?.profileArn && canDiscover;
+    if (needsDiscovery) {
       const callerRegion =
         credentials?.providerSpecificData?.region || "us-east-1";
       try {
         const discovered = await fetchKiroProfileArn(
           credentials.accessToken,
           callerRegion,
+          args.proxyOptions || null,
         );
         if (discovered?.arn) {
           // Spread to avoid mutating the original reference — safe for retry logic
@@ -125,19 +168,52 @@ export class KiroExecutor extends BaseExecutor {
             profileArn: discovered.arn,
             region: discovered.region,
           };
+          // Persist so subsequent requests skip discovery (best-effort).
+          if (typeof args.onProfileArnDiscovered === "function") {
+            try {
+              await args.onProfileArnDiscovered({
+                profileArn: discovered.arn,
+                region: discovered.region,
+              });
+            } catch {
+              /* non-fatal */
+            }
+          }
         }
       } catch (err) {
         // Non-fatal: proceed without profileArn, let upstream return the error
-        console.warn(`[Kiro] IDC profile ARN discovery failed: ${err.message}`);
+        console.warn(
+          `[Kiro] Profile ARN discovery failed for ${authMethod}: ${err.message}`,
+        );
       }
     }
 
     const result = await super.execute(args);
     if (result?.response?.ok) {
-      result.response = this.transformEventStreamToSSE(
-        result.response,
-        args.model,
-      );
+      if (args.emitObjects) {
+        // Phase 3 (option c) fused path: hand parsed OpenAI chunk OBJECTS to the
+        // downstream translate layer instead of re-serializing to SSE bytes.
+        // We DON'T consume/replace result.response.body with a byte transform;
+        // we decode straight to an object-mode stream and expose it separately.
+        // result.response is kept as a headers-only SSE placeholder so the
+        // handler's content-type guard still sees text/event-stream (the raw
+        // upstream body has now been consumed by the object decoder).
+        result.kiroObjectStream = this.transformEventStreamToSSE(
+          result.response,
+          args.model,
+          { emitObjects: true },
+        );
+        result.response = new Response(null, {
+          status: result.response.status,
+          statusText: result.response.statusText,
+          headers: { "Content-Type": "text/event-stream" },
+        });
+      } else {
+        result.response = this.transformEventStreamToSSE(
+          result.response,
+          args.model,
+        );
+      }
     }
     return result;
   }
@@ -146,9 +222,29 @@ export class KiroExecutor extends BaseExecutor {
    * Transform AWS EventStream binary response to SSE text stream
    * Using TransformStream instead of ReadableStream.pull() to avoid Workers timeout
    */
-  transformEventStreamToSSE(response, model) {
-    let buffer = new Uint8Array(0);
-    let readOffset = 0;
+  transformEventStreamToSSE(response, model, { emitObjects = false } = {}) {
+    // Phase 3 (option c) object hand-off: when emitObjects=true, emit parsed
+    // OpenAI `chat.completion.chunk` OBJECTS directly (object-mode ReadableStream)
+    // instead of serialized `data: {...}\n\n` bytes, and a final `{ done: true }`
+    // sentinel instead of `data: [DONE]`. This lets the downstream translate layer
+    // consume objects and skip the serialize->reparse round-trip (measured ~34-38%
+    // of the OpenAI->Claude translate transform CPU). The byte path (emitObjects
+    // =false, the default) is UNCHANGED and byte-identical — _frame/_doneFrame
+    // collapse to exactly the previous `_kiroEncoder.encode(...)` expressions.
+    const _frame = emitObjects
+      ? (o) => o
+      : (o) => _kiroEncoder.encode(`data: ${JSON.stringify(o)}\n\n`);
+    const _doneFrame = emitObjects
+      ? { done: true }
+      : _kiroEncoder.encode("data: [DONE]\n\n");
+
+    // Phase 2 hot-path: growable accumulator instead of a per-chunk
+    // `new Uint8Array(remaining + chunk.length)` full-copy. We keep a backing
+    // buffer with writePos/readOffset and only realloc/compact when the tail
+    // has no room, turning the previous quadratic total copy into linear.
+    let backing = new Uint8Array(16384);
+    let writePos = 0; // bytes written into backing
+    let readOffset = 0; // bytes already consumed by the parser
     let chunkIndex = 0;
     const responseId = `chatcmpl-${Date.now()}`;
     const created = Math.floor(Date.now() / 1000);
@@ -164,35 +260,81 @@ export class KiroExecutor extends BaseExecutor {
       totalContentLength: 0,
       contextUsagePercentage: 0,
       inThinking: false,
+      // Feature 3 (ported from Kiro-Go): cumulative text normalization.
+      // Kiro upstream sometimes sends CUMULATIVE content chunks where
+      // chunk N = full text up to that point (not just the delta).
+      // We track the last emitted content and reasoning text to detect
+      // overlap and emit only the new delta portion.
+      lastAssistantContent: "",
+      lastReasoningContent: "",
     };
+
+    // Ported from Kiro-Go normalizeChunk(): detect cumulative text and extract delta.
+    // If chunk == previous text, return "" (duplicate). If chunk starts with
+    // previous, return only the new suffix. If previous starts with chunk, it's
+    // a late re-delivery — skip. Otherwise check for overlap and return the new part.
+    function normalizeChunk(chunk, previous) {
+      if (!chunk) return { text: "", updated: previous };
+      if (!previous) return { text: chunk, updated: chunk };
+      if (chunk === previous) return { text: "", updated: previous };
+      if (chunk.startsWith(previous)) {
+        return { text: chunk.slice(previous.length), updated: chunk };
+      }
+      if (previous.startsWith(chunk)) return { text: "", updated: previous };
+      // Check suffix/prefix overlap. Only consider overlaps of 8+ chars to
+      // avoid false positives on trivial single-char matches (e.g. a trailing
+      // space matching the leading space of the next delta). Kiro cumulative
+      // mode always has substantial overlap (dozens to hundreds of chars).
+      const maxOverlap = Math.min(previous.length, chunk.length);
+      for (let i = maxOverlap; i >= 8; i--) {
+        if (previous.endsWith(chunk.slice(0, i))) {
+          return { text: chunk.slice(i), updated: previous + chunk.slice(i) };
+        }
+      }
+      // No meaningful overlap: treat as fresh delta
+      return { text: chunk, updated: previous + chunk };
+    }
 
     const transformStream = new TransformStream({
       async transform(chunk, controller) {
-        // Tối ưu hóa: Dọn dẹp buffer đã đọc và ghép nối chunk mới
-        const remainingLength = buffer.length - readOffset;
-        const newBuffer = new Uint8Array(remainingLength + chunk.length);
-        if (remainingLength > 0) {
-          newBuffer.set(buffer.subarray(readOffset));
+        // Append the incoming chunk into spare tail capacity. Only realloc/compact
+        // when the tail can't hold it — amortized O(1) append instead of the old
+        // per-chunk full-buffer copy.
+        if (writePos + chunk.length > backing.length) {
+          const remaining = writePos - readOffset;
+          const needed = remaining + chunk.length;
+          if (needed > backing.length) {
+            // Grow: at least double, but always large enough for this chunk
+            // (handles a single chunk larger than the whole current buffer).
+            const newCap = Math.max(backing.length * 2, needed);
+            const grown = new Uint8Array(newCap);
+            if (remaining > 0)
+              grown.set(backing.subarray(readOffset, writePos));
+            backing = grown;
+          } else if (remaining > 0) {
+            // Fits after reclaiming the consumed prefix: compact in place once.
+            backing.copyWithin(0, readOffset, writePos);
+          }
+          writePos = remaining;
+          readOffset = 0;
         }
-        newBuffer.set(chunk, remainingLength);
-        buffer = newBuffer;
-        readOffset = 0;
+        backing.set(chunk, writePos);
+        writePos += chunk.length;
 
-        // Parse events from buffer
+        // Parse events from the unread region [readOffset, writePos)
         let iterations = 0;
         const maxIterations = 1000;
-        while (buffer.length - readOffset >= 16 && iterations < maxIterations) {
+        while (writePos - readOffset >= 16 && iterations < maxIterations) {
           iterations++;
           const view = new DataView(
-            buffer.buffer,
-            buffer.byteOffset + readOffset,
+            backing.buffer,
+            backing.byteOffset + readOffset,
           );
           const totalLength = view.getUint32(0, false);
 
-          if (totalLength < 16 || totalLength > buffer.length - readOffset)
-            break;
+          if (totalLength < 16 || totalLength > writePos - readOffset) break;
 
-          const eventData = buffer.subarray(
+          const eventData = backing.subarray(
             readOffset,
             readOffset + totalLength,
           );
@@ -235,11 +377,7 @@ export class KiroExecutor extends BaseExecutor {
               };
               chunkIndex++;
               state.reasoningChunkCount++;
-              controller.enqueue(
-                new TextEncoder().encode(
-                  `data: ${JSON.stringify(reasoningChunk)}\n\n`,
-                ),
-              );
+              controller.enqueue(_frame(reasoningChunk));
             }
             // Kiro model "auto" leaks <thinking>...</thinking> blocks into the
             // assistantResponseEvent content stream. Strip the tags and re-emit
@@ -285,6 +423,15 @@ export class KiroExecutor extends BaseExecutor {
               // Nothing left to emit as regular content after stripping thinking
               continue;
             }
+
+            // Feature 3: normalize cumulative text (Kiro-Go port).
+            // Kiro upstream may send chunk N as the FULL text up to that point.
+            // normalizeChunk extracts only the new delta portion.
+            const norm = normalizeChunk(content, state.lastAssistantContent);
+            state.lastAssistantContent = norm.updated;
+            content = norm.text;
+            if (!content) continue;
+
             state.totalContentLength += content.length;
 
             const chunk = {
@@ -304,9 +451,7 @@ export class KiroExecutor extends BaseExecutor {
               ],
             };
             chunkIndex++;
-            controller.enqueue(
-              new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`),
-            );
+            controller.enqueue(_frame(chunk));
           }
 
           // Handle reasoningContentEvent (Kiro thinking / reasoning)
@@ -345,9 +490,7 @@ export class KiroExecutor extends BaseExecutor {
               };
               chunkIndex++;
               state.reasoningChunkCount++;
-              controller.enqueue(
-                new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`),
-              );
+              controller.enqueue(_frame(chunk));
             }
           }
 
@@ -367,9 +510,7 @@ export class KiroExecutor extends BaseExecutor {
               ],
             };
             chunkIndex++;
-            controller.enqueue(
-              new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`),
-            );
+            controller.enqueue(_frame(chunk));
           }
 
           // Handle toolUseEvent
@@ -418,11 +559,7 @@ export class KiroExecutor extends BaseExecutor {
                   ],
                 };
                 chunkIndex++;
-                controller.enqueue(
-                  new TextEncoder().encode(
-                    `data: ${JSON.stringify(startChunk)}\n\n`,
-                  ),
-                );
+                controller.enqueue(_frame(startChunk));
               } else {
                 toolIndex = state.seenToolIds.get(toolCallId);
               }
@@ -461,11 +598,7 @@ export class KiroExecutor extends BaseExecutor {
                   ],
                 };
                 chunkIndex++;
-                controller.enqueue(
-                  new TextEncoder().encode(
-                    `data: ${JSON.stringify(argsChunk)}\n\n`,
-                  ),
-                );
+                controller.enqueue(_frame(argsChunk));
               }
             }
           }
@@ -510,12 +643,10 @@ export class KiroExecutor extends BaseExecutor {
               chunk.usage = state.usage;
             }
 
-            controller.enqueue(
-              new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`),
-            );
+            controller.enqueue(_frame(chunk));
 
             if (!state.doneEmitted) {
-              controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+              controller.enqueue(_doneFrame);
               state.doneEmitted = true;
             }
           }
@@ -545,8 +676,14 @@ export class KiroExecutor extends BaseExecutor {
               // ponytail: Amazon Q upstream does not expose cache fields today,
               // but pick up cache_read_input_tokens / cache_creation_input_tokens
               // if the event shape grows them so cost tracking stays accurate.
-              const cachedTokens = metrics.cacheReadInputTokens || metrics.cache_read_input_tokens || 0;
-              const cacheCreationInputTokens = metrics.cacheCreationInputTokens || metrics.cache_creation_input_tokens || 0;
+              const cachedTokens =
+                metrics.cacheReadInputTokens ||
+                metrics.cache_read_input_tokens ||
+                0;
+              const cacheCreationInputTokens =
+                metrics.cacheCreationInputTokens ||
+                metrics.cache_creation_input_tokens ||
+                0;
 
               if (inputTokens > 0 || outputTokens > 0) {
                 state.usage = {
@@ -557,8 +694,11 @@ export class KiroExecutor extends BaseExecutor {
                 // Kiro is Claude-backed: inputTokens EXCLUDES cache (Claude convention),
                 // not inclusive like OpenAI's cached_tokens. Emit cache_read_input_tokens
                 // (not cached_tokens) so canonicalizeUsage takes the Claude fold path.
-                if (cachedTokens > 0) state.usage.cache_read_input_tokens = cachedTokens;
-                if (cacheCreationInputTokens > 0) state.usage.cache_creation_input_tokens = cacheCreationInputTokens;
+                if (cachedTokens > 0)
+                  state.usage.cache_read_input_tokens = cachedTokens;
+                if (cacheCreationInputTokens > 0)
+                  state.usage.cache_creation_input_tokens =
+                    cacheCreationInputTokens;
               }
             }
           }
@@ -612,11 +752,7 @@ export class KiroExecutor extends BaseExecutor {
               finishChunk.usage = state.usage;
             }
 
-            controller.enqueue(
-              new TextEncoder().encode(
-                `data: ${JSON.stringify(finishChunk)}\n\n`,
-              ),
-            );
+            controller.enqueue(_frame(finishChunk));
           }
         }
 
@@ -639,7 +775,7 @@ export class KiroExecutor extends BaseExecutor {
 
         // Send final done message
         if (!state.doneEmitted) {
-          controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+          controller.enqueue(_doneFrame);
           state.doneEmitted = true;
         }
       },
@@ -647,12 +783,28 @@ export class KiroExecutor extends BaseExecutor {
 
     // Pipe response body through transform stream
     if (!response.body) {
+      // Object mode: an empty object stream that emits only the done sentinel.
+      if (emitObjects) {
+        return new ReadableStream({
+          start(controller) {
+            controller.enqueue({ done: true });
+            controller.close();
+          },
+        });
+      }
       return new Response("data: [DONE]\n\n", {
         status: response.status,
         headers: { "Content-Type": "text/event-stream" },
       });
     }
     const transformedStream = response.body.pipeThrough(transformStream);
+
+    // Object mode: return the raw object-mode ReadableStream (not a Response —
+    // objects can't ride in a Response body). The caller pipes it through the
+    // object-input translate transform. See handleStreamingResponse.
+    if (emitObjects) {
+      return transformedStream;
+    }
 
     return new Response(transformedStream, {
       status: response.status,
@@ -704,9 +856,7 @@ function parseEventFrame(data) {
       offset++;
       if (offset + nameLen > data.length) break;
 
-      const name = new TextDecoder().decode(
-        data.slice(offset, offset + nameLen),
-      );
+      const name = _kiroDecoder.decode(data.subarray(offset, offset + nameLen));
       offset += nameLen;
 
       const headerType = data[offset];
@@ -718,8 +868,8 @@ function parseEventFrame(data) {
         offset += 2;
         if (offset + valueLen > data.length) break;
 
-        const value = new TextDecoder().decode(
-          data.slice(offset, offset + valueLen),
+        const value = _kiroDecoder.decode(
+          data.subarray(offset, offset + valueLen),
         );
         offset += valueLen;
         headers[name] = value;
@@ -734,8 +884,8 @@ function parseEventFrame(data) {
 
     let payload = null;
     if (payloadEnd > payloadStart) {
-      const payloadStr = new TextDecoder().decode(
-        data.slice(payloadStart, payloadEnd),
+      const payloadStr = _kiroDecoder.decode(
+        data.subarray(payloadStart, payloadEnd),
       );
 
       // Skip empty or whitespace-only payloads

@@ -200,14 +200,17 @@ export function convertKiroToOpenAI(chunk, state) {
       const cacheRead =
         usage.cacheReadInputTokens || usage.cache_read_input_tokens || 0;
       const cacheCreation =
-        usage.cacheCreationInputTokens || usage.cache_creation_input_tokens || 0;
+        usage.cacheCreationInputTokens ||
+        usage.cache_creation_input_tokens ||
+        0;
       state.usage = {
         prompt_tokens: input,
         completion_tokens: output,
         total_tokens: input + output,
       };
       if (cacheRead > 0) state.usage.cache_read_input_tokens = cacheRead;
-      if (cacheCreation > 0) state.usage.cache_creation_input_tokens = cacheCreation;
+      if (cacheCreation > 0)
+        state.usage.cache_creation_input_tokens = cacheCreation;
     }
     return null;
   }

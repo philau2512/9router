@@ -263,7 +263,9 @@ export async function handleNonStreamingResponse({
     endpoint: clientRawRequest?.endpoint,
   });
 
-  const translatedResponse = needsTranslation(targetFormat, sourceFormat)
+  // needsTranslation signature is (sourceFormat, targetFormat) — pass in order
+  // (Red Team S3 Finding 16). translateNonStreamingResponse keeps its own arg order.
+  const translatedResponse = needsTranslation(sourceFormat, targetFormat)
     ? translateNonStreamingResponse(responseBody, targetFormat, sourceFormat)
     : responseBody;
 

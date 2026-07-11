@@ -94,7 +94,7 @@ export const OAUTH_PROVIDERS = {
     textIcon: "XA",
     website: "https://x.ai",
     notice: { apiKeyUrl: "https://console.x.ai", signupUrl: "https://x.ai" },
-    serviceKinds: ["llm", "imageToText", "webSearch", "image"],
+    serviceKinds: ["llm", "imageToText", "webSearch", "image", "video"],
     searchViaChat: {
       defaultModel: "grok-4.20-reasoning",
       pricingUrl: "https://x.ai/api#pricing",

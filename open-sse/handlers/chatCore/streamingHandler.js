@@ -3,6 +3,7 @@ import { needsTranslation } from "../../translator/index.js";
 import {
   createSSETransformStreamWithLogger,
   createPassthroughStreamWithLogger,
+  createObjectTranslateStreamWithLogger,
 } from "../../utils/stream.js";
 import { pipeWithDisconnect } from "../../utils/streamHandler.js";
 import { PROVIDERS } from "../../config/providers.js";
@@ -40,9 +41,9 @@ function buildTransformStream({
   apiKey,
   streamStateTracker,
   targetModelAlias = null,
-  armStall = null,
-  onUpstreamFirstByte = null,
-  onClearStall = null,
+  // Phase 3 (option c): when true, the translate transform consumes parsed
+  // OpenAI objects (from Kiro's object-mode decode) instead of SSE bytes.
+  objectInput = false,
 }) {
   const isDroidCLI =
     userAgent?.toLowerCase().includes("droid") ||
@@ -79,8 +80,16 @@ function buildTransformStream({
     );
   }
 
-  if (needsTranslation(targetFormat, sourceFormat)) {
-    return createSSETransformStreamWithLogger(
+  // needsTranslation signature is (sourceFormat, targetFormat) — pass in order.
+  // Symmetric today, but keep call sites consistent to avoid latent misrouting
+  // if a format-specific branch is ever added. (Red Team S3 Finding 16)
+  if (needsTranslation(sourceFormat, targetFormat)) {
+    // Phase 3 (option c): object-input translate transform when Kiro hands off
+    // parsed OpenAI objects (skips serialize->reparse); same args otherwise.
+    const build = objectInput
+      ? createObjectTranslateStreamWithLogger
+      : createSSETransformStreamWithLogger;
+    return build(
       targetFormat,
       sourceFormat,
       provider,
@@ -105,9 +114,6 @@ function buildTransformStream({
     apiKey,
     streamStateTracker,
     targetModelAlias,
-    armStall,
-    onUpstreamFirstByte,
-    onClearStall,
   );
 }
 
@@ -138,6 +144,9 @@ export async function handleStreamingResponse({
   midStreamResumeEnabled,
   timing,
   streamDetailId,
+  // Phase 3 (option c): Kiro's object-mode decode stream when the fused path is
+  // active (streaming Kiro request needing translation). Null otherwise.
+  kiroObjectStream = null,
 }) {
   if (onRequestSuccess) {
     Promise.resolve()
@@ -156,22 +165,46 @@ export async function handleStreamingResponse({
   // pull a short human-readable message from the <title>, sanitize it, and
   // return a clean JSON error instead. The message is stripped of HTML tags
   // and clamped so untrusted upstream text never reaches the client verbatim.
-  const upstreamContentType = (providerResponse.headers?.get("content-type") || "").toLowerCase();
-  if (upstreamContentType && !upstreamContentType.includes("text/event-stream") && !upstreamContentType.includes("application/json")) {
+  const upstreamContentType = (
+    providerResponse.headers?.get("content-type") || ""
+  ).toLowerCase();
+  if (
+    upstreamContentType &&
+    !upstreamContentType.includes("text/event-stream") &&
+    !upstreamContentType.includes("application/json")
+  ) {
     const bodyText = await providerResponse.text().catch(() => "");
     const titleMatch = bodyText.match(/<title>([^<]+)<\/title>/i);
-    const sanitizedTitle = (titleMatch?.[1] || "").replace(/<[^>]*>/g, "").replace(/[\r\n]+/g, " ").trim().slice(0, 160);
-    const shortMsg = sanitizedTitle
-      || (bodyText.length < 200 ? bodyText.replace(/<[^>]*>/g, "").trim().slice(0, 160) : `Upstream returned non-SSE response (${upstreamContentType})`);
+    const sanitizedTitle = (titleMatch?.[1] || "")
+      .replace(/<[^>]*>/g, "")
+      .replace(/[\r\n]+/g, " ")
+      .trim()
+      .slice(0, 160);
+    const shortMsg =
+      sanitizedTitle ||
+      (bodyText.length < 200
+        ? bodyText
+            .replace(/<[^>]*>/g, "")
+            .trim()
+            .slice(0, 160)
+        : `Upstream returned non-SSE response (${upstreamContentType})`);
     const status = providerResponse.status || 502;
-    console.warn(`[STREAM] ${provider} | ${model} | blocked pipe: ${shortMsg} [${status}]`);
+    console.warn(
+      `[STREAM] ${provider} | ${model} | blocked pipe: ${shortMsg} [${status}]`,
+    );
     streamController?.handleError?.(new Error(`upstream non-SSE: ${status}`));
     return {
       success: false,
-      response: new Response(JSON.stringify({ error: { message: `[${status}]: ${shortMsg}` } }), {
-        status,
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-      }),
+      response: new Response(
+        JSON.stringify({ error: { message: `[${status}]: ${shortMsg}` } }),
+        {
+          status,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        },
+      ),
     };
   }
 
@@ -215,6 +248,7 @@ export async function handleStreamingResponse({
     apiKey,
     streamStateTracker,
     targetModelAlias,
+    objectInput: !!kiroObjectStream,
   });
 
   const resumeCtx = midStreamResumeEnabled
@@ -245,6 +279,9 @@ export async function handleStreamingResponse({
     model,
     provider,
     resumeCtx,
+    // Phase 3 (option c): feed Kiro's object-mode decode stream through the
+    // stall tap + object-input translate transform. Byte body used otherwise.
+    kiroObjectStream,
   );
 
   setImmediate(() => {
@@ -301,7 +338,12 @@ export function buildOnStreamComplete({
   // Generate a shared id so the placeholder row (0 tokens) and the final row
   // (real usage) target the same DB record via ON CONFLICT(id) upsert.
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-  const onStreamComplete = (contentObj, usage, ttftAt, sharedStreamDetailId) => {
+  const onStreamComplete = (
+    contentObj,
+    usage,
+    ttftAt,
+    sharedStreamDetailId,
+  ) => {
     const resolvedId = sharedStreamDetailId ?? streamDetailId;
     const total = Date.now() - requestStartTime;
     const latency = {

@@ -160,6 +160,27 @@ export function parseQuotaData(provider, data) {
         }
         break;
 
+      case "grok-cli":
+      case "gcli":
+      case "xai":
+        // Grok billing rows come keyed by label (Monthly credits / Weekly
+        // limit / On-demand / Prepaid). Preserve remainingPercentage + unlimited
+        // so depleted ($0/$0) and unknown windows render correctly instead of a
+        // wrong 0% bar (same handling as antigravity).
+        if (data.quotas) {
+          Object.entries(data.quotas).forEach(([name, quota]) => {
+            normalizedQuotas.push({
+              name,
+              used: quota.used || 0,
+              total: quota.total || 0,
+              resetAt: quota.resetAt || null,
+              remainingPercentage: quota.remainingPercentage,
+              unlimited: quota.unlimited,
+            });
+          });
+        }
+        break;
+
       case "claude":
         if (data.message) {
           // Handle error message case

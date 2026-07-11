@@ -176,9 +176,12 @@ export default function AddApiKeyModal({
       let bulkProviderSpecificData;
       if (isCloudflareAi && parts.length >= 3) {
         apiKey = parts.slice(1, -1).join("|").trim();
-        bulkProviderSpecificData = { accountId: parts[parts.length - 1].trim() };
+        bulkProviderSpecificData = {
+          accountId: parts[parts.length - 1].trim(),
+        };
       } else {
-        apiKey = parts.length >= 2 ? parts.slice(1).join("|").trim() : parts[0].trim();
+        apiKey =
+          parts.length >= 2 ? parts.slice(1).join("|").trim() : parts[0].trim();
       }
       try {
         const res = await fetch("/api/providers", {
@@ -190,7 +193,9 @@ export default function AddApiKeyModal({
             name,
             priority: 1,
             testStatus: "unknown",
-            ...(bulkProviderSpecificData ? { providerSpecificData: bulkProviderSpecificData } : {}),
+            ...(bulkProviderSpecificData
+              ? { providerSpecificData: bulkProviderSpecificData }
+              : {}),
           }),
         });
         if (res.ok) success++;

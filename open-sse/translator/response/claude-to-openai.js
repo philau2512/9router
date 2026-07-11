@@ -35,10 +35,20 @@ export function claudeToOpenAIResponse(chunk, state) {
       // delta (output-only) doesn't reset it to zero.
       const startUsage = chunk.message?.usage;
       if (startUsage && typeof startUsage === "object") {
-        const inputTokens = typeof startUsage.input_tokens === "number" ? startUsage.input_tokens : 0;
-        const cacheReadTokens = typeof startUsage.cache_read_input_tokens === "number" ? startUsage.cache_read_input_tokens : 0;
-        const cacheCreationTokens = typeof startUsage.cache_creation_input_tokens === "number" ? startUsage.cache_creation_input_tokens : 0;
-        const promptTokens = inputTokens + cacheReadTokens + cacheCreationTokens;
+        const inputTokens =
+          typeof startUsage.input_tokens === "number"
+            ? startUsage.input_tokens
+            : 0;
+        const cacheReadTokens =
+          typeof startUsage.cache_read_input_tokens === "number"
+            ? startUsage.cache_read_input_tokens
+            : 0;
+        const cacheCreationTokens =
+          typeof startUsage.cache_creation_input_tokens === "number"
+            ? startUsage.cache_creation_input_tokens
+            : 0;
+        const promptTokens =
+          inputTokens + cacheReadTokens + cacheCreationTokens;
         state.usage = {
           prompt_tokens: promptTokens,
           completion_tokens: 0,
@@ -46,8 +56,10 @@ export function claudeToOpenAIResponse(chunk, state) {
           input_tokens: inputTokens,
           output_tokens: 0,
         };
-        if (cacheReadTokens > 0) state.usage.cache_read_input_tokens = cacheReadTokens;
-        if (cacheCreationTokens > 0) state.usage.cache_creation_input_tokens = cacheCreationTokens;
+        if (cacheReadTokens > 0)
+          state.usage.cache_read_input_tokens = cacheReadTokens;
+        if (cacheCreationTokens > 0)
+          state.usage.cache_creation_input_tokens = cacheCreationTokens;
       }
       results.push(createChunk(state, { role: "assistant" }));
       break;
@@ -137,7 +149,7 @@ export function claudeToOpenAIResponse(chunk, state) {
         const inputTokens =
           typeof chunk.usage.input_tokens === "number"
             ? chunk.usage.input_tokens
-            : (prev.input_tokens || 0);
+            : prev.input_tokens || 0;
         const outputTokens =
           typeof chunk.usage.output_tokens === "number"
             ? chunk.usage.output_tokens
@@ -145,11 +157,11 @@ export function claudeToOpenAIResponse(chunk, state) {
         const cacheReadTokens =
           typeof chunk.usage.cache_read_input_tokens === "number"
             ? chunk.usage.cache_read_input_tokens
-            : (prev.cache_read_input_tokens || 0);
+            : prev.cache_read_input_tokens || 0;
         const cacheCreationTokens =
           typeof chunk.usage.cache_creation_input_tokens === "number"
             ? chunk.usage.cache_creation_input_tokens
-            : (prev.cache_creation_input_tokens || 0);
+            : prev.cache_creation_input_tokens || 0;
 
         // prompt_tokens = input_tokens + cache_read + cache_creation (all prompt-side tokens)
         const promptTokens =

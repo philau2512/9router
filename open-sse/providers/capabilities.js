@@ -153,10 +153,38 @@ export const MODEL_CAPABILITIES = {
     maxOutput: 128000,
   },
   // Kiro Sonnet 5 variants — 1M context + adaptive thinking (same tier as 4.6/4.7/4.8)
-  "claude-sonnet-5":                  { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-sonnet-5-thinking":         { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-sonnet-5-agentic":          { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-sonnet-5-thinking-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-sonnet-5": {
+    vision: true,
+    reasoning: true,
+    search: true,
+    thinkingFormat: "claude-adaptive",
+    contextWindow: 1000000,
+    maxOutput: 128000,
+  },
+  "claude-sonnet-5-thinking": {
+    vision: true,
+    reasoning: true,
+    search: true,
+    thinkingFormat: "claude-adaptive",
+    contextWindow: 1000000,
+    maxOutput: 128000,
+  },
+  "claude-sonnet-5-agentic": {
+    vision: true,
+    reasoning: true,
+    search: true,
+    thinkingFormat: "claude-adaptive",
+    contextWindow: 1000000,
+    maxOutput: 128000,
+  },
+  "claude-sonnet-5-thinking-agentic": {
+    vision: true,
+    reasoning: true,
+    search: true,
+    thinkingFormat: "claude-adaptive",
+    contextWindow: 1000000,
+    maxOutput: 128000,
+  },
 
   // Gemini image-gen / OpenAI image / xai image variants
   "gpt-image-1": { imageOutput: true, tools: false },

@@ -279,7 +279,8 @@ export class DefaultExecutor extends BaseExecutor {
       gemini: () => this.refreshGoogle(credentials.refreshToken, proxyOptions),
       kiro: () => this.refreshKiro(credentials.refreshToken, proxyOptions),
       cline: () => this.refreshCline(credentials.refreshToken, proxyOptions),
-      clinepass: () => this.refreshCline(credentials.refreshToken, proxyOptions),
+      clinepass: () =>
+        this.refreshCline(credentials.refreshToken, proxyOptions),
       "kimi-coding": () =>
         this.refreshKimiCoding(credentials.refreshToken, proxyOptions),
       kilocode: () =>

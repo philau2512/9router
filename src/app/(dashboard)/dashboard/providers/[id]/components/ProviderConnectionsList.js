@@ -18,6 +18,7 @@ export default function ProviderConnectionsList({
   isConnectionsSortActive,
   warmupResults,
   handleWarmupSingle,
+  onViewJson,
 }) {
   return (
     <div className="flex min-w-0 flex-col divide-y divide-black/[0.03] dark:divide-white/[0.03]">
@@ -63,6 +64,7 @@ export default function ProviderConnectionsList({
                 disablePriorityControls={isConnectionsSortActive}
                 onWarmup={(options) => handleWarmupSingle(conn.id, options)}
                 warmupStatus={warmupResults[conn.id] || null}
+                onViewJson={() => onViewJson(conn.id)}
               />
             </div>
           </div>

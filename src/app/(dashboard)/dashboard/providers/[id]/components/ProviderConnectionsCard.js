@@ -41,6 +41,9 @@ export default function ProviderConnectionsCard({
   setSelectedConnectionsAutoRefresh,
   handleManualRefreshSelected,
   copySelectedEmails,
+  copySelectedNames,
+  handleToggleActiveSelected,
+  handleSetAllSelectedActive,
   clearSelection,
   clearManualRefreshResults,
   handleToggleConnectionsSort,
@@ -68,6 +71,7 @@ export default function ProviderConnectionsCard({
   handleWarmupSelected,
   handleWarmupSingle,
   clearWarmupResults,
+  onViewJson,
 }) {
   if (isFreeNoAuth) {
     return <NoAuthProxyCard providerId={providerId} />;
@@ -89,6 +93,9 @@ export default function ProviderConnectionsCard({
         setSelectedConnectionsAutoRefresh={setSelectedConnectionsAutoRefresh}
         handleManualRefreshSelected={handleManualRefreshSelected}
         copySelectedEmails={copySelectedEmails}
+        copySelectedNames={copySelectedNames}
+        handleToggleActiveSelected={handleToggleActiveSelected}
+        handleSetAllSelectedActive={handleSetAllSelectedActive}
         clearSelection={clearSelection}
         clearManualRefreshResults={clearManualRefreshResults}
         manualRefreshSummary={manualRefreshSummary}
@@ -241,6 +248,7 @@ export default function ProviderConnectionsCard({
               isConnectionsSortActive={isConnectionsSortActive}
               warmupResults={warmupResults}
               handleWarmupSingle={handleWarmupSingle}
+              onViewJson={onViewJson}
             />
           )}
 

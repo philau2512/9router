@@ -30,7 +30,7 @@ import {
   resolveKiroThinkingBudget,
   buildThinkingSystemPrefix,
   KIRO_AGENTIC_SYSTEM_PROMPT,
-  resolveDefaultProfileArn,
+  resolveKiroRequestProfileArn,
 } from "../../config/kiroConstants.js";
 import { DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { ROLE, CLAUDE_BLOCK } from "../schema/index.js";
@@ -408,15 +408,12 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
     reconcileOrphanedToolResults(history, currentMessage);
   }
 
-  // api_key / idc / external_idp must never use the shared default ARN (belongs
-  // to another account → 403 "bearer token invalid"); OAuth/social fall back to it.
-  const authMethod = credentials?.providerSpecificData?.authMethod;
-  const accountBoundAuth =
-    authMethod === "api_key" || authMethod === "idc" || authMethod === "external_idp";
-  const profileArn = accountBoundAuth
-    ? (credentials?.providerSpecificData?.profileArn || "")
-    : (credentials?.providerSpecificData?.profileArn ||
-        resolveDefaultProfileArn(authMethod));
+  // Resolve the profileArn to send. See resolveKiroRequestProfileArn:
+  // account-bound methods send their own ARN (or "" to use the token default);
+  // free-tier Builder ID / social send the shared default and NEVER an
+  // account-specific ARN that leaked into storage (root cause of 403
+  // "User is not authorized to make this call.").
+  const profileArn = resolveKiroRequestProfileArn(credentials);
 
   let finalContent = currentMessage?.userInputMessage?.content || "";
 

@@ -78,6 +78,7 @@ export default function ConnectionRow({
   onSelectChange = null,
   onWarmup = null,
   warmupStatus = null,
+  onViewJson = null,
 }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
@@ -599,6 +600,18 @@ export default function ConnectionRow({
               </div>
             )}
           </div>
+          {onViewJson && (
+            <button
+              onClick={onViewJson}
+              className="flex flex-col items-center rounded px-2 py-1 text-text-muted hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+              title="Export raw JSON"
+            >
+              <span className="material-symbols-outlined text-[18px]">
+                terminal
+              </span>
+              <span className="text-[10px] leading-tight">Export</span>
+            </button>
+          )}
           <button
             onClick={onEdit}
             className="flex flex-col items-center rounded px-2 py-1 text-text-muted hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
@@ -679,4 +692,5 @@ ConnectionRow.propTypes = {
     state: PropTypes.string,
     error: PropTypes.string,
   }),
+  onViewJson: PropTypes.func,
 };

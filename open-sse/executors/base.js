@@ -265,6 +265,14 @@ export class BaseExecutor {
           const fallbackDetails = timingBreakdown.proxyError
             ? ` | proxyError=${timingBreakdown.proxyError}${timingBreakdown.directFallbackMs !== undefined ? ` | directFallback=${timingBreakdown.directFallbackMs}ms` : ""}`
             : "";
+          // INFO-level log when proxy is actually used so operators can confirm
+          // the proxy pool is active without enabling DEBUG logging.
+          if (timingBreakdown.proxyUrl) {
+            log?.info?.(
+              "PROXY",
+              `${this.provider.toUpperCase()} | mode=${timingBreakdown.mode}${proxyDetails} | headers=${timingBreakdown.headersMs ?? "?"}ms${fallbackDetails}`,
+            );
+          }
           log?.debug?.(
             "FETCH",
             `${this.provider.toUpperCase()} | mode=${timingBreakdown.mode}${proxyDetails} | headers=${timingBreakdown.headersMs ?? "?"}ms | dns=${timingBreakdown.dnsMs ?? "-"}ms | dispatcher=${timingBreakdown.dispatcherMs ?? "-"}ms | proxyHeaders=${timingBreakdown.proxyHeadersMs ?? "-"}ms | relay=${timingBreakdown.relayMs ?? "-"}ms${fallbackDetails}`,

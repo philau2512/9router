@@ -2,7 +2,13 @@ import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
 import { DATA_DIR } from "@/lib/dataDir.js";
-import { findHeadroomBinary, findPython310, HEADROOM_COMPRESSION_EXTRAS, EXTRA_MARKERS, getInstalledHeadroomExtras } from "./detect.js";
+import {
+  findHeadroomBinary,
+  findPython310,
+  HEADROOM_COMPRESSION_EXTRAS,
+  EXTRA_MARKERS,
+  getInstalledHeadroomExtras,
+} from "./detect.js";
 
 const HEADROOM_DIR = path.join(DATA_DIR, "headroom");
 const PID_FILE = path.join(HEADROOM_DIR, "proxy.pid");
@@ -12,13 +18,17 @@ const DEFAULT_PORT = 8787;
 const STARTUP_TIMEOUT_MS = 8000;
 
 function ensureDir() {
-  if (!fs.existsSync(HEADROOM_DIR)) fs.mkdirSync(HEADROOM_DIR, { recursive: true });
+  if (!fs.existsSync(HEADROOM_DIR))
+    fs.mkdirSync(HEADROOM_DIR, { recursive: true });
 }
 
 function readPid() {
   try {
-    if (fs.existsSync(PID_FILE)) return parseInt(fs.readFileSync(PID_FILE, "utf8"), 10);
-  } catch { /* ignore */ }
+    if (fs.existsSync(PID_FILE))
+      return parseInt(fs.readFileSync(PID_FILE, "utf8"), 10);
+  } catch {
+    /* ignore */
+  }
   return null;
 }
 
@@ -28,13 +38,22 @@ function writePid(pid) {
 }
 
 function clearPid() {
-  try { if (fs.existsSync(PID_FILE)) fs.unlinkSync(PID_FILE); } catch { /* ignore */ }
+  try {
+    if (fs.existsSync(PID_FILE)) fs.unlinkSync(PID_FILE);
+  } catch {
+    /* ignore */
+  }
 }
 
 // process.kill throws if pid is dead — use this to probe.
 export function isPidAlive(pid) {
   if (!pid || typeof pid !== "number") return false;
-  try { process.kill(pid, 0); return true; } catch { return false; }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function getManagedPid() {
@@ -52,8 +71,13 @@ function extrasProxyArgs({ codeAware, kompress } = {}) {
   return args;
 }
 
-export async function startHeadroomProxy({ port = DEFAULT_PORT, codeAware = false, kompress = true } = {}) {
-  const safePort = Number(port) > 0 && Number(port) < 65536 ? Number(port) : DEFAULT_PORT;
+export async function startHeadroomProxy({
+  port = DEFAULT_PORT,
+  codeAware = false,
+  kompress = true,
+} = {}) {
+  const safePort =
+    Number(port) > 0 && Number(port) < 65536 ? Number(port) : DEFAULT_PORT;
   const binary = findHeadroomBinary();
   if (!binary) {
     const err = new Error("Headroom CLI not installed");
@@ -68,7 +92,12 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, codeAware = fals
   // spawn stdio requires fd numbers, not WriteStream objects.
   const outFd = fs.openSync(LOG_FILE, "a");
 
-  const args = ["proxy", "--port", String(safePort), ...extrasProxyArgs({ codeAware, kompress })];
+  const args = [
+    "proxy",
+    "--port",
+    String(safePort),
+    ...extrasProxyArgs({ codeAware, kompress }),
+  ];
   const child = spawn(binary, args, {
     stdio: ["ignore", outFd, outFd],
     detached: true,
@@ -90,14 +119,19 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, codeAware = fals
   await new Promise((resolve, reject) => {
     const startupTimer = setTimeout(() => {
       if (isPidAlive(child.pid)) resolve();
-      else reject(new Error("headroom proxy exited during startup — see proxy.log"));
+      else
+        reject(
+          new Error("headroom proxy exited during startup — see proxy.log"),
+        );
     }, STARTUP_TIMEOUT_MS);
 
     child.once("exit", (code) => {
       clearTimeout(startupTimer);
       clearPid();
       fs.closeSync(outFd);
-      const e = new Error(`headroom proxy exited early (code=${code}) — see proxy.log`);
+      const e = new Error(
+        `headroom proxy exited early (code=${code}) — see proxy.log`,
+      );
       e.code = "EARLY_EXIT";
       reject(e);
     });
@@ -117,7 +151,11 @@ export function stopHeadroomProxy() {
     // Give it a moment, then force if still alive.
     setTimeout(() => {
       if (isPidAlive(pid)) {
-        try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          /* already gone */
+        }
       }
     }, 2000);
     clearPid();
@@ -135,13 +173,21 @@ export function stopHeadroomProxy() {
 export async function restartHeadroomProxy(opts = {}) {
   const pid = getManagedPid();
   if (pid) {
-    try { process.kill(pid, "SIGTERM"); } catch { /* already gone */ }
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      /* already gone */
+    }
     // Wait up to ~3s for graceful exit, force-kill if still alive.
     for (let i = 0; i < 30 && isPidAlive(pid); i++) {
       await new Promise((r) => setTimeout(r, 100));
     }
     if (isPidAlive(pid)) {
-      try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        /* already gone */
+      }
       await new Promise((r) => setTimeout(r, 300));
     }
     clearPid();
@@ -155,7 +201,9 @@ export function getHeadroomLogTail(maxLines = 200) {
     const content = fs.readFileSync(LOG_FILE, "utf8");
     const lines = content.split(/\r?\n/).filter(Boolean);
     return lines.slice(-maxLines).join("\n");
-  } catch { return ""; }
+  } catch {
+    return "";
+  }
 }
 
 // Install (or upgrade) headroom-ai with the requested compression extras.
@@ -164,7 +212,9 @@ export function getHeadroomLogTail(maxLines = 200) {
 // `proxy` base + whatever extras the user picked, regardless of what is
 // already present.
 export async function installHeadroomExtras(extras = []) {
-  const requested = Array.isArray(extras) ? extras.filter((e) => HEADROOM_COMPRESSION_EXTRAS.includes(e)) : [];
+  const requested = Array.isArray(extras)
+    ? extras.filter((e) => HEADROOM_COMPRESSION_EXTRAS.includes(e))
+    : [];
   const py = findPython310();
   if (!py) {
     const err = new Error("Python >= 3.10 not found");
@@ -172,7 +222,9 @@ export async function installHeadroomExtras(extras = []) {
     throw err;
   }
   if (!findHeadroomBinary()) {
-    const err = new Error("headroom-ai not installed (run `pip install headroom-ai[proxy]` first)");
+    const err = new Error(
+      "headroom-ai not installed (run `pip install headroom-ai[proxy]` first)",
+    );
     err.code = "NOT_INSTALLED";
     throw err;
   }
@@ -193,14 +245,19 @@ export async function installHeadroomExtras(extras = []) {
   });
 
   return new Promise((resolve, reject) => {
-    child.once("error", (e) => { fs.closeSync(outFd); reject(e); });
+    child.once("error", (e) => {
+      fs.closeSync(outFd);
+      reject(e);
+    });
     child.once("exit", (code) => {
       fs.closeSync(outFd);
       if (code === 0) {
         const status = getInstalledHeadroomExtras(py);
         resolve({ success: true, code, spec, extras: requested, ...status });
       } else {
-        const err = new Error(`pip install exited with code=${code} — see headroom/install.log`);
+        const err = new Error(
+          `pip install exited with code=${code} — see headroom/install.log`,
+        );
         err.code = "INSTALL_FAILED";
         reject(err);
       }
@@ -211,7 +268,9 @@ export async function installHeadroomExtras(extras = []) {
 // Uninstall the marker packages that back a single extra (e.g. `ml` → torch,
 // huggingface-hub). `headroom-ai` base and the `proxy` extra are never removed.
 export async function uninstallHeadroomExtras(extras = []) {
-  const requested = Array.isArray(extras) ? extras.filter((e) => HEADROOM_COMPRESSION_EXTRAS.includes(e)) : [];
+  const requested = Array.isArray(extras)
+    ? extras.filter((e) => HEADROOM_COMPRESSION_EXTRAS.includes(e))
+    : [];
   const py = findPython310();
   if (!py) {
     const err = new Error("Python >= 3.10 not found");
@@ -235,14 +294,25 @@ export async function uninstallHeadroomExtras(extras = []) {
   });
 
   return new Promise((resolve, reject) => {
-    child.once("error", (e) => { fs.closeSync(outFd); reject(e); });
+    child.once("error", (e) => {
+      fs.closeSync(outFd);
+      reject(e);
+    });
     child.once("exit", (code) => {
       fs.closeSync(outFd);
       if (code === 0) {
         const status = getInstalledHeadroomExtras(py);
-        resolve({ success: true, code, removed: pkgs, extras: requested, ...status });
+        resolve({
+          success: true,
+          code,
+          removed: pkgs,
+          extras: requested,
+          ...status,
+        });
       } else {
-        const err = new Error(`pip uninstall exited with code=${code} — see headroom/install.log`);
+        const err = new Error(
+          `pip uninstall exited with code=${code} — see headroom/install.log`,
+        );
         err.code = "UNINSTALL_FAILED";
         reject(err);
       }
@@ -254,7 +324,12 @@ export async function uninstallHeadroomExtras(extras = []) {
 export function getInstallLogTail(maxLines = 15) {
   try {
     if (!fs.existsSync(INSTALL_LOG_FILE)) return "";
-    const lines = fs.readFileSync(INSTALL_LOG_FILE, "utf8").split(/\r?\n/).filter(Boolean);
+    const lines = fs
+      .readFileSync(INSTALL_LOG_FILE, "utf8")
+      .split(/\r?\n/)
+      .filter(Boolean);
     return lines.slice(-maxLines).join("\n");
-  } catch { return ""; }
+  } catch {
+    return "";
+  }
 }

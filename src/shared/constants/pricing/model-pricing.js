@@ -431,11 +431,11 @@ export const MODEL_PRICING = {
   },
   "gemini-2.5-flash-lite": {
     // Source: https://ai.google.dev/pricing — $0.10/$0.40 per MTok
-    input: 0.10,
-    output: 0.40,
+    input: 0.1,
+    output: 0.4,
     cached: 0.01,
-    reasoning: 0.60,
-    cache_creation: 0.10,
+    reasoning: 0.6,
+    cache_creation: 0.1,
   },
 
   // === Xiaomi MiMo ===
@@ -718,6 +718,11 @@ export const MODEL_PRICING = {
     cached: 0.25,
     reasoning: 3.0,
     cache_creation: 0.5,
+  },
+  "grok-4.5": {
+    input: 4,
+    output: 18,
+    cached: 0.5,
   },
 
   // === OpenRouter fallback ===

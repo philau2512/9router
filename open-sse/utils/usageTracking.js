@@ -227,7 +227,9 @@ export function canonicalizeUsage(usage) {
     // Gemini translator stores cached under prompt_tokens_details.cached_tokens (OpenAI
     // nested shape) rather than top-level cached_tokens — read both so the value survives
     // canonicalization and reaches the DB.
-    cached = num(usage.cached_tokens ?? usage.prompt_tokens_details?.cached_tokens);
+    cached = num(
+      usage.cached_tokens ?? usage.prompt_tokens_details?.cached_tokens,
+    );
   }
 
   const result = {
