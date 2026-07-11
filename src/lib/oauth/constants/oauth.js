@@ -290,10 +290,9 @@ export const GROK_CLI_CONFIG = {
   clientId: "b1a00492-073a-47ea-816f-4c329264a828",
   deviceCodeUrl: "https://auth.x.ai/oauth2/device/code",
   tokenUrl: "https://auth.x.ai/oauth2/token",
+  // Scope from HAR capture of official grok-shell/grok-pager — matches registry/grok-cli.js
   scope:
-    "openid profile email offline_access " +
-    "api-key:read api-key:write model:read model:write " +
-    "conversation:read conversation:write",
+    "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write",
   referrer: "grok-build",
   pollInterval: 5000,
 };

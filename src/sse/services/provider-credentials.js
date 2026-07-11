@@ -90,10 +90,13 @@ export async function getProviderCredentials(
       };
     }
 
-    const connections = await getProviderConnections({
-      provider: providerId,
-      isActive: true,
-    });
+    // xai and grok-cli share auth.x.ai infrastructure.
+    // Connections stored as grok-cli (Grok Build OAuth) are valid for xai requests.
+    const _providerIds = providerId === 'xai' ? [providerId, 'grok-cli'] : [providerId];
+    const _connArrays = await Promise.all(
+      _providerIds.map((pid) => getProviderConnections({ provider: pid, isActive: true }))
+    );
+    const connections = _connArrays.flat();
     log.debug(
       "AUTH",
       `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`,
@@ -326,6 +329,8 @@ export async function markAccountUnavailable(
     lowerError.includes("limit reached") ||
     lowerError.includes("monthly_request_count") ||
     lowerError.includes("individual quota reached");
+    lowerError.includes("usage limit exceeded");
+    lowerError.includes("out of credits");
 
   const isSuspended =
     lowerError.includes("suspended") ||

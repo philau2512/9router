@@ -93,8 +93,13 @@ export function useProviderDetailConnections({
       } = await fetchProviderDetailPageData(providerId);
 
       if (connectionsRes.ok) {
+        // xai page shows both xai (API key) and grok-cli (Grok Build OAuth) connections
+        const matchProviders =
+          providerId === "xai"
+            ? new Set(["xai", "grok-cli"])
+            : new Set([providerId]);
         const filtered = (connectionsData.connections || []).filter(
-          (c) => c.provider === providerId,
+          (c) => matchProviders.has(c.provider),
         );
         applyConnections(filtered);
       }

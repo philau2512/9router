@@ -100,19 +100,24 @@ let workerInstance = null;
 
 export async function getObservabilityWorker() {
   if (process.env.VITEST || process.env.NODE_ENV === "test") return null;
+  // Worker threads are not reliable in webpack/Next.js bundled server context —
+  // import.meta.url is polyfilled and worker_threads path resolution fails.
+  // Skip silently; observability degrades gracefully without the worker.
+  if (typeof __webpack_require__ !== "undefined") return null;
   if (workerInstance) return workerInstance;
 
   try {
     const { Worker } = await import("worker_threads");
-    const { fileURLToPath } = await import("url");
+    const { fileURLToPath, pathToFileURL } = await import("url");
     const path = await import("path");
 
-    // Resolve absolute path string directly from the ESM raw string metadata to bypass Webpack's URL polyfill
+    // fileURLToPath(import.meta.url) bypasses webpack's URL polyfill and gives the
+    // real OS path. pathToFileURL converts it back to a proper file:// URL that
+    // Node.js Worker requires when type:"module" is set (raw Windows paths are rejected).
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     const workerPath = path.join(__dirname, "observabilityWorker.js");
-
-    workerInstance = new Worker(workerPath);
+    workerInstance = new Worker(pathToFileURL(workerPath), { type: "module" });
 
     workerInstance.on("error", (err) => {
       console.error("[ObservabilityWorker] Worker thread error:", err);
