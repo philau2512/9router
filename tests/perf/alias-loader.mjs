@@ -9,7 +9,11 @@ import { pathToFileURL } from "node:url";
 import { resolve as pathResolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = pathResolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const repoRoot = pathResolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+);
 const srcRoot = pathResolve(repoRoot, "src");
 
 const hookSource = `
@@ -26,4 +30,7 @@ const hookSource = `
   }
 `;
 
-register(`data:text/javascript,${encodeURIComponent(hookSource)}`, pathToFileURL("./"));
+register(
+  `data:text/javascript,${encodeURIComponent(hookSource)}`,
+  pathToFileURL("./"),
+);

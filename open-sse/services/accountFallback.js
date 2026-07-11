@@ -25,9 +25,7 @@ import {
  * @returns {{ kind: "quotaExhausted"|"softRateLimit"|"rateLimited", retryAfterMs: number|null }}
  */
 export function classify429(status, info = {}) {
-  const text = (info.message || "")
-    .toString()
-    .toLowerCase();
+  const text = (info.message || "").toString().toLowerCase();
 
   // Hard exhaustion signals → never retry same auth; cooldown + fallback.
   if (

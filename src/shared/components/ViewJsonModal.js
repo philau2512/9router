@@ -29,7 +29,7 @@ export default function ViewJsonModal({ isOpen, onClose, connection }) {
       const blob = new Blob([jsonString], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      
+
       // Clean connection name and email for filename
       const safeName = (connection.name || connection.provider || "connection")
         .replace(/[^a-z0-9_-]/gi, "_")
@@ -37,11 +37,11 @@ export default function ViewJsonModal({ isOpen, onClose, connection }) {
       const safeEmail = (connection.email || "")
         .replace(/[^a-z0-9_@.-]/gi, "_")
         .toLowerCase();
-      
-      const filename = safeEmail 
-        ? `${safeName}_${safeEmail}.json` 
+
+      const filename = safeEmail
+        ? `${safeName}_${safeEmail}.json`
         : `${safeName}_${connection.id.slice(0, 8)}.json`;
-      
+
       link.href = url;
       link.download = filename;
       document.body.appendChild(link);
@@ -65,7 +65,11 @@ export default function ViewJsonModal({ isOpen, onClose, connection }) {
             {copied && <Badge variant="success">Copied to clipboard!</Badge>}
           </div>
           <div className="flex gap-2">
-            <Button onClick={handleCopy} variant="secondary" icon="content_copy">
+            <Button
+              onClick={handleCopy}
+              variant="secondary"
+              icon="content_copy"
+            >
               Copy
             </Button>
             <Button onClick={handleDownload} variant="primary" icon="download">
@@ -80,7 +84,8 @@ export default function ViewJsonModal({ isOpen, onClose, connection }) {
     >
       <div className="flex flex-col gap-3">
         <p className="text-xs text-text-muted">
-          Raw connection data stored in the database. Contains sensitive credential tokens.
+          Raw connection data stored in the database. Contains sensitive
+          credential tokens.
         </p>
         <div className="relative rounded-lg border border-border bg-surface-2 p-4 overflow-hidden">
           <pre className="text-xs font-mono max-h-[50vh] overflow-y-auto custom-scrollbar whitespace-pre-wrap break-all text-text-main select-all">

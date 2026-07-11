@@ -4,7 +4,12 @@ import { LEGACY_FILES, DB_DIR, DATA_FILE } from "./paths.js";
 import { TABLES, buildCreateTableSql } from "./schema.js";
 import { MIGRATIONS, latestVersion } from "./migrations/index.js";
 import { getMetaSync, setMetaSync } from "./helpers/metaStore.js";
-import { makeBackupDir, backupFile, backupDbLite, pruneOldBackups } from "./backup.js";
+import {
+  makeBackupDir,
+  backupFile,
+  backupDbLite,
+  pruneOldBackups,
+} from "./backup.js";
 import { getAppVersion } from "./version.js";
 import { stringifyJson } from "./helpers/jsonCol.js";
 
@@ -424,7 +429,9 @@ export async function runMigrationOnce(adapter) {
     try {
       backupDbLite(adapter, backupDir);
     } catch {
-      try { backupFile(DATA_FILE, backupDir); } catch {}
+      try {
+        backupFile(DATA_FILE, backupDir);
+      } catch {}
     }
     setMetaSync(adapter, "appVersion", newVer);
     pruneOldBackups();
@@ -437,7 +444,9 @@ export async function runMigrationOnce(adapter) {
     try {
       backupDbLite(adapter, backupDir);
     } catch {
-      try { backupFile(DATA_FILE, backupDir); } catch {}
+      try {
+        backupFile(DATA_FILE, backupDir);
+      } catch {}
     }
     pruneOldBackups();
   }

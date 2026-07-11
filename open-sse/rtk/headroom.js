@@ -100,7 +100,10 @@ function collectKiroHeadroomMessages(body) {
       .map((toolUse) => ({
         id: toolUse?.toolUseId,
         type: "function",
-        function: { name: toolUse?.name || "", arguments: JSON.stringify(toolUse?.input || {}) },
+        function: {
+          name: toolUse?.name || "",
+          arguments: JSON.stringify(toolUse?.input || {}),
+        },
       }))
       .filter((call) => call.id || call.function.name);
     return calls.length > 0 ? calls : undefined;
@@ -109,7 +112,10 @@ function collectKiroHeadroomMessages(body) {
   const visit = (item) => {
     const user = item?.userInputMessage;
     if (user) {
-      addTextTarget("system", user.systemInstruction, { object: user, key: "systemInstruction" });
+      addTextTarget("system", user.systemInstruction, {
+        object: user,
+        key: "systemInstruction",
+      });
       addTextTarget("user", user.content, { object: user, key: "content" });
       const toolResults = user.userInputMessageContext?.toolResults;
       if (Array.isArray(toolResults)) {
@@ -121,7 +127,9 @@ function collectKiroHeadroomMessages(body) {
               "tool",
               part?.text,
               { object: part, key: "text" },
-              toolResult?.toolUseId ? { tool_call_id: toolResult.toolUseId } : {},
+              toolResult?.toolUseId
+                ? { tool_call_id: toolResult.toolUseId }
+                : {},
             );
           }
         }
@@ -160,12 +168,19 @@ function textFromHeadroomMessage(message) {
   return parts.length > 0 ? parts.join("\n") : null;
 }
 
-function applyKiroHeadroomMessages(projection, compressedMessages, diagnostics) {
+function applyKiroHeadroomMessages(
+  projection,
+  compressedMessages,
+  diagnostics,
+) {
   if (
     !Array.isArray(compressedMessages) ||
     compressedMessages.length !== projection.messages.length
   ) {
-    setDiagnostic(diagnostics, "proxy response did not match Kiro message count");
+    setDiagnostic(
+      diagnostics,
+      "proxy response did not match Kiro message count",
+    );
     return false;
   }
   const updates = [];
@@ -173,7 +188,10 @@ function applyKiroHeadroomMessages(projection, compressedMessages, diagnostics) 
     const expected = projection.messages[i];
     const actual = compressedMessages[i];
     if (!actual || actual.role !== expected.role) {
-      setDiagnostic(diagnostics, "proxy response did not preserve Kiro message order");
+      setDiagnostic(
+        diagnostics,
+        "proxy response did not preserve Kiro message order",
+      );
       return false;
     }
     const text = textFromHeadroomMessage(actual);
@@ -322,12 +340,23 @@ export async function compressWithHeadroom(
     if (format === "kiro") {
       const projection = collectKiroHeadroomMessages(body);
       if (!projection) {
-        setDiagnostic(diagnostics, "Kiro request did not project to messages[]");
+        setDiagnostic(
+          diagnostics,
+          "Kiro request did not project to messages[]",
+        );
         return null;
       }
-      const data = await callCompress(url, projection.messages, model, timeoutMs, compressUserMessages, diagnostics || {});
+      const data = await callCompress(
+        url,
+        projection.messages,
+        model,
+        timeoutMs,
+        compressUserMessages,
+        diagnostics || {},
+      );
       if (!data) return null;
-      if (!applyKiroHeadroomMessages(projection, data.messages, diagnostics)) return null;
+      if (!applyKiroHeadroomMessages(projection, data.messages, diagnostics))
+        return null;
       if (diagnostics) diagnostics.after = captureSizeSnapshot(body);
       return data;
     }

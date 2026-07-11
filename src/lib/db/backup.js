@@ -55,7 +55,9 @@ export function backupDbLite(adapter, destDir, destName = "data.sqlite") {
           (m) => m.replace(/(\S+)$/, "bak.$1"),
         );
         adapter.exec(createSql);
-        adapter.exec(`INSERT INTO bak."${t.name}" SELECT * FROM main."${t.name}"`);
+        adapter.exec(
+          `INSERT INTO bak."${t.name}" SELECT * FROM main."${t.name}"`,
+        );
       }
     })();
   } finally {

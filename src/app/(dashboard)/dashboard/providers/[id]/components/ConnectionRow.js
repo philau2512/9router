@@ -606,7 +606,9 @@ export default function ConnectionRow({
               className="flex flex-col items-center rounded px-2 py-1 text-text-muted hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
               title="Export raw JSON"
             >
-              <span className="material-symbols-outlined text-[18px]">terminal</span>
+              <span className="material-symbols-outlined text-[18px]">
+                terminal
+              </span>
               <span className="text-[10px] leading-tight">Export</span>
             </button>
           )}

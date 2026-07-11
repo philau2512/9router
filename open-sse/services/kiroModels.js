@@ -178,11 +178,15 @@ async function fetchKiroCatalogRaw(credentials, signal, proxyOptions = null) {
 
   let response;
   try {
-    response = await proxyAwareFetch(url, {
-      method: "GET",
-      headers,
-      signal: controller.signal,
-    }, proxyOptions);
+    response = await proxyAwareFetch(
+      url,
+      {
+        method: "GET",
+        headers,
+        signal: controller.signal,
+      },
+      proxyOptions,
+    );
   } finally {
     clearTimeout(timer);
   }
@@ -298,12 +302,23 @@ export async function resolveKiroModels(credentials, options = {}) {
 
   let raw;
   try {
-    raw = await fetchKiroCatalogRaw(credentials, options.signal, options.proxyOptions || null);
+    raw = await fetchKiroCatalogRaw(
+      credentials,
+      options.signal,
+      options.proxyOptions || null,
+    );
   } catch (err) {
     // Kiro returns 403 (not 401) for expired/invalid tokens on ListAvailableModels.
     // Treat both as recoverable with a token refresh. PR #2298 area fix.
-    if (err && (err.status === 401 || err.status === 403) && credentials.refreshToken) {
-      options.log?.info?.("KIRO_MODELS", `Got ${err.status} from Kiro; refreshing token`);
+    if (
+      err &&
+      (err.status === 401 || err.status === 403) &&
+      credentials.refreshToken
+    ) {
+      options.log?.info?.(
+        "KIRO_MODELS",
+        `Got ${err.status} from Kiro; refreshing token`,
+      );
       const refreshed = await refreshKiroToken(
         credentials.refreshToken,
         credentials.providerSpecificData,
@@ -323,7 +338,11 @@ export async function resolveKiroModels(credentials, options = {}) {
           }
         }
         try {
-          raw = await fetchKiroCatalogRaw(next, options.signal, options.proxyOptions || null);
+          raw = await fetchKiroCatalogRaw(
+            next,
+            options.signal,
+            options.proxyOptions || null,
+          );
           // Update the in-memory credential reference too so retry logic uses
           // the fresh token consistently.
           credentials.accessToken = next.accessToken;

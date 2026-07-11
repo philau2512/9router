@@ -15,7 +15,8 @@ import {
 } from "../../open-sse/config/kiroConstants.js";
 
 const KIRO_DEV = "https://runtime.us-east-1.kiro.dev/generateAssistantResponse";
-const CW = "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse";
+const CW =
+  "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse";
 const Q = "https://q.us-east-1.amazonaws.com/generateAssistantResponse";
 const SHARED_BUILDER = KIRO_DEFAULT_PROFILE_ARNS["builder-id"];
 const SHARED_SOCIAL = KIRO_DEFAULT_PROFILE_ARNS.social;

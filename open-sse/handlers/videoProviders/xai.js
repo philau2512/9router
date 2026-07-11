@@ -109,7 +109,9 @@ export async function handleXaiVideo({
     return {
       status: 502,
       ok: false,
-      data: { error: { message: `xAI video request failed: ${err?.message || err}` } },
+      data: {
+        error: { message: `xAI video request failed: ${err?.message || err}` },
+      },
     };
   }
 

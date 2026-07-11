@@ -21,7 +21,13 @@ import { createSSETransformStreamWithLogger } from "../../open-sse/utils/stream.
 import { FORMATS } from "../../open-sse/translator/formats.js";
 
 function parseArgs(argv) {
-  const out = { chunks: 4000, chunkChars: 40, repeat: 5, warmup: 2, sliceKB: 4 };
+  const out = {
+    chunks: 4000,
+    chunkChars: 40,
+    repeat: 5,
+    warmup: 2,
+    sliceKB: 4,
+  };
   for (const a of argv.slice(2)) {
     const m = /^--([^=]+)=(.*)$/.exec(a);
     if (!m) continue;
@@ -52,9 +58,13 @@ function buildOpenAIChunkObjects({ chunks, chunkChars }) {
       choices: [
         {
           index: 0,
-          delta: i === 0
-            ? { role: "assistant", content: word.slice(0, chunkChars) + ` #${i} ` }
-            : { content: word.slice(0, chunkChars) + ` #${i} ` },
+          delta:
+            i === 0
+              ? {
+                  role: "assistant",
+                  content: word.slice(0, chunkChars) + ` #${i} `,
+                }
+              : { content: word.slice(0, chunkChars) + ` #${i} ` },
           finish_reason: null,
         },
       ],
@@ -66,7 +76,11 @@ function buildOpenAIChunkObjects({ chunks, chunkChars }) {
     created,
     model,
     choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
-    usage: { prompt_tokens: 1200, completion_tokens: chunks * 6, total_tokens: 1200 + chunks * 6 },
+    usage: {
+      prompt_tokens: 1200,
+      completion_tokens: chunks * 6,
+      total_tokens: 1200 + chunks * 6,
+    },
   });
   return objs;
 }

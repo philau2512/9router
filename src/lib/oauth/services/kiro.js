@@ -276,22 +276,30 @@ export class KiroService {
    * List available CodeWhisperer profiles for an API key / access token.
    * Returns the profileArn best matching the given region, or null.
    */
-  async listAvailableProfiles(accessToken, region = "us-east-1", proxyOptions = null) {
+  async listAvailableProfiles(
+    accessToken,
+    region = "us-east-1",
+    proxyOptions = null,
+  ) {
     assertValidAwsRegion(region);
     // q.<region>.amazonaws.com resolves in all regions;
     // codewhisperer.<region> only works in us-east-1. PR #2314 fix.
     const endpoint = `https://q.${region}.amazonaws.com`;
 
-    const response = await proxyAwareFetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-amz-json-1.0",
-        "x-amz-target": "AmazonCodeWhispererService.ListAvailableProfiles",
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/json",
+    const response = await proxyAwareFetch(
+      endpoint,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-amz-json-1.0",
+          "x-amz-target": "AmazonCodeWhispererService.ListAvailableProfiles",
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ maxResults: 10 }),
       },
-      body: JSON.stringify({ maxResults: 10 }),
-    }, proxyOptions);
+      proxyOptions,
+    );
 
     if (!response.ok) {
       const error = await response.text();

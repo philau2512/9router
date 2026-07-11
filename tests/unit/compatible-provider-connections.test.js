@@ -182,16 +182,18 @@ describe("compatible provider connections API", () => {
     cleanup = ctx.cleanup;
 
     const firstResponse = await ctx.POST(makeRequest(ctx.node.id));
-    const secondResponse = await ctx.POST(new Request("https://9router.local/api/providers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        provider: ctx.node.id,
-        apiKey: "test-key-2",
-        name: "Test Connection 2",
-        defaultModel: "test-model",
+    const secondResponse = await ctx.POST(
+      new Request("https://9router.local/api/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: ctx.node.id,
+          apiKey: "test-key-2",
+          name: "Test Connection 2",
+          defaultModel: "test-model",
+        }),
       }),
-    }));
+    );
     const storedConnections = await ctx.getProviderConnections({
       provider: ctx.node.id,
     });

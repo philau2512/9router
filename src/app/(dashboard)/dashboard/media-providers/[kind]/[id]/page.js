@@ -219,10 +219,61 @@ const KIND_EXAMPLE_CONFIG = {
   },
   video: {
     inputLabel: "Prompt",
-    inputPlaceholder: "A serene lake at sunset",
-    defaultInput: "A serene lake at sunset",
+    inputPlaceholder: "A serene lake at sunset, cinematic, 4k",
+    defaultInput: "A serene lake at sunset, cinematic, 4k",
     bodyKey: "prompt",
-    defaultResponse: `{\n  "data": [\n    { "url": "..." }\n  ]\n}`,
+    defaultResponse: `{\n  "request_id": "...",\n  "status": "pending"\n}`,
+    // Sample params — only non-empty values are sent. When no video models are
+    // registered for the provider, all fields show; otherwise they filter by
+    // the selected model's `params` list.
+    extraFields: [
+      {
+        key: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        default: "16:9",
+        options: ["", "16:9", "9:16", "1:1", "4:3", "3:4"],
+      },
+      {
+        key: "resolution",
+        label: "Resolution",
+        type: "select",
+        default: "720p",
+        options: ["", "480p", "720p", "1080p"],
+      },
+      {
+        key: "duration_seconds",
+        label: "Duration (s)",
+        type: "number",
+        default: 5,
+        min: 1,
+        max: 60,
+      },
+      {
+        key: "fps",
+        label: "FPS",
+        type: "number",
+        default: 24,
+        min: 1,
+        max: 60,
+      },
+      { key: "n", label: "n", type: "number", default: 1, min: 1, max: 4 },
+      { key: "seed", label: "Seed", type: "number", default: "", min: 0 },
+      {
+        key: "operation",
+        label: "Operation",
+        type: "select",
+        default: "",
+        options: ["", "generations", "edits", "extensions"],
+      },
+      {
+        key: "request_id",
+        label: "Poll request_id",
+        type: "text",
+        default: "",
+        placeholder: "leave empty to create; set to poll status",
+      },
+    ],
   },
   music: {
     inputLabel: "Prompt",
@@ -1315,8 +1366,7 @@ function GenericExampleCard({ providerId, kind }) {
         .then((d) => {
           const list = (d.models || []).filter(
             (m) =>
-              m.providerAlias === providerAlias &&
-              (m.type || "llm") === kind,
+              m.providerAlias === providerAlias && (m.type || "llm") === kind,
           );
           setCustomKindModels(list);
         })
@@ -1338,7 +1388,7 @@ function GenericExampleCard({ providerId, kind }) {
     if (!kindModelIds) return;
     const ids = kindModelIds.split("\0");
     if (!selectedModel || !ids.includes(selectedModel)) {
-      setSelectedModel(ids[0]);
+      queueMicrotask(() => setSelectedModel(ids[0]));
     }
   }, [kindModelIds, needsModel, selectedModel]);
 

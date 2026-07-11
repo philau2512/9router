@@ -73,13 +73,13 @@ function EditConnectionModalForm({ connection, onSave, onClose }) {
       isAnthropicCompatibleProvider(connection.provider)
     : false;
   const providerRegions = connection
-    ? (AI_PROVIDERS?.[connection.provider]?.regions || null)
+    ? AI_PROVIDERS?.[connection.provider]?.regions || null
     : null;
 
   // Build providerSpecificData for region-aware providers
   const buildRegionSpecificData = () => {
     if (providerRegions && region)
-      return { ...((connection?.providerSpecificData) || {}), region };
+      return { ...(connection?.providerSpecificData || {}), region };
     return undefined;
   };
 
@@ -113,7 +113,9 @@ function EditConnectionModalForm({ connection, onSave, onClose }) {
           apiKey: formData.apiKey,
           ...(isAzure ? { providerSpecificData: azureData } : {}),
           ...(isCloudflareAi ? { providerSpecificData: cloudflareData } : {}),
-          ...(providerRegions ? { providerSpecificData: buildRegionSpecificData() } : {}),
+          ...(providerRegions
+            ? { providerSpecificData: buildRegionSpecificData() }
+            : {}),
         }),
       });
       const data = await res.json();
@@ -150,7 +152,9 @@ function EditConnectionModalForm({ connection, onSave, onClose }) {
                 ...(isCloudflareAi
                   ? { providerSpecificData: cloudflareData }
                   : {}),
-                ...(providerRegions ? { providerSpecificData: buildRegionSpecificData() } : {}),
+                ...(providerRegions
+                  ? { providerSpecificData: buildRegionSpecificData() }
+                  : {}),
               }),
             });
             const data = await res.json();
@@ -302,7 +306,10 @@ function EditConnectionModalForm({ connection, onSave, onClose }) {
           label="Region"
           value={region}
           onChange={(e) => setRegion(e.target.value)}
-          options={providerRegions.map((r) => ({ value: r.id, label: r.label }))}
+          options={providerRegions.map((r) => ({
+            value: r.id,
+            label: r.label,
+          }))}
         />
       )}
 

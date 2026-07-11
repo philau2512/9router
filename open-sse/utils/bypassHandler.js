@@ -284,7 +284,10 @@ function mergeChunksToResponse(chunks, sourceFormat) {
               ? { cache_read_input_tokens: startUsage.cache_read_input_tokens }
               : {}),
             ...(startUsage?.cache_creation_input_tokens !== undefined
-              ? { cache_creation_input_tokens: startUsage.cache_creation_input_tokens }
+              ? {
+                  cache_creation_input_tokens:
+                    startUsage.cache_creation_input_tokens,
+                }
               : {}),
             ...(startUsage?.input_tokens !== undefined
               ? { input_tokens: startUsage.input_tokens }

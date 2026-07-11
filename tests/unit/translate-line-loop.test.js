@@ -4,7 +4,11 @@ import { createSSETransformStreamWithLogger } from "../../open-sse/utils/stream.
 
 // Feed pre-encoded byte chunks (so we can split multi-byte UTF-8 across chunks)
 // through the Responses->Responses transform and collect decoded output.
-async function runChunks(byteChunks, target = FORMATS.OPENAI_RESPONSES, source = FORMATS.OPENAI_RESPONSES) {
+async function runChunks(
+  byteChunks,
+  target = FORMATS.OPENAI_RESPONSES,
+  source = FORMATS.OPENAI_RESPONSES,
+) {
   const stream = new ReadableStream({
     start(controller) {
       for (const c of byteChunks) controller.enqueue(c);
@@ -12,7 +16,14 @@ async function runChunks(byteChunks, target = FORMATS.OPENAI_RESPONSES, source =
     },
   });
   const out = stream.pipeThrough(
-    createSSETransformStreamWithLogger(target, source, "codex", null, null, "gpt-5.5"),
+    createSSETransformStreamWithLogger(
+      target,
+      source,
+      "codex",
+      null,
+      null,
+      "gpt-5.5",
+    ),
   );
   const reader = out.getReader();
   const decoder = new TextDecoder();
@@ -32,18 +43,17 @@ describe("Phase 5(a) indexOf line loop — framing + UTF-8 invariance", () => {
   it("preserves event: before its paired data: within one chunk", async () => {
     // A single chunk carrying event/data pairs in order. The indexOf loop must
     // process the event: line before the following data: line so framing holds.
-    const input =
-      [
-        "event: response.created",
-        `data: ${JSON.stringify({ type: "response.created", response: { id: "resp_1", status: "in_progress" } })}`,
-        "",
-        "event: response.output_text.delta",
-        `data: ${JSON.stringify({ type: "response.output_text.delta", delta: "hi" })}`,
-        "",
-        "event: response.completed",
-        `data: ${JSON.stringify({ type: "response.completed", response: { id: "resp_1", status: "completed" } })}`,
-        "",
-      ].join("\n");
+    const input = [
+      "event: response.created",
+      `data: ${JSON.stringify({ type: "response.created", response: { id: "resp_1", status: "in_progress" } })}`,
+      "",
+      "event: response.output_text.delta",
+      `data: ${JSON.stringify({ type: "response.output_text.delta", delta: "hi" })}`,
+      "",
+      "event: response.completed",
+      `data: ${JSON.stringify({ type: "response.completed", response: { id: "resp_1", status: "completed" } })}`,
+      "",
+    ].join("\n");
 
     const out = await runChunks([enc.encode(input)]);
     // Each data: line must be preceded by its event: line (framing intact).

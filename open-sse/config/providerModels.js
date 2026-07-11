@@ -353,7 +353,10 @@ export const PROVIDER_MODELS = {
     { id: "cline-pass/kimi-k2.7-code", name: "Kimi K2.7 Code (ClinePass)" },
     { id: "cline-pass/kimi-k2.6", name: "Kimi K2.6 (ClinePass)" },
     { id: "cline-pass/deepseek-v4-pro", name: "DeepSeek V4 Pro (ClinePass)" },
-    { id: "cline-pass/deepseek-v4-flash", name: "DeepSeek V4 Flash (ClinePass)" },
+    {
+      id: "cline-pass/deepseek-v4-flash",
+      name: "DeepSeek V4 Flash (ClinePass)",
+    },
     { id: "cline-pass/mimo-v2.5", name: "MiMo-V2.5 (ClinePass)" },
     { id: "cline-pass/mimo-v2.5-pro", name: "MiMo-V2.5-Pro (ClinePass)" },
     { id: "cline-pass/minimax-m3", name: "MiniMax M3 (ClinePass)" },
@@ -1100,8 +1103,16 @@ export const PROVIDER_MODELS = {
   // Grok CLI / Grok Build — device-code OAuth. See upstream a11937cdd.
   "grok-cli": [
     { id: "grok-4.5", name: "Grok 4.5" },
-    { id: "grok-4.5-high", name: "Grok 4.5 (High)", upstreamModelId: "grok-4.5" },
-    { id: "grok-4.5-medium", name: "Grok 4.5 (Medium)", upstreamModelId: "grok-4.5" },
+    {
+      id: "grok-4.5-high",
+      name: "Grok 4.5 (High)",
+      upstreamModelId: "grok-4.5",
+    },
+    {
+      id: "grok-4.5-medium",
+      name: "Grok 4.5 (Medium)",
+      upstreamModelId: "grok-4.5",
+    },
     { id: "grok-4.5-low", name: "Grok 4.5 (Low)", upstreamModelId: "grok-4.5" },
   ],
   "perplexity-web": [

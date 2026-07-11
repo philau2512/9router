@@ -8,7 +8,10 @@ import {
 // Cache tunnel status for 3s — coalesces rapid polls; underlying probes
 // already cache at 10s. global survives Next.js hot reload. See upstream a4c5fa4e1.
 const STATUS_CACHE_TTL_MS = 3000;
-const statusCache = (global.__tunnelStatusCache ??= { value: null, fetchedAt: 0 });
+const statusCache = (global.__tunnelStatusCache ??= {
+  value: null,
+  fetchedAt: 0,
+});
 
 export async function GET() {
   try {

@@ -49,7 +49,7 @@ export const MEDIA_PROVIDER_KINDS = [
   },
   {
     id: "video",
-    label: "Video",
+    label: "Text to Video",
     icon: "movie",
     endpoint: { method: "POST", path: "/v1/video/generations" },
   },

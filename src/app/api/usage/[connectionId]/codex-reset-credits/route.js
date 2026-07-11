@@ -2,7 +2,10 @@
 import "open-sse/index.js";
 
 import { getProviderConnectionById } from "@/lib/localDb";
-import { consumeCodexRateLimitResetCredit, getCodexRateLimitResetCredits } from "open-sse/services/usage/codex.js";
+import {
+  consumeCodexRateLimitResetCredit,
+  getCodexRateLimitResetCredits,
+} from "open-sse/services/usage/codex.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { refreshAndUpdateCredentials } from "../route.js";
 
@@ -76,7 +79,10 @@ export async function GET(request, { params }) {
     }
     if (connection.provider !== "codex") {
       return Response.json(
-        { error: "Codex reset credits are only available for Codex connections." },
+        {
+          error:
+            "Codex reset credits are only available for Codex connections.",
+        },
         { status: 400 },
       );
     }
@@ -84,12 +90,17 @@ export async function GET(request, { params }) {
     const isAccessToken = connection.authType === "access_token";
     if (!isOAuth && !isAccessToken) {
       return Response.json(
-        { error: "Codex reset credits require an OAuth or access token connection." },
+        {
+          error:
+            "Codex reset credits require an OAuth or access token connection.",
+        },
         { status: 400 },
       );
     }
 
-    const proxyCfg = await resolveConnectionProxyConfig(connection.providerSpecificData);
+    const proxyCfg = await resolveConnectionProxyConfig(
+      connection.providerSpecificData,
+    );
     const proxyOptions = {
       connectionProxyEnabled: proxyCfg.connectionProxyEnabled === true,
       connectionProxyUrl: proxyCfg.connectionProxyUrl || "",
@@ -98,7 +109,11 @@ export async function GET(request, { params }) {
       strictProxy: false,
     };
 
-    const { connection: refreshed } = await refreshAndUpdateCredentials(connection, false, proxyOptions);
+    const { connection: refreshed } = await refreshAndUpdateCredentials(
+      connection,
+      false,
+      proxyOptions,
+    );
     connection = refreshed;
 
     if (!connection.accessToken) {

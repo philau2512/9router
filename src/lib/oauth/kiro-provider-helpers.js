@@ -29,7 +29,11 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
  * @param {string} callerRegion - Region the token was minted in
  * @returns {Promise<{arn: string, region: string} | null>}
  */
-export async function fetchKiroProfileArn(accessToken, callerRegion = "us-east-1", proxyOptions = null) {
+export async function fetchKiroProfileArn(
+  accessToken,
+  callerRegion = "us-east-1",
+  proxyOptions = null,
+) {
   // Return cached result if still valid
   const cached = _profileArnCache.get(accessToken);
   if (cached && cached.expiresAt > Date.now()) {
@@ -38,17 +42,19 @@ export async function fetchKiroProfileArn(accessToken, callerRegion = "us-east-1
 
   // Candidate regions: caller region first, then common fallbacks.
   // Dedupe in case callerRegion is already one of the fallbacks.
-  const candidates = [
-    callerRegion,
-    "us-east-1",
-    "eu-central-1",
-  ].filter((r, i, arr) => arr.indexOf(r) === i);
+  const candidates = [callerRegion, "us-east-1", "eu-central-1"].filter(
+    (r, i, arr) => arr.indexOf(r) === i,
+  );
 
   for (const region of candidates) {
     let arn = null;
     try {
       // Returns the best-match ARN string for the given region, or null
-      arn = await _kiroService.listAvailableProfiles(accessToken, region, proxyOptions);
+      arn = await _kiroService.listAvailableProfiles(
+        accessToken,
+        region,
+        proxyOptions,
+      );
     } catch {
       // Region unreachable or rejected — try next candidate
       continue;

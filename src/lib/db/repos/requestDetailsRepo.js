@@ -181,7 +181,10 @@ async function flushToDatabase() {
                     status: item.status || null,
                     latency: item.latency || {},
                     tokens: item.tokens || {},
-                    request: truncateRequestWithTools(item.request, _config.maxJsonSize),
+                    request: truncateRequestWithTools(
+                      item.request,
+                      _config.maxJsonSize,
+                    ),
                     providerRequest: truncateField(
                       item.providerRequest,
                       _config.maxJsonSize,

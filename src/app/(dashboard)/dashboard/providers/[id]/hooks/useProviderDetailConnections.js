@@ -101,8 +101,8 @@ export function useProviderDetailConnections({
           providerId === "xai"
             ? new Set(["xai", "grok-cli"])
             : new Set([providerId]);
-        const filtered = (connectionsData.connections || []).filter(
-          (c) => matchProviders.has(c.provider),
+        const filtered = (connectionsData.connections || []).filter((c) =>
+          matchProviders.has(c.provider),
         );
         applyConnections(filtered);
       }
@@ -824,11 +824,7 @@ export function useProviderDetailConnections({
           });
           if (!res.ok) failed += 1;
         } catch (error) {
-          console.log(
-            "Error clearing connection error:",
-            connectionId,
-            error,
-          );
+          console.log("Error clearing connection error:", connectionId, error);
           failed += 1;
         }
       }

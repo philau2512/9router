@@ -182,7 +182,9 @@ export class KiroExecutor extends BaseExecutor {
         }
       } catch (err) {
         // Non-fatal: proceed without profileArn, let upstream return the error
-        console.warn(`[Kiro] Profile ARN discovery failed for ${authMethod}: ${err.message}`);
+        console.warn(
+          `[Kiro] Profile ARN discovery failed for ${authMethod}: ${err.message}`,
+        );
       }
     }
 
@@ -306,7 +308,8 @@ export class KiroExecutor extends BaseExecutor {
             // (handles a single chunk larger than the whole current buffer).
             const newCap = Math.max(backing.length * 2, needed);
             const grown = new Uint8Array(newCap);
-            if (remaining > 0) grown.set(backing.subarray(readOffset, writePos));
+            if (remaining > 0)
+              grown.set(backing.subarray(readOffset, writePos));
             backing = grown;
           } else if (remaining > 0) {
             // Fits after reclaiming the consumed prefix: compact in place once.
@@ -329,8 +332,7 @@ export class KiroExecutor extends BaseExecutor {
           );
           const totalLength = view.getUint32(0, false);
 
-          if (totalLength < 16 || totalLength > writePos - readOffset)
-            break;
+          if (totalLength < 16 || totalLength > writePos - readOffset) break;
 
           const eventData = backing.subarray(
             readOffset,
@@ -674,8 +676,14 @@ export class KiroExecutor extends BaseExecutor {
               // ponytail: Amazon Q upstream does not expose cache fields today,
               // but pick up cache_read_input_tokens / cache_creation_input_tokens
               // if the event shape grows them so cost tracking stays accurate.
-              const cachedTokens = metrics.cacheReadInputTokens || metrics.cache_read_input_tokens || 0;
-              const cacheCreationInputTokens = metrics.cacheCreationInputTokens || metrics.cache_creation_input_tokens || 0;
+              const cachedTokens =
+                metrics.cacheReadInputTokens ||
+                metrics.cache_read_input_tokens ||
+                0;
+              const cacheCreationInputTokens =
+                metrics.cacheCreationInputTokens ||
+                metrics.cache_creation_input_tokens ||
+                0;
 
               if (inputTokens > 0 || outputTokens > 0) {
                 state.usage = {
@@ -686,8 +694,11 @@ export class KiroExecutor extends BaseExecutor {
                 // Kiro is Claude-backed: inputTokens EXCLUDES cache (Claude convention),
                 // not inclusive like OpenAI's cached_tokens. Emit cache_read_input_tokens
                 // (not cached_tokens) so canonicalizeUsage takes the Claude fold path.
-                if (cachedTokens > 0) state.usage.cache_read_input_tokens = cachedTokens;
-                if (cacheCreationInputTokens > 0) state.usage.cache_creation_input_tokens = cacheCreationInputTokens;
+                if (cachedTokens > 0)
+                  state.usage.cache_read_input_tokens = cachedTokens;
+                if (cacheCreationInputTokens > 0)
+                  state.usage.cache_creation_input_tokens =
+                    cacheCreationInputTokens;
               }
             }
           }
@@ -845,9 +856,7 @@ function parseEventFrame(data) {
       offset++;
       if (offset + nameLen > data.length) break;
 
-      const name = _kiroDecoder.decode(
-        data.subarray(offset, offset + nameLen),
-      );
+      const name = _kiroDecoder.decode(data.subarray(offset, offset + nameLen));
       offset += nameLen;
 
       const headerType = data[offset];

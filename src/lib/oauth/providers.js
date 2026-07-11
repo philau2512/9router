@@ -429,7 +429,9 @@ const PROVIDERS = {
           },
         });
         if (res.ok) return { user: await res.json() };
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
       return { user: null };
     },
     mapTokens: (tokens, extra) => {
@@ -1412,8 +1414,16 @@ const PROVIDERS = {
       } catch {
         const response = await fetch(config.tokenExchangeUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ grant_type: "authorization_code", code, client_type: "extension", redirect_uri: redirectUri }),
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            grant_type: "authorization_code",
+            code,
+            client_type: "extension",
+            redirect_uri: redirectUri,
+          }),
         });
         if (!response.ok) {
           const error = await response.text();
@@ -1432,7 +1442,9 @@ const PROVIDERS = {
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
       expiresIn: tokens.expires_at
-        ? Math.floor((new Date(tokens.expires_at).getTime() - Date.now()) / 1000)
+        ? Math.floor(
+            (new Date(tokens.expires_at).getTime() - Date.now()) / 1000,
+          )
         : 3600,
       email: tokens.email,
       providerSpecificData: {

@@ -35,7 +35,7 @@ describe("fetchWithFallback", () => {
 
   it("bypasses cache with forceRefresh", async () => {
     const cache = new Map();
-    const fetcher = vi.fn(async () => ({ models: [] , v: Math.random() }));
+    const fetcher = vi.fn(async () => ({ models: [], v: Math.random() }));
     await fetchWithFallback({ cache, key: "k", fetcher });
     await fetchWithFallback({ cache, key: "k", fetcher, forceRefresh: true });
     expect(fetcher).toHaveBeenCalledTimes(2);
@@ -49,7 +49,9 @@ describe("credentialCacheKey", () => {
     expect(a).not.toBe(b);
   });
   it("never returns a bare provider key without a discriminator", () => {
-    const k = credentialCacheKey("codex", { accessToken: "xxxxxxxxxxxxxxxxyyyy" });
+    const k = credentialCacheKey("codex", {
+      accessToken: "xxxxxxxxxxxxxxxxyyyy",
+    });
     expect(k.startsWith("codex:")).toBe(true);
     expect(k).not.toBe("codex:");
   });

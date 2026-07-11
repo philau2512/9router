@@ -29,7 +29,12 @@ const STRIP_RULES = [
   // alone leaves it uncapped and requests 400. Pin explicit endpoint cap; min()
   // with model ceiling still applies if variant's own limit is lower.
   // See upstream fix cfbdf0604.
-  { provider: "volcengine-ark", match: /kimi/i, maxOutputCap: 32768, clampToModelMaxOutput: true },
+  {
+    provider: "volcengine-ark",
+    match: /kimi/i,
+    maxOutputCap: 32768,
+    clampToModelMaxOutput: true,
+  },
 ];
 
 // Test a rule's match (regex or predicate) against the model id.
@@ -72,7 +77,11 @@ export function stripUnsupportedParams(provider, model, body) {
     if (rule.clampToModelMaxOutput || Number.isFinite(rule.maxOutputCap)) {
       const modelCeiling = getCapabilitiesForModel(provider, model).maxOutput;
       const candidates = [];
-      if (rule.clampToModelMaxOutput && Number.isFinite(modelCeiling) && modelCeiling > 0) {
+      if (
+        rule.clampToModelMaxOutput &&
+        Number.isFinite(modelCeiling) &&
+        modelCeiling > 0
+      ) {
         candidates.push(modelCeiling);
       }
       if (Number.isFinite(rule.maxOutputCap) && rule.maxOutputCap > 0) {

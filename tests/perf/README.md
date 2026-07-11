@@ -57,13 +57,13 @@ text and cannot be replayed into the binary parser.
 
 Captured with `--warmup=2`. `cpuMs` omitted (Win32 quantization).
 
-| Scenario | Pre-Phase-2 | Post-Phase-2 | Delta |
-|----------|-------------|--------------|-------|
-| single-stream, best warm wallMs | 11.7 ms | 10.3 ms | ~12% faster |
-| single-stream, throughput (mean of 5) | 35.1 MB/s | 37.9 MB/s | +8% |
-| concurrency=8, total wallMs | 107.8 ms | 94.3 ms | ~13% faster |
-| concurrency=8, throughput | 32.2 MB/s | 36.8 MB/s | +14% |
-| concurrency=8 --io-sim-delay=1, gcCount | 38 | 30 | fewer GCs |
+| Scenario                                | Pre-Phase-2 | Post-Phase-2 | Delta       |
+| --------------------------------------- | ----------- | ------------ | ----------- |
+| single-stream, best warm wallMs         | 11.7 ms     | 10.3 ms      | ~12% faster |
+| single-stream, throughput (mean of 5)   | 35.1 MB/s   | 37.9 MB/s    | +8%         |
+| concurrency=8, total wallMs             | 107.8 ms    | 94.3 ms      | ~13% faster |
+| concurrency=8, throughput               | 32.2 MB/s   | 36.8 MB/s    | +14%        |
+| concurrency=8 --io-sim-delay=1, gcCount | 38          | 30           | fewer GCs   |
 
 Phase 2 win is largest under concurrency, where the eliminated per-chunk
 `new Uint8Array` realloc + per-frame `TextDecoder`/`TextEncoder` allocations cut

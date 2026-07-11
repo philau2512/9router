@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
-import { findPython310, getInstalledHeadroomExtras, HEADROOM_COMPRESSION_EXTRAS } from "@/lib/headroom/detect";
-import { installHeadroomExtras, uninstallHeadroomExtras, getInstallLogTail } from "@/lib/headroom/process";
+import {
+  findPython310,
+  getInstalledHeadroomExtras,
+  HEADROOM_COMPRESSION_EXTRAS,
+} from "@/lib/headroom/detect";
+import {
+  installHeadroomExtras,
+  uninstallHeadroomExtras,
+  getInstallLogTail,
+} from "@/lib/headroom/process";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +36,12 @@ export async function POST(req) {
     const result = await installHeadroomExtras(requested);
     return NextResponse.json(result);
   } catch (error) {
-    const status = error.code === "NOT_INSTALLED" || error.code === "NO_PYTHON" ? 400 : 500;
-    return NextResponse.json({ error: error.message, code: error.code || null }, { status });
+    const status =
+      error.code === "NOT_INSTALLED" || error.code === "NO_PYTHON" ? 400 : 500;
+    return NextResponse.json(
+      { error: error.message, code: error.code || null },
+      { status },
+    );
   }
 }
 
@@ -40,7 +52,11 @@ export async function DELETE(req) {
     const result = await uninstallHeadroomExtras(requested);
     return NextResponse.json(result);
   } catch (error) {
-    const status = error.code === "NO_PYTHON" || error.code === "INVALID_EXTRAS" ? 400 : 500;
-    return NextResponse.json({ error: error.message, code: error.code || null }, { status });
+    const status =
+      error.code === "NO_PYTHON" || error.code === "INVALID_EXTRAS" ? 400 : 500;
+    return NextResponse.json(
+      { error: error.message, code: error.code || null },
+      { status },
+    );
   }
 }

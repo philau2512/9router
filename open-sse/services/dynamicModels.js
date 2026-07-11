@@ -54,7 +54,10 @@ export async function fetchWithFallback({
     if (cache) cache.set(key, { expiresAt: now + ttlMs, value });
     return value;
   } catch (err) {
-    log?.debug?.(label, `live fetch failed, falling back: ${err?.message || err}`);
+    log?.debug?.(
+      label,
+      `live fetch failed, falling back: ${err?.message || err}`,
+    );
     return null;
   } finally {
     clearTimeout(timer);

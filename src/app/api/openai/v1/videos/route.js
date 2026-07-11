@@ -37,7 +37,9 @@ export async function POST(request) {
     credentials = await getProviderCredentials("grok-cli");
   } catch (err) {
     return json(502, {
-      error: { message: `Failed to resolve Grok credentials: ${err?.message || err}` },
+      error: {
+        message: `Failed to resolve Grok credentials: ${err?.message || err}`,
+      },
     });
   }
   if (!credentials?.accessToken) {

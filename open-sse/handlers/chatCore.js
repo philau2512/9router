@@ -133,7 +133,9 @@ export async function handleChatCore({
   })();
   const reqTag = log?.tagForSession
     ? log.tagForSession(sessionSeed)
-    : (log?.nextTag ? log.nextTag() : "");
+    : log?.nextTag
+      ? log.nextTag()
+      : "";
 
   // Check for bypass patterns (warmup, skip, cc naming)
   const bypassResponse = handleBypassRequest(
@@ -278,8 +280,10 @@ export async function handleChatCore({
   // Additive: COLORS/formatRtkLog imports are kept below. See upstream a625ea9fd.
   if (log?.line) {
     try {
-      const clientModel = clientRawRequest?.body?.model || `${provider}/${model}`;
-      const msgN = translatedBody.messages?.length || body.messages?.length || 0;
+      const clientModel =
+        clientRawRequest?.body?.model || `${provider}/${model}`;
+      const msgN =
+        translatedBody.messages?.length || body.messages?.length || 0;
       const toolN = translatedBody.tools?.length || body.tools?.length || 0;
       const fmtStr = passthrough
         ? `FMT:${sourceFormat}(pass)`
@@ -377,7 +381,11 @@ export async function handleChatCore({
       if (pxpipeResult.body) translatedBody = pxpipeResult.body;
       const pxpipeLine = formatPxpipeLog(pxpipeSummary);
       if (pxpipeLine) log?.info?.("PXPIPE", pxpipeLine);
-      try { onPxpipeEvent?.({ provider, model, ...pxpipeSummary }); } catch { /* stats must not break requests */ }
+      try {
+        onPxpipeEvent?.({ provider, model, ...pxpipeSummary });
+      } catch {
+        /* stats must not break requests */
+      }
     } catch (e) {
       log?.debug?.("PXPIPE", `error: ${e?.message}`);
     }
@@ -755,10 +763,11 @@ export async function handleChatCore({
   }
 
   // Streaming response
-  const { onStreamComplete: _baseOnStreamComplete, streamDetailId } = buildOnStreamComplete({
-    ...sharedCtx,
-    timing,
-  });
+  const { onStreamComplete: _baseOnStreamComplete, streamDetailId } =
+    buildOnStreamComplete({
+      ...sharedCtx,
+      timing,
+    });
   const _agReplayKey =
     provider === "antigravity" ? getAntigravitySessionKey(model, body) : null;
   const onStreamComplete = _agReplayKey

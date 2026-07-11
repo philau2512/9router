@@ -720,9 +720,7 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
         }),
       );
       const succeededIds = new Set(
-        results
-          .filter((r) => r.status === "fulfilled")
-          .map((r) => r.value),
+        results.filter((r) => r.status === "fulfilled").map((r) => r.value),
       );
       const failCount = errored.length - succeededIds.size;
 

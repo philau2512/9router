@@ -71,7 +71,9 @@ function loadFixtureBytes(name) {
     }
   }
   // In-memory synthetic fallback (no file needed).
-  const variant = ["plain", "thinking", "tools"].includes(name) ? name : "plain";
+  const variant = ["plain", "thinking", "tools"].includes(name)
+    ? name
+    : "plain";
   return {
     bytes: buildKiroStream({ contentChunks: 600, chunkChars: 28, variant }),
     source: `<in-memory synthetic:${variant}>`,
@@ -107,7 +109,12 @@ function makeUpstream(chunks, ioSimDelay) {
 // Run a single stream through the real Kiro transform. Returns per-stream timing.
 async function runOneStream(executor, chunks, model, ioSimDelay) {
   const upstream = makeUpstream(chunks, ioSimDelay);
-  const mockResponse = { body: upstream, ok: true, status: 200, statusText: "OK" };
+  const mockResponse = {
+    body: upstream,
+    ok: true,
+    status: 200,
+    statusText: "OK",
+  };
 
   const startWall = performance.now();
   let ttftMs = null;
@@ -169,7 +176,9 @@ async function bench(opts) {
       );
       results.push(...batch);
     } else {
-      results.push(await runOneStream(executor, chunks, model, opts.ioSimDelay));
+      results.push(
+        await runOneStream(executor, chunks, model, opts.ioSimDelay),
+      );
     }
   }
 
@@ -210,7 +219,8 @@ async function bench(opts) {
 async function main() {
   const opts = parseArgs(process.argv);
   const runs = [];
-  const repeatOuter = opts.repeat > 1 && opts.concurrency === 1 ? opts.repeat : 1;
+  const repeatOuter =
+    opts.repeat > 1 && opts.concurrency === 1 ? opts.repeat : 1;
   // When --repeat is used at concurrency 1, report each run so throughput variance
   // can be eyeballed across repeats (the plan's <5% throughput variance gate).
   if (repeatOuter > 1) {
@@ -233,8 +243,7 @@ async function main() {
   if (runs.length > 1) {
     const thr = runs.map((r) => Number(r.throughputMBps));
     const mean = thr.reduce((a, b) => a + b, 0) / thr.length;
-    const variancePct =
-      ((Math.max(...thr) - Math.min(...thr)) / mean) * 100;
+    const variancePct = ((Math.max(...thr) - Math.min(...thr)) / mean) * 100;
     console.log(
       `[bench] throughput across ${runs.length} runs: mean=${mean.toFixed(1)}MB/s ` +
         `spread=${variancePct.toFixed(1)}% (gate: <5%)`,

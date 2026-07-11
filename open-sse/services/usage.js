@@ -105,7 +105,11 @@ export async function getUsageForProvider(connection, proxyOptions = null) {
       // Grok Build OAuth accounts are stored under provider "xai" (authType
       // oauth); "grok-cli"/"gcli" are the CLI aliases. All share the same
       // cli-chat-proxy.grok.com/v1/billing endpoint. See upstream a11937cdd.
-      return await getGrokCliUsage(accessToken, providerSpecificData, proxyOptions);
+      return await getGrokCliUsage(
+        accessToken,
+        providerSpecificData,
+        proxyOptions,
+      );
     default:
       return { message: `Usage API not implemented for ${provider}` };
   }

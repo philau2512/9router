@@ -413,7 +413,10 @@ export class CodexExecutor extends BaseExecutor {
           `CODEX | model at capacity "${peek.matched}" — returning 503 for account fallback`,
         );
         const body503 = JSON.stringify({
-          error: { message: CODEX_MODEL_CAPACITY_MESSAGE, type: "capacity_error" },
+          error: {
+            message: CODEX_MODEL_CAPACITY_MESSAGE,
+            type: "capacity_error",
+          },
         });
         result.response = new Response(body503, {
           status: 503,
@@ -483,7 +486,7 @@ export class CodexExecutor extends BaseExecutor {
         // Check for capacity patterns — triggers account fallback (returns 503).
         // See upstream fix 0c55d49ab.
         const capacityHit = CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS.find((p) =>
-          text.includes(p)
+          text.includes(p),
         );
         if (capacityHit) {
           matched = `capacity:${capacityHit}`;
@@ -639,7 +642,9 @@ export class CodexExecutor extends BaseExecutor {
 
     // Priority: explicit reasoning.effort > reasoning_effort param > model suffix > default (medium)
     if (!body.reasoning) {
-      const effort = normalizeReasoningEffort(body.reasoning_effort || modelEffort || "low");
+      const effort = normalizeReasoningEffort(
+        body.reasoning_effort || modelEffort || "low",
+      );
       body.reasoning = { effort, summary: "auto" };
     } else if (!body.reasoning.summary) {
       body.reasoning.summary = "auto";

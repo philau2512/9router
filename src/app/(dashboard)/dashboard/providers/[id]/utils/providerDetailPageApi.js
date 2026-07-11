@@ -90,7 +90,9 @@ export async function testProviderConnection(connectionId) {
 }
 
 export async function fetchRawProviderConnection(connectionId) {
-  const res = await fetch(`/api/providers/${connectionId}/raw`, { cache: "no-store" });
+  const res = await fetch(`/api/providers/${connectionId}/raw`, {
+    cache: "no-store",
+  });
   return { res, data: await res.json() };
 }
 

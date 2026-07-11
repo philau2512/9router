@@ -278,7 +278,8 @@ function convertClaudeMessage(msg) {
           ? parts[0].text
           : parts;
       const out = { role, content: flatContent };
-      if (role === "assistant" && reasoningContent) out.reasoning_content = reasoningContent;
+      if (role === "assistant" && reasoningContent)
+        out.reasoning_content = reasoningContent;
       return out;
     }
 

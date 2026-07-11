@@ -120,7 +120,9 @@ describe("buildMergedGrokQuotas — two-endpoint parity with CLIProxyAPI", () =>
     // Monthly credits: 353/4000 → 91% remaining, resets 08/01.
     expect(m.quotas["Monthly credits"].total).toBe(4000);
     expect(m.quotas["Monthly credits"].used).toBe(353);
-    expect(Math.round(m.quotas["Monthly credits"].remainingPercentage)).toBe(91);
+    expect(Math.round(m.quotas["Monthly credits"].remainingPercentage)).toBe(
+      91,
+    );
     expect(m.quotas["Monthly credits"].resetAt).toContain("2026-08-01");
     expect(m.payAsYouGo).toBe("Disabled");
   });

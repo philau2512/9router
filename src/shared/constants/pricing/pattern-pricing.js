@@ -176,11 +176,11 @@ export const PATTERN_PRICING = [
     // gemini-2.5-flash-lite: $0.10/$0.40 (updated 2026-07-07)
     pattern: "gemini-*-flash-lite",
     pricing: {
-      input: 0.10,
-      output: 0.40,
+      input: 0.1,
+      output: 0.4,
       cached: 0.01,
-      reasoning: 0.60,
-      cache_creation: 0.10,
+      reasoning: 0.6,
+      cache_creation: 0.1,
     },
   },
   {
@@ -313,11 +313,11 @@ export const PATTERN_PRICING = [
     // gpt-5.4-nano variants: $0.20/$1.25
     pattern: "gpt-5.4-nano*",
     pricing: {
-      input: 0.20,
+      input: 0.2,
       output: 1.25,
       cached: 0.02,
       reasoning: 1.875,
-      cache_creation: 0.20,
+      cache_creation: 0.2,
     },
   },
   {

@@ -165,22 +165,46 @@ export async function handleStreamingResponse({
   // pull a short human-readable message from the <title>, sanitize it, and
   // return a clean JSON error instead. The message is stripped of HTML tags
   // and clamped so untrusted upstream text never reaches the client verbatim.
-  const upstreamContentType = (providerResponse.headers?.get("content-type") || "").toLowerCase();
-  if (upstreamContentType && !upstreamContentType.includes("text/event-stream") && !upstreamContentType.includes("application/json")) {
+  const upstreamContentType = (
+    providerResponse.headers?.get("content-type") || ""
+  ).toLowerCase();
+  if (
+    upstreamContentType &&
+    !upstreamContentType.includes("text/event-stream") &&
+    !upstreamContentType.includes("application/json")
+  ) {
     const bodyText = await providerResponse.text().catch(() => "");
     const titleMatch = bodyText.match(/<title>([^<]+)<\/title>/i);
-    const sanitizedTitle = (titleMatch?.[1] || "").replace(/<[^>]*>/g, "").replace(/[\r\n]+/g, " ").trim().slice(0, 160);
-    const shortMsg = sanitizedTitle
-      || (bodyText.length < 200 ? bodyText.replace(/<[^>]*>/g, "").trim().slice(0, 160) : `Upstream returned non-SSE response (${upstreamContentType})`);
+    const sanitizedTitle = (titleMatch?.[1] || "")
+      .replace(/<[^>]*>/g, "")
+      .replace(/[\r\n]+/g, " ")
+      .trim()
+      .slice(0, 160);
+    const shortMsg =
+      sanitizedTitle ||
+      (bodyText.length < 200
+        ? bodyText
+            .replace(/<[^>]*>/g, "")
+            .trim()
+            .slice(0, 160)
+        : `Upstream returned non-SSE response (${upstreamContentType})`);
     const status = providerResponse.status || 502;
-    console.warn(`[STREAM] ${provider} | ${model} | blocked pipe: ${shortMsg} [${status}]`);
+    console.warn(
+      `[STREAM] ${provider} | ${model} | blocked pipe: ${shortMsg} [${status}]`,
+    );
     streamController?.handleError?.(new Error(`upstream non-SSE: ${status}`));
     return {
       success: false,
-      response: new Response(JSON.stringify({ error: { message: `[${status}]: ${shortMsg}` } }), {
-        status,
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-      }),
+      response: new Response(
+        JSON.stringify({ error: { message: `[${status}]: ${shortMsg}` } }),
+        {
+          status,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        },
+      ),
     };
   }
 
@@ -314,7 +338,12 @@ export function buildOnStreamComplete({
   // Generate a shared id so the placeholder row (0 tokens) and the final row
   // (real usage) target the same DB record via ON CONFLICT(id) upsert.
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-  const onStreamComplete = (contentObj, usage, ttftAt, sharedStreamDetailId) => {
+  const onStreamComplete = (
+    contentObj,
+    usage,
+    ttftAt,
+    sharedStreamDetailId,
+  ) => {
     const resolvedId = sharedStreamDetailId ?? streamDetailId;
     const total = Date.now() - requestStartTime;
     const latency = {

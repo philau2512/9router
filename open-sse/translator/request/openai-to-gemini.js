@@ -350,7 +350,9 @@ export function openaiToGeminiCLIRequest(model, body, stream) {
     // Fallback: thinking config set but extractThinking didn't catch it
     ensureGeminiOutputFloor(
       gemini.generationConfig,
-      geminiBudgetOutputFloor(gemini.generationConfig.thinkingConfig.thinkingBudget),
+      geminiBudgetOutputFloor(
+        gemini.generationConfig.thinkingConfig.thinkingBudget,
+      ),
     );
   }
 

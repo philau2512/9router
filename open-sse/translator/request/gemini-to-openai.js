@@ -142,13 +142,18 @@ function convertGeminiContent(content) {
       content:
         parts.length === 1 && parts[0].type === "text" ? parts[0].text : parts,
     };
-    if (role === "assistant" && reasoningContent) result.reasoning_content = reasoningContent;
+    if (role === "assistant" && reasoningContent)
+      result.reasoning_content = reasoningContent;
     return result;
   }
 
   // Only reasoning content (no visible text/tool calls)
   if (reasoningContent) {
-    return { role: "assistant", content: "", reasoning_content: reasoningContent };
+    return {
+      role: "assistant",
+      content: "",
+      reasoning_content: reasoningContent,
+    };
   }
 
   return null;
@@ -190,7 +195,9 @@ function geminiToOpenAIRequestFixed(model, body, stream) {
       continue;
     }
 
-    const functionResponseParts = content.parts.filter((p) => p.functionResponse);
+    const functionResponseParts = content.parts.filter(
+      (p) => p.functionResponse,
+    );
     const otherParts = content.parts.filter((p) => !p.functionResponse);
 
     // No mixing — pass through unchanged
@@ -207,9 +214,13 @@ function geminiToOpenAIRequestFixed(model, body, stream) {
     fixedContents.push({ ...content, parts: otherParts });
   }
 
-  return geminiToOpenAIRequest(model, { ...body, contents: fixedContents }, stream);
+  return geminiToOpenAIRequest(
+    model,
+    { ...body, contents: fixedContents },
+    stream,
+  );
 }
 
 // Override: last registration wins — route through fixed wrapper
-register(FORMATS.GEMINI,     FORMATS.OPENAI, geminiToOpenAIRequestFixed, null);
+register(FORMATS.GEMINI, FORMATS.OPENAI, geminiToOpenAIRequestFixed, null);
 register(FORMATS.GEMINI_CLI, FORMATS.OPENAI, geminiToOpenAIRequestFixed, null);

@@ -33,7 +33,9 @@ export function buildFrame(eventType, payloadObj) {
   const headersLength = 1 + headerName.length + 1 + 2 + headerValue.length;
 
   const payloadBytes =
-    payloadObj == null ? new Uint8Array(0) : enc.encode(JSON.stringify(payloadObj));
+    payloadObj == null
+      ? new Uint8Array(0)
+      : enc.encode(JSON.stringify(payloadObj));
 
   const totalLength = 12 + headersLength + payloadBytes.length + 4;
   const buf = new Uint8Array(totalLength);
@@ -88,7 +90,9 @@ export function buildKiroStream({
 
   if (variant === "thinking") {
     // Emit a <thinking> block that spans several chunks to exercise the strip path.
-    frames.push(buildFrame("assistantResponseEvent", { content: "<thinking>" }));
+    frames.push(
+      buildFrame("assistantResponseEvent", { content: "<thinking>" }),
+    );
     for (let i = 0; i < 20; i++) {
       frames.push(
         buildFrame("assistantResponseEvent", {
@@ -96,7 +100,9 @@ export function buildKiroStream({
         }),
       );
     }
-    frames.push(buildFrame("assistantResponseEvent", { content: "</thinking>\n" }));
+    frames.push(
+      buildFrame("assistantResponseEvent", { content: "</thinking>\n" }),
+    );
   }
 
   if (variant === "tools") {
@@ -125,7 +131,9 @@ export function buildKiroStream({
     );
   }
 
-  frames.push(buildFrame("contextUsageEvent", { contextUsagePercentage: 12.5 }));
+  frames.push(
+    buildFrame("contextUsageEvent", { contextUsagePercentage: 12.5 }),
+  );
   frames.push(
     buildFrame("metricsEvent", {
       metricsEvent: { inputTokens: 1200, outputTokens: contentChunks * 6 },
@@ -148,9 +156,21 @@ if (
 
   // Larger plain fixture so small socket-read slices produce many transform() calls,
   // exposing the per-chunk O(n) buffer realloc that Phase 2 targets.
-  const plain = buildKiroStream({ contentChunks: 4000, chunkChars: 40, variant: "plain" });
-  const thinking = buildKiroStream({ contentChunks: 800, chunkChars: 32, variant: "thinking" });
-  const tools = buildKiroStream({ contentChunks: 1200, chunkChars: 24, variant: "tools" });
+  const plain = buildKiroStream({
+    contentChunks: 4000,
+    chunkChars: 40,
+    variant: "plain",
+  });
+  const thinking = buildKiroStream({
+    contentChunks: 800,
+    chunkChars: 32,
+    variant: "thinking",
+  });
+  const tools = buildKiroStream({
+    contentChunks: 1200,
+    chunkChars: 24,
+    variant: "tools",
+  });
 
   writeFileSync(join(outDir, "kiro-synthetic-plain.bin"), plain);
   writeFileSync(join(outDir, "kiro-synthetic-thinking.bin"), thinking);

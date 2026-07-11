@@ -48,12 +48,17 @@ async function runSliced(bytes, sliceSize) {
   const stream = new ReadableStream({
     start(controller) {
       for (let off = 0; off < bytes.length; off += sliceSize) {
-        controller.enqueue(bytes.subarray(off, Math.min(off + sliceSize, bytes.length)));
+        controller.enqueue(
+          bytes.subarray(off, Math.min(off + sliceSize, bytes.length)),
+        );
       }
       controller.close();
     },
   });
-  const transformed = executor.transformEventStreamToSSE({ body: stream }, "claude-test");
+  const transformed = executor.transformEventStreamToSSE(
+    { body: stream },
+    "claude-test",
+  );
   const reader = transformed.body.getReader();
   const decoder = new TextDecoder();
   let out = "";
@@ -88,12 +93,22 @@ describe("KiroExecutor buffer boundary invariance (Phase 2)", () => {
   const frames = [
     createMockFrame("assistantResponseEvent", { content: "Hello " }),
     createMockFrame("assistantResponseEvent", { content: "world from Kiro. " }),
-    createMockFrame("assistantResponseEvent", { content: "<thinking>reason A " }),
-    createMockFrame("assistantResponseEvent", { content: "reason B</thinking> done." }),
-    createMockFrame("toolUseEvent", { toolUseId: "call_1", name: "get_x", input: "" }),
+    createMockFrame("assistantResponseEvent", {
+      content: "<thinking>reason A ",
+    }),
+    createMockFrame("assistantResponseEvent", {
+      content: "reason B</thinking> done.",
+    }),
+    createMockFrame("toolUseEvent", {
+      toolUseId: "call_1",
+      name: "get_x",
+      input: "",
+    }),
     createMockFrame("toolUseEvent", { toolUseId: "call_1", input: '{"a":1}' }),
     createMockFrame("contextUsageEvent", { contextUsagePercentage: 10 }),
-    createMockFrame("metricsEvent", { metricsEvent: { inputTokens: 5, outputTokens: 9 } }),
+    createMockFrame("metricsEvent", {
+      metricsEvent: { inputTokens: 5, outputTokens: 9 },
+    }),
     createMockFrame("meteringEvent", {}),
     createMockFrame("messageStopEvent", {}),
   ];

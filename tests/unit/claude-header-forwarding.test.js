@@ -348,9 +348,8 @@ describe("proxyAwareFetch — api.anthropic.com routing", () => {
     gotScraping.stream = vi.fn();
 
     vi.resetModules();
-    const { proxyAwareFetch, __setGotScrapingLoaderForTest } = await import(
-      "open-sse/utils/proxyFetch.js"
-    );
+    const { proxyAwareFetch, __setGotScrapingLoaderForTest } =
+      await import("open-sse/utils/proxyFetch.js");
     __setGotScrapingLoaderForTest(() => Promise.resolve({ gotScraping }));
 
     const res = await proxyAwareFetch("https://api.anthropic.com/v1/messages", {

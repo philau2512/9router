@@ -225,7 +225,10 @@ export function createSSEStream(options = {}) {
     if (extracted) state.usage = mergeUsage(state.usage, extracted); // Keep original usage for logging
 
     // Codex output_item.done reconstruction (Phase 4)
-    if (keepsOpenAIResponsesFormat && parsed.type === "response.output_item.done") {
+    if (
+      keepsOpenAIResponsesFormat &&
+      parsed.type === "response.output_item.done"
+    ) {
       collectOutputItemDone(outputItemCollector, parsed);
     }
     if (keepsOpenAIResponsesFormat && parsed.type === "response.completed") {
@@ -262,7 +265,12 @@ export function createSSEStream(options = {}) {
     currentOpenAIResponsesEvent = null;
 
     // Translate: targetFormat -> openai -> sourceFormat
-    const translated = translateResponse(targetFormat, sourceFormat, parsed, state);
+    const translated = translateResponse(
+      targetFormat,
+      sourceFormat,
+      parsed,
+      state,
+    );
 
     // Log OpenAI intermediate chunks (if available)
     if (translated?._openaiIntermediate) {
@@ -286,7 +294,11 @@ export function createSSEStream(options = {}) {
           !hasValidUsage(item.usage) &&
           totalContentLength > 0
         ) {
-          const estimated = estimateUsage(body, totalContentLength, sourceFormat);
+          const estimated = estimateUsage(
+            body,
+            totalContentLength,
+            sourceFormat,
+          );
           item.usage = filterUsageForFormat(estimated, sourceFormat);
           state.usage = estimated;
         } else if (state.finishReason && isFinishChunk && state.usage) {
@@ -362,7 +374,10 @@ export function createSSEStream(options = {}) {
           // Upstream-emitted [DONE] (e.g. Kiro's own transform emits it): forward
           // once and mark it sent so flush() does not append a SECOND [DONE].
           // (Red Team S3 / Phase 3 double-DONE fix)
-          if (trimmed.startsWith("data:") && trimmed.slice(5).trim() === "[DONE]") {
+          if (
+            trimmed.startsWith("data:") &&
+            trimmed.slice(5).trim() === "[DONE]"
+          ) {
             if (!streamDoneSent) {
               const doneOutput = "data: [DONE]\n\n";
               reqLogger?.appendConvertedChunk?.(doneOutput);
@@ -490,7 +505,11 @@ export function createSSEStream(options = {}) {
               // causing premature `reasoning-end` on every chunk.
               if (parsed?.choices) {
                 for (const choice of parsed.choices) {
-                  if (choice.delta?.tool_calls && Array.isArray(choice.delta.tool_calls) && choice.delta.tool_calls.length === 0) {
+                  if (
+                    choice.delta?.tool_calls &&
+                    Array.isArray(choice.delta.tool_calls) &&
+                    choice.delta.tool_calls.length === 0
+                  ) {
                     delete choice.delta.tool_calls;
                     fieldsInjected = true;
                   }

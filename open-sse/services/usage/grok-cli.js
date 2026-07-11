@@ -33,7 +33,9 @@ const USAGE = U("grok-cli");
 const CREDITS_URL =
   USAGE.url || "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
 const PLAIN_URL = "https://cli-chat-proxy.grok.com/v1/billing";
-const USER_URL = USAGE.userUrl || "https://cli-chat-proxy.grok.com/v1/user?include=subscription";
+const USER_URL =
+  USAGE.userUrl ||
+  "https://cli-chat-proxy.grok.com/v1/user?include=subscription";
 
 /** Unwrap protobuf-json `{ val: n }` or plain numbers/strings. */
 function unwrapVal(value, fallback = 0) {
@@ -62,11 +64,12 @@ function buildGrokCliHeaders(accessToken, providerSpecificData = {}) {
 }
 
 function resolvePlan(user, config) {
-  const tier = typeof user?.subscriptionTier === "string" ? user.subscriptionTier.trim() : "";
+  const tier =
+    typeof user?.subscriptionTier === "string"
+      ? user.subscriptionTier.trim()
+      : "";
   if (tier) {
-    return tier
-      .replace(/[_-]+/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase());
+    return tier.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   }
   if (user?.hasGrokCodeAccess === true) return "Grok Code";
   if (config?.isUnifiedBillingUser === true) return "Grok Build";
@@ -100,7 +103,10 @@ function makeQuota({ used, total, resetAt, unlimited = false }) {
 
 /** Build a percentage-window quota row from a "used %" value (0-100). */
 function percentUsedQuota(usedPercent, resetAt) {
-  const used = Math.max(0, Math.min(100, Math.round(toFiniteNumber(usedPercent, 0))));
+  const used = Math.max(
+    0,
+    Math.min(100, Math.round(toFiniteNumber(usedPercent, 0))),
+  );
   return {
     used,
     total: 100,
@@ -156,7 +162,11 @@ export function parseGrokCreditsShape(config = {}) {
  *   Weekly limit → Api usage → Monthly credits.
  * Either input may be null (fail-open); whatever is available renders.
  */
-export function buildMergedGrokQuotas(creditsBilling, plainBilling, user = null) {
+export function buildMergedGrokQuotas(
+  creditsBilling,
+  plainBilling,
+  user = null,
+) {
   const creditsConfig = creditsBilling?.config || creditsBilling || {};
   const plainConfig = plainBilling?.config || plainBilling || {};
 
@@ -164,11 +174,16 @@ export function buildMergedGrokQuotas(creditsBilling, plainBilling, user = null)
     parseGrokCreditsShape(creditsConfig);
 
   const quotas = {};
-  if (creditQuotas["Weekly limit"]) quotas["Weekly limit"] = creditQuotas["Weekly limit"];
-  if (creditQuotas["Api usage"]) quotas["Api usage"] = creditQuotas["Api usage"];
+  if (creditQuotas["Weekly limit"])
+    quotas["Weekly limit"] = creditQuotas["Weekly limit"];
+  if (creditQuotas["Api usage"])
+    quotas["Api usage"] = creditQuotas["Api usage"];
 
   // Monthly credits from the plain shape (monthlyLimit / used, in credit units).
-  if (plainConfig.monthlyLimit !== undefined || plainConfig.used !== undefined) {
+  if (
+    plainConfig.monthlyLimit !== undefined ||
+    plainConfig.used !== undefined
+  ) {
     const monthlyLimit = unwrapVal(plainConfig.monthlyLimit, 0);
     const monthlyUsed = unwrapVal(plainConfig.used, 0);
     quotas["Monthly credits"] = makeQuota({
@@ -184,7 +199,10 @@ export function buildMergedGrokQuotas(creditsBilling, plainBilling, user = null)
     finiteBars.every((q) => (q.remainingPercentage ?? 100) <= 0);
 
   return {
-    plan: resolvePlan(user, creditsConfig.isUnifiedBillingUser ? creditsConfig : plainConfig),
+    plan: resolvePlan(
+      user,
+      creditsConfig.isUnifiedBillingUser ? creditsConfig : plainConfig,
+    ),
     quotas,
     payAsYouGo,
     exhausted,
@@ -220,7 +238,8 @@ export function parsePlainGrokBilling(config, user = null, periodEnd = null) {
   // Weekly limit — rolling usage window. Only present in some payloads via
   // currentPeriod (or user.rateLimits). Show it when we have data; otherwise
   // emit an unknown/unlimited-style row so the label still appears like the CLI.
-  const weekly = config.currentPeriod || user?.currentPeriod || user?.rateLimits?.weekly;
+  const weekly =
+    config.currentPeriod || user?.currentPeriod || user?.rateLimits?.weekly;
   if (weekly && typeof weekly === "object") {
     const wTotal = unwrapVal(weekly.limit ?? weekly.total ?? weekly.cap, NaN);
     const wUsed = unwrapVal(weekly.used ?? weekly.consumed, NaN);
@@ -270,7 +289,9 @@ export function parsePlainGrokBilling(config, user = null, periodEnd = null) {
 export function parseGrokCliBilling(billing, user = null) {
   const root = billing && typeof billing === "object" ? billing : {};
   const config =
-    root.config && typeof root.config === "object" && !Array.isArray(root.config)
+    root.config &&
+    typeof root.config === "object" &&
+    !Array.isArray(root.config)
       ? root.config
       : root;
 
@@ -305,7 +326,11 @@ export function parseGrokCliBilling(billing, user = null) {
       total: onDemandCap,
       resetAt: periodEnd,
     });
-  } else if (Number.isFinite(onDemandCap) && onDemandCap === 0 && Number.isFinite(onDemandUsed)) {
+  } else if (
+    Number.isFinite(onDemandCap) &&
+    onDemandCap === 0 &&
+    Number.isFinite(onDemandUsed)
+  ) {
     // Cap 0 is the exhausted free/promo state (chat returns 402 spending-limit).
     // UI treats total===0 as unlimited, so use a synthetic 1/1 depleted row.
     quotas["On-demand"] = {
@@ -357,10 +382,15 @@ export function parseGrokCliBilling(billing, user = null) {
         quotas.Credits = makeQuota({
           used: resolvedUsed,
           total,
-          resetAt: parseResetTime(bag.resetAt || bag.resetsAt || bag.end) || periodEnd,
+          resetAt:
+            parseResetTime(bag.resetAt || bag.resetsAt || bag.end) || periodEnd,
         });
       }
-    } else if (Number.isFinite(remaining) && remaining >= 0 && !quotas.Credits) {
+    } else if (
+      Number.isFinite(remaining) &&
+      remaining >= 0 &&
+      !quotas.Credits
+    ) {
       quotas.Credits = {
         used: 0,
         total: remaining > 0 ? remaining : 1,
@@ -392,7 +422,11 @@ export function parseGrokCliBilling(billing, user = null) {
  * @param {object|null} providerSpecificData
  * @param {object|null} proxyOptions
  */
-export async function getGrokCliUsage(accessToken, providerSpecificData = null, proxyOptions = null) {
+export async function getGrokCliUsage(
+  accessToken,
+  providerSpecificData = null,
+  proxyOptions = null,
+) {
   if (!accessToken) {
     return { message: "Grok CLI access token not available." };
   }
@@ -400,7 +434,11 @@ export async function getGrokCliUsage(accessToken, providerSpecificData = null, 
   const headers = buildGrokCliHeaders(accessToken, providerSpecificData);
   const getJson = async (url) => {
     try {
-      const res = await proxyAwareFetch(url, { method: "GET", headers }, proxyOptions);
+      const res = await proxyAwareFetch(
+        url,
+        { method: "GET", headers },
+        proxyOptions,
+      );
       if (res.status === 401 || res.status === 403) return { authError: true };
       if (!res.ok) return null;
       return await res.json().catch(() => null);
@@ -420,7 +458,9 @@ export async function getGrokCliUsage(accessToken, providerSpecificData = null, 
     ]);
 
     if (creditsBilling?.authError && plainBilling?.authError) {
-      return { message: "Grok CLI authentication expired. Please re-authorize." };
+      return {
+        message: "Grok CLI authentication expired. Please re-authorize.",
+      };
     }
 
     const credits =

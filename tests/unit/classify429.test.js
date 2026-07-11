@@ -42,16 +42,16 @@ describe("parseRetryAfter", () => {
     expect(parseRetryAfter({ body: { quotaResetDelay: 1500 } })).toBe(1500);
   });
   it("falls back to message duration text", () => {
-    expect(
-      parseRetryAfter({ message: "quota will reset after 2s" }),
-    ).toBe(2000);
+    expect(parseRetryAfter({ message: "quota will reset after 2s" })).toBe(
+      2000,
+    );
   });
 });
 
 describe("classify429", () => {
   it("classifies RESOURCE_EXHAUSTED as quotaExhausted", () => {
     const r = classify429(429, {
-      message: 'error: RESOURCE_EXHAUSTED QUOTA_EXHAUSTED',
+      message: "error: RESOURCE_EXHAUSTED QUOTA_EXHAUSTED",
     });
     expect(r.kind).toBe("quotaExhausted");
   });

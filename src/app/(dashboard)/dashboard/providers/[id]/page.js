@@ -224,22 +224,20 @@ export default function ProviderDetailPage() {
   // any error keeps the static list.
   useEffect(() => {
     if (isCompatible) {
-      setLiveModels(null);
+      queueMicrotask(() => setLiveModels(null));
       return;
     }
     const activeConnection = (connections || []).find(
       (conn) => conn && conn.id && conn.isActive !== false,
     );
     if (!activeConnection) {
-      setLiveModels(null);
+      queueMicrotask(() => setLiveModels(null));
       return;
     }
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(
-          `/api/providers/${activeConnection.id}/models`,
-        );
+        const res = await fetch(`/api/providers/${activeConnection.id}/models`);
         if (!res.ok) return;
         const data = await res.json();
         const fetched = Array.isArray(data?.models) ? data.models : [];
@@ -258,9 +256,7 @@ export default function ProviderDetailPage() {
   // Overlay live models on the static catalog (union by id, live metadata wins).
   const models = (() => {
     if (!liveModels || liveModels.length === 0) return staticModels;
-    const byId = new Map(
-      (staticModels || []).map((m) => [m.id, m]),
-    );
+    const byId = new Map((staticModels || []).map((m) => [m.id, m]));
     for (const lm of liveModels) {
       const id = lm?.id || lm?.name || lm?.model;
       if (!id) continue;
@@ -552,9 +548,7 @@ export default function ProviderDetailPage() {
             },
           });
         }}
-        hasErroredSelection={
-          selectedConnections.some((c) => c.lastError)
-        }
+        hasErroredSelection={selectedConnections.some((c) => c.lastError)}
         handleRunOneByOneTest={handleRunOneByOneTest}
         handleStopOneByOneTest={handleStopOneByOneTest}
         openBulkProxyModal={openBulkProxyModal}

@@ -80,8 +80,7 @@ export async function resolveAntigravityModels(credentials, options = {}) {
           for (const [rawId, modelData] of Object.entries(modelsMap)) {
             const id = String(rawId).trim();
             if (!id || SKIP_IDS.has(id)) continue;
-            const name =
-              (modelData?.displayName || id).toString();
+            const name = (modelData?.displayName || id).toString();
             models.push({ id, name });
           }
           if (models.length) return { models };
