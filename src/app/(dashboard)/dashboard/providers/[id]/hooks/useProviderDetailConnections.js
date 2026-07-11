@@ -21,6 +21,7 @@ import {
   fetchProviderSettings,
   warmupProviderConnection,
   warmupSelectedConnections,
+  fetchRawProviderConnection,
 } from "../utils/providerDetailPageApi";
 
 const ACCOUNT_STATUS_FILTER_OPTIONS = ["all", "active", "inactive"];
@@ -68,6 +69,8 @@ export function useProviderDetailConnections({
   const [warmupRunning, setWarmupRunning] = useState(false);
   const [warmupResults, setWarmupResults] = useState({});
   const [warmupSummary, setWarmupSummary] = useState(null);
+  const [activeJsonConnection, setActiveJsonConnection] = useState(null);
+  const [loadingJson, setLoadingJson] = useState(false);
   const stopOneByOneRef = useRef(false);
   const lastClickedIndexRef = useRef(null);
   const connectionsRef = useRef([]);
@@ -851,6 +854,23 @@ export function useProviderDetailConnections({
     }
   };
 
+  const handleViewJson = async (connectionId) => {
+    setLoadingJson(true);
+    try {
+      const { res, data } = await fetchRawProviderConnection(connectionId);
+      if (res.ok && data.connection) {
+        setActiveJsonConnection(data.connection);
+      } else {
+        alert(data.error || "Failed to fetch connection JSON");
+      }
+    } catch (error) {
+      console.log("Error fetching connection JSON:", error);
+      alert("Failed to fetch connection JSON");
+    } finally {
+      setLoadingJson(false);
+    }
+  };
+
   return {
     connections,
     setConnections,
@@ -913,5 +933,9 @@ export function useProviderDetailConnections({
     handleWarmupSingle,
     clearWarmupResults,
     handleClearSelectedErrors,
+    activeJsonConnection,
+    loadingJson,
+    handleViewJson,
+    setActiveJsonConnection,
   };
 }

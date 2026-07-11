@@ -89,6 +89,11 @@ export async function testProviderConnection(connectionId) {
   return { res, data: await res.json() };
 }
 
+export async function fetchRawProviderConnection(connectionId) {
+  const res = await fetch(`/api/providers/${connectionId}/raw`, { cache: "no-store" });
+  return { res, data: await res.json() };
+}
+
 export async function refreshSelectedCodexConnections(connectionIds) {
   const res = await fetch("/api/providers/codex/refresh", {
     method: "POST",

@@ -6,6 +6,7 @@ import {
   IFlowCookieModal,
   KiroOAuthWrapper,
   OAuthModal,
+  ViewJsonModal,
 } from "@/shared/components";
 import AddApiKeyModal from "./AddApiKeyModal";
 import AddCustomModelModal from "./AddCustomModelModal";
@@ -46,6 +47,8 @@ export default function ProviderDetailModals({
   onAgRiskConfirm,
   confirmState,
   onCloseConfirm,
+  activeJsonConnection,
+  onCloseJsonModal,
 }) {
   return (
     <>
@@ -167,6 +170,12 @@ export default function ProviderDetailModals({
         }
         confirmText={confirmState?.confirmText || "Confirm"}
         variant="danger"
+      />
+
+      <ViewJsonModal
+        isOpen={!!activeJsonConnection}
+        onClose={onCloseJsonModal}
+        connection={activeJsonConnection}
       />
     </>
   );

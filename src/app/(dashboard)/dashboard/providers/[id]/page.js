@@ -203,6 +203,9 @@ export default function ProviderDetailPage() {
     handleWarmupSingle,
     clearWarmupResults,
     handleClearSelectedErrors,
+    activeJsonConnection,
+    handleViewJson,
+    setActiveJsonConnection,
   } = useProviderDetailConnections({
     providerId,
     isCompatible,
@@ -451,6 +454,7 @@ export default function ProviderDetailPage() {
         handleWarmupSelected={handleWarmupSelected}
         handleWarmupSingle={handleWarmupSingle}
         clearWarmupResults={clearWarmupResults}
+        onViewJson={handleViewJson}
         handleAutoPriorityVisibleConnections={
           handleAutoPriorityVisibleConnections
         }
@@ -629,6 +633,8 @@ export default function ProviderDetailPage() {
         onAgRiskConfirm={handleAgRiskConfirm}
         confirmState={confirmState}
         onCloseConfirm={() => setConfirmState(null)}
+        activeJsonConnection={activeJsonConnection}
+        onCloseJsonModal={() => setActiveJsonConnection(null)}
       />
     </div>
   );

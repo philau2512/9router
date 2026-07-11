@@ -68,6 +68,7 @@ export default function ProviderConnectionsCard({
   handleWarmupSelected,
   handleWarmupSingle,
   clearWarmupResults,
+  onViewJson,
 }) {
   if (isFreeNoAuth) {
     return <NoAuthProxyCard providerId={providerId} />;
@@ -241,6 +242,7 @@ export default function ProviderConnectionsCard({
               isConnectionsSortActive={isConnectionsSortActive}
               warmupResults={warmupResults}
               handleWarmupSingle={handleWarmupSingle}
+              onViewJson={onViewJson}
             />
           )}
 
