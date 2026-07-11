@@ -472,8 +472,19 @@ export async function handleChatCore({
     );
   }
 
+  // Phase 3 (option c) fused path: for a STREAMING Kiro request that needs
+  // translation (dominant traffic: Claude/other client through Kiro→OpenAI),
+  // ask the executor to hand off parsed OpenAI objects instead of re-serialized
+  // SSE bytes, skipping the downstream serialize→reparse hop. sourceFormat is
+  // the client format, targetFormat the provider format; needsTranslation is
+  // simply sourceFormat !== targetFormat. Non-streaming / same-format / non-Kiro
+  // requests are unaffected (emitObjects stays false → byte path).
+  const wantKiroObjects =
+    provider === "kiro" && stream && sourceFormat !== targetFormat;
+
   // Execute request
   let providerResponse, providerUrl, providerHeaders, finalBody;
+  let providerObjectStream = null;
   try {
     if (timing && !timing.upstreamFetchStartedAt) {
       timing.upstreamFetchStartedAt = Date.now();
@@ -486,11 +497,13 @@ export async function handleChatCore({
       signal: streamController.signal,
       log,
       proxyOptions,
+      emitObjects: wantKiroObjects,
     });
     providerResponse = result.response;
     providerUrl = result.url;
     providerHeaders = result.headers;
     finalBody = result.transformedBody;
+    providerObjectStream = result.kiroObjectStream || null;
     reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
   } catch (error) {
     trackPendingRequest(model, provider, connectionId, false, true);
@@ -566,10 +579,12 @@ export async function handleChatCore({
             signal: streamController.signal,
             log,
             proxyOptions,
+            emitObjects: wantKiroObjects,
           });
           if (retryResult.response.ok) {
             providerResponse = retryResult.response;
             providerUrl = retryResult.url;
+            providerObjectStream = retryResult.kiroObjectStream || null;
           }
         } catch {
           log?.warn?.(
@@ -712,6 +727,8 @@ export async function handleChatCore({
     credentials,
     timing,
     streamDetailId,
+    // Phase 3 (option c): non-null only for streaming Kiro+translate (fused path).
+    kiroObjectStream: providerObjectStream,
   });
 }
 

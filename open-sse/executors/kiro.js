@@ -142,10 +142,30 @@ export class KiroExecutor extends BaseExecutor {
 
     const result = await super.execute(args);
     if (result?.response?.ok) {
-      result.response = this.transformEventStreamToSSE(
-        result.response,
-        args.model,
-      );
+      if (args.emitObjects) {
+        // Phase 3 (option c) fused path: hand parsed OpenAI chunk OBJECTS to the
+        // downstream translate layer instead of re-serializing to SSE bytes.
+        // We DON'T consume/replace result.response.body with a byte transform;
+        // we decode straight to an object-mode stream and expose it separately.
+        // result.response is kept as a headers-only SSE placeholder so the
+        // handler's content-type guard still sees text/event-stream (the raw
+        // upstream body has now been consumed by the object decoder).
+        result.kiroObjectStream = this.transformEventStreamToSSE(
+          result.response,
+          args.model,
+          { emitObjects: true },
+        );
+        result.response = new Response(null, {
+          status: result.response.status,
+          statusText: result.response.statusText,
+          headers: { "Content-Type": "text/event-stream" },
+        });
+      } else {
+        result.response = this.transformEventStreamToSSE(
+          result.response,
+          args.model,
+        );
+      }
     }
     return result;
   }
@@ -154,7 +174,22 @@ export class KiroExecutor extends BaseExecutor {
    * Transform AWS EventStream binary response to SSE text stream
    * Using TransformStream instead of ReadableStream.pull() to avoid Workers timeout
    */
-  transformEventStreamToSSE(response, model) {
+  transformEventStreamToSSE(response, model, { emitObjects = false } = {}) {
+    // Phase 3 (option c) object hand-off: when emitObjects=true, emit parsed
+    // OpenAI `chat.completion.chunk` OBJECTS directly (object-mode ReadableStream)
+    // instead of serialized `data: {...}\n\n` bytes, and a final `{ done: true }`
+    // sentinel instead of `data: [DONE]`. This lets the downstream translate layer
+    // consume objects and skip the serialize->reparse round-trip (measured ~34-38%
+    // of the OpenAI->Claude translate transform CPU). The byte path (emitObjects
+    // =false, the default) is UNCHANGED and byte-identical — _frame/_doneFrame
+    // collapse to exactly the previous `_kiroEncoder.encode(...)` expressions.
+    const _frame = emitObjects
+      ? (o) => o
+      : (o) => _kiroEncoder.encode(`data: ${JSON.stringify(o)}\n\n`);
+    const _doneFrame = emitObjects
+      ? { done: true }
+      : _kiroEncoder.encode("data: [DONE]\n\n");
+
     // Phase 2 hot-path: growable accumulator instead of a per-chunk
     // `new Uint8Array(remaining + chunk.length)` full-copy. We keep a backing
     // buffer with writePos/readOffset and only realloc/compact when the tail
@@ -261,11 +296,7 @@ export class KiroExecutor extends BaseExecutor {
               };
               chunkIndex++;
               state.reasoningChunkCount++;
-              controller.enqueue(
-                _kiroEncoder.encode(
-                  `data: ${JSON.stringify(reasoningChunk)}\n\n`,
-                ),
-              );
+              controller.enqueue(_frame(reasoningChunk));
             }
             // Kiro model "auto" leaks <thinking>...</thinking> blocks into the
             // assistantResponseEvent content stream. Strip the tags and re-emit
@@ -330,9 +361,7 @@ export class KiroExecutor extends BaseExecutor {
               ],
             };
             chunkIndex++;
-            controller.enqueue(
-              _kiroEncoder.encode(`data: ${JSON.stringify(chunk)}\n\n`),
-            );
+            controller.enqueue(_frame(chunk));
           }
 
           // Handle reasoningContentEvent (Kiro thinking / reasoning)
@@ -371,9 +400,7 @@ export class KiroExecutor extends BaseExecutor {
               };
               chunkIndex++;
               state.reasoningChunkCount++;
-              controller.enqueue(
-                _kiroEncoder.encode(`data: ${JSON.stringify(chunk)}\n\n`),
-              );
+              controller.enqueue(_frame(chunk));
             }
           }
 
@@ -393,9 +420,7 @@ export class KiroExecutor extends BaseExecutor {
               ],
             };
             chunkIndex++;
-            controller.enqueue(
-              _kiroEncoder.encode(`data: ${JSON.stringify(chunk)}\n\n`),
-            );
+            controller.enqueue(_frame(chunk));
           }
 
           // Handle toolUseEvent
@@ -444,11 +469,7 @@ export class KiroExecutor extends BaseExecutor {
                   ],
                 };
                 chunkIndex++;
-                controller.enqueue(
-                  _kiroEncoder.encode(
-                    `data: ${JSON.stringify(startChunk)}\n\n`,
-                  ),
-                );
+                controller.enqueue(_frame(startChunk));
               } else {
                 toolIndex = state.seenToolIds.get(toolCallId);
               }
@@ -487,11 +508,7 @@ export class KiroExecutor extends BaseExecutor {
                   ],
                 };
                 chunkIndex++;
-                controller.enqueue(
-                  _kiroEncoder.encode(
-                    `data: ${JSON.stringify(argsChunk)}\n\n`,
-                  ),
-                );
+                controller.enqueue(_frame(argsChunk));
               }
             }
           }
@@ -536,12 +553,10 @@ export class KiroExecutor extends BaseExecutor {
               chunk.usage = state.usage;
             }
 
-            controller.enqueue(
-              _kiroEncoder.encode(`data: ${JSON.stringify(chunk)}\n\n`),
-            );
+            controller.enqueue(_frame(chunk));
 
             if (!state.doneEmitted) {
-              controller.enqueue(_kiroEncoder.encode("data: [DONE]\n\n"));
+              controller.enqueue(_doneFrame);
               state.doneEmitted = true;
             }
           }
@@ -638,11 +653,7 @@ export class KiroExecutor extends BaseExecutor {
               finishChunk.usage = state.usage;
             }
 
-            controller.enqueue(
-              _kiroEncoder.encode(
-                `data: ${JSON.stringify(finishChunk)}\n\n`,
-              ),
-            );
+            controller.enqueue(_frame(finishChunk));
           }
         }
 
@@ -665,7 +676,7 @@ export class KiroExecutor extends BaseExecutor {
 
         // Send final done message
         if (!state.doneEmitted) {
-          controller.enqueue(_kiroEncoder.encode("data: [DONE]\n\n"));
+          controller.enqueue(_doneFrame);
           state.doneEmitted = true;
         }
       },
@@ -673,12 +684,28 @@ export class KiroExecutor extends BaseExecutor {
 
     // Pipe response body through transform stream
     if (!response.body) {
+      // Object mode: an empty object stream that emits only the done sentinel.
+      if (emitObjects) {
+        return new ReadableStream({
+          start(controller) {
+            controller.enqueue({ done: true });
+            controller.close();
+          },
+        });
+      }
       return new Response("data: [DONE]\n\n", {
         status: response.status,
         headers: { "Content-Type": "text/event-stream" },
       });
     }
     const transformedStream = response.body.pipeThrough(transformStream);
+
+    // Object mode: return the raw object-mode ReadableStream (not a Response —
+    // objects can't ride in a Response body). The caller pipes it through the
+    // object-input translate transform. See handleStreamingResponse.
+    if (emitObjects) {
+      return transformedStream;
+    }
 
     return new Response(transformedStream, {
       status: response.status,

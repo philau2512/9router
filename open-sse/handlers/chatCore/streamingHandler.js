@@ -3,6 +3,7 @@ import { needsTranslation } from "../../translator/index.js";
 import {
   createSSETransformStreamWithLogger,
   createPassthroughStreamWithLogger,
+  createObjectTranslateStreamWithLogger,
 } from "../../utils/stream.js";
 import { pipeWithDisconnect } from "../../utils/streamHandler.js";
 import { PROVIDERS } from "../../config/providers.js";
@@ -40,6 +41,9 @@ function buildTransformStream({
   apiKey,
   streamStateTracker,
   targetModelAlias = null,
+  // Phase 3 (option c): when true, the translate transform consumes parsed
+  // OpenAI objects (from Kiro's object-mode decode) instead of SSE bytes.
+  objectInput = false,
 }) {
   const isDroidCLI =
     userAgent?.toLowerCase().includes("droid") ||
@@ -80,7 +84,12 @@ function buildTransformStream({
   // Symmetric today, but keep call sites consistent to avoid latent misrouting
   // if a format-specific branch is ever added. (Red Team S3 Finding 16)
   if (needsTranslation(sourceFormat, targetFormat)) {
-    return createSSETransformStreamWithLogger(
+    // Phase 3 (option c): object-input translate transform when Kiro hands off
+    // parsed OpenAI objects (skips serialize->reparse); same args otherwise.
+    const build = objectInput
+      ? createObjectTranslateStreamWithLogger
+      : createSSETransformStreamWithLogger;
+    return build(
       targetFormat,
       sourceFormat,
       provider,
@@ -135,6 +144,9 @@ export async function handleStreamingResponse({
   midStreamResumeEnabled,
   timing,
   streamDetailId,
+  // Phase 3 (option c): Kiro's object-mode decode stream when the fused path is
+  // active (streaming Kiro request needing translation). Null otherwise.
+  kiroObjectStream = null,
 }) {
   if (onRequestSuccess) {
     Promise.resolve()
@@ -212,6 +224,7 @@ export async function handleStreamingResponse({
     apiKey,
     streamStateTracker,
     targetModelAlias,
+    objectInput: !!kiroObjectStream,
   });
 
   const resumeCtx = midStreamResumeEnabled
@@ -242,6 +255,9 @@ export async function handleStreamingResponse({
     model,
     provider,
     resumeCtx,
+    // Phase 3 (option c): feed Kiro's object-mode decode stream through the
+    // stall tap + object-input translate transform. Byte body used otherwise.
+    kiroObjectStream,
   );
 
   setImmediate(() => {
