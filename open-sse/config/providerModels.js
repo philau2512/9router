@@ -864,13 +864,23 @@ export const PROVIDER_MODELS = {
       id: "grok-2-image-1212",
       name: "Grok 2 Image",
       type: "image",
+      // Legacy xAI image endpoint: n + response_format only
       params: ["n", "response_format"],
     },
     {
       id: "grok-imagine-image",
       name: "Grok Imagine Image",
       type: "image",
-      params: ["n", "response_format"],
+      // Grok Imagine API options (UI filters Example extraFields by this list)
+      params: [
+        "n",
+        "size",
+        "quality",
+        "background",
+        "response_format",
+        "image_detail",
+        "output_format",
+      ],
     },
   ],
   mistral: [

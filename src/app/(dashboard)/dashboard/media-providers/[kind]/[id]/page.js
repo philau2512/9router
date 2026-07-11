@@ -1703,14 +1703,28 @@ function GenericExampleCard({ providerId, kind }) {
           </Row>
         )}
 
-        {/* Extra fields — for kinds without model concept (webSearch/webFetch), show all; otherwise filter by model.params */}
+        {/* Extra fields — webSearch/webFetch: all fields; media models: filter by model.params.
+            Custom models without params get the common image option set so Add Model still has controls. */}
         {(exConfig.extraFields || [])
-          .filter(
-            (f) =>
-              kindModels.length === 0 ||
-              (Array.isArray(selectedModelObj?.params) &&
-                selectedModelObj.params.includes(f.key)),
-          )
+          .filter((f) => {
+            if (kindModels.length === 0) return true;
+            if (Array.isArray(selectedModelObj?.params)) {
+              return selectedModelObj.params.includes(f.key);
+            }
+            // Custom / unknown model: show standard image options
+            if (kind === "image") {
+              return [
+                "n",
+                "size",
+                "quality",
+                "background",
+                "response_format",
+                "image_detail",
+                "output_format",
+              ].includes(f.key);
+            }
+            return false;
+          })
           .map((f) => (
             <Row key={f.key} label={f.label}>
               {f.type === "select" ? (
