@@ -1226,15 +1226,25 @@ function GenericExampleCard({ providerId, kind }) {
   const exConfig = KIND_EXAMPLE_CONFIG[kind];
   const safeExConfig = exConfig || {};
 
-  // Get models for this kind (e.g., type="image")
-  const kindModels = getModelsByProviderId(providerId).filter(
-    (m) => m.type === kind,
-  );
+  // Built-in models for this kind (e.g. type="image") + custom models from DB
+  const builtinKindModels = getModelsByProviderId(providerId).filter((m) => {
+    if (m.kinds) return m.kinds.includes(kind);
+    return (m.type || "llm") === kind;
+  });
+  const [customKindModels, setCustomKindModels] = useState([]);
+  const kindModels = [
+    ...builtinKindModels,
+    ...customKindModels.filter(
+      (m) => !builtinKindModels.some((b) => b.id === m.id),
+    ),
+  ];
   // Kinds that need a model identifier in the request (image/video/music)
   const KIND_NEEDS_MODEL = new Set(["image", "video", "music", "imageToText"]);
   const needsModel = KIND_NEEDS_MODEL.has(kind);
   const allowManualModel = needsModel && kindModels.length === 0;
-  const [selectedModel, setSelectedModel] = useState(kindModels[0]?.id ?? "");
+  const [selectedModel, setSelectedModel] = useState(
+    builtinKindModels[0]?.id ?? "",
+  );
   const selectedModelObj = kindModels.find((m) => m.id === selectedModel);
   const supportsEdit = !!selectedModelObj?.capabilities?.includes("edit");
   const supportsMask = !!selectedModelObj?.capabilities?.includes("mask");
@@ -1296,6 +1306,41 @@ function GenericExampleCard({ providerId, kind }) {
 
     return () => clearTimeout(timer);
   }, [providerId]);
+
+  // Merge custom models so Example dropdown matches ModelsCard (Add Model)
+  useEffect(() => {
+    const loadCustom = () => {
+      fetch("/api/models/custom", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((d) => {
+          const list = (d.models || []).filter(
+            (m) =>
+              m.providerAlias === providerAlias &&
+              (m.type || "llm") === kind,
+          );
+          setCustomKindModels(list);
+        })
+        .catch(() => {});
+    };
+    loadCustom();
+    window.addEventListener("focus", loadCustom);
+    window.addEventListener("customModelChanged", loadCustom);
+    return () => {
+      window.removeEventListener("focus", loadCustom);
+      window.removeEventListener("customModelChanged", loadCustom);
+    };
+  }, [providerAlias, kind]);
+
+  // Keep selection valid when custom models arrive / list changes
+  const kindModelIds = kindModels.map((m) => m.id).join("\0");
+  useEffect(() => {
+    if (!needsModel) return;
+    if (!kindModelIds) return;
+    const ids = kindModelIds.split("\0");
+    if (!selectedModel || !ids.includes(selectedModel)) {
+      setSelectedModel(ids[0]);
+    }
+  }, [kindModelIds, needsModel, selectedModel]);
 
   // Safe to early-return now that all hooks are declared
   if (!kindConfig || !exConfig) return null;
@@ -2421,35 +2466,40 @@ export default function MediaProviderDetailPage() {
         />
       )}
 
-      {/* Provider Info — config-driven, supports searchConfig, fetchConfig, ttsConfig, embeddingConfig, searchViaChat */}
+      {/* Provider Info — only for kinds that own the config (not searchViaChat on image pages) */}
       {!isCustom &&
-        (provider.searchConfig ||
-          provider.fetchConfig ||
-          provider.ttsConfig ||
-          provider.sttConfig ||
-          provider.embeddingConfig ||
-          provider.searchViaChat) && (
-          <ProviderInfoCard
-            config={
-              kind === "webFetch"
-                ? provider.fetchConfig
+        (() => {
+          const infoConfig =
+            kind === "webFetch"
+              ? provider.fetchConfig
+              : kind === "webSearch"
+                ? provider.searchConfig ||
+                  (provider.searchViaChat
+                    ? {
+                        mode: "chat-completions",
+                        defaultModel: provider.searchViaChat.defaultModel,
+                        pricingUrl: provider.searchViaChat.pricingUrl,
+                        freeTier: provider.searchViaChat.freeTier,
+                      }
+                    : null)
                 : kind === "tts"
                   ? provider.ttsConfig
                   : kind === "stt"
                     ? provider.sttConfig
                     : kind === "embedding"
                       ? provider.embeddingConfig
-                      : provider.searchConfig || {
-                          mode: "chat-completions",
-                          defaultModel: provider.searchViaChat?.defaultModel,
-                          pricingUrl: provider.searchViaChat?.pricingUrl,
-                          freeTier: provider.searchViaChat?.freeTier,
-                        }
-            }
-            provider={provider}
-            title={`${kindConfig.label} Config`}
-          />
-        )}
+                      : kind === "image"
+                        ? provider.imageConfig
+                        : null;
+          if (!infoConfig) return null;
+          return (
+            <ProviderInfoCard
+              config={infoConfig}
+              provider={provider}
+              title={`${kindConfig.label} Config`}
+            />
+          );
+        })()}
 
       {/* Example — per kind */}
       {kind === "embedding" && (

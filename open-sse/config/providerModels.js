@@ -866,6 +866,12 @@ export const PROVIDER_MODELS = {
       type: "image",
       params: ["n", "response_format"],
     },
+    {
+      id: "grok-imagine-image",
+      name: "Grok Imagine Image",
+      type: "image",
+      params: ["n", "response_format"],
+    },
   ],
   mistral: [
     { id: "mistral-large-latest", name: "Mistral Large 3" },
