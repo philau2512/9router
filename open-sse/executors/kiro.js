@@ -159,6 +159,7 @@ export class KiroExecutor extends BaseExecutor {
         const discovered = await fetchKiroProfileArn(
           credentials.accessToken,
           callerRegion,
+          args.proxyOptions || null,
         );
         if (discovered?.arn) {
           // Spread to avoid mutating the original reference — safe for retry logic

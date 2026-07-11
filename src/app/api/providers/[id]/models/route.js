@@ -9,6 +9,7 @@ import {
   refreshGoogleToken,
   updateProviderCredentials,
 } from "@/sse/services/tokenRefresh";
+import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 
@@ -273,6 +274,9 @@ const PROVIDER_MODELS_CONFIG = {
   // Custom resolvers (non-OpenAI-shaped APIs / token-refresh flows)
   kiro: {
     customResolver: async (connection) => {
+      const resolvedProxy = await resolveConnectionProxyConfig(
+        connection.providerSpecificData || {},
+      );
       const credentials = {
         accessToken: connection.accessToken,
         refreshToken: connection.refreshToken,
@@ -283,6 +287,7 @@ const PROVIDER_MODELS_CONFIG = {
       try {
         const result = await resolveKiroModels(credentials, {
           log: console,
+          proxyOptions: resolvedProxy,
           onCredentialsRefreshed: async (refreshed) => {
             if (refreshed?.accessToken) {
               await updateProviderCredentials(connection.id, {

@@ -20,6 +20,7 @@ import { resolveOpenCodeModels } from "open-sse/services/opencodeModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
+import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { PROVIDERS } from "open-sse/config/providers.js";
 
 // Per-provider live model resolvers. Each receives a connection record and
@@ -27,6 +28,9 @@ import { PROVIDERS } from "open-sse/config/providers.js";
 // Adding a provider here makes /v1/models prefer the live catalog for it.
 const LIVE_MODEL_RESOLVERS = {
   kiro: async (conn) => {
+    const resolvedProxy = await resolveConnectionProxyConfig(
+      conn.providerSpecificData || {},
+    );
     const result = await resolveKiroModels(
       {
         accessToken: conn.accessToken,
@@ -36,6 +40,7 @@ const LIVE_MODEL_RESOLVERS = {
       },
       {
         log: console,
+        proxyOptions: resolvedProxy,
         onCredentialsRefreshed: async (refreshed) => {
           if (refreshed?.accessToken) {
             await updateProviderCredentials(conn.id, {
