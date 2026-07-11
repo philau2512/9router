@@ -1,4 +1,5 @@
 import { KIRO_CONFIG, assertValidAwsRegion } from "../constants/oauth.js";
+import { proxyAwareFetch } from "../../../../open-sse/utils/proxyFetch.js";
 
 /**
  * Kiro OAuth Service
@@ -275,20 +276,30 @@ export class KiroService {
    * List available CodeWhisperer profiles for an API key / access token.
    * Returns the profileArn best matching the given region, or null.
    */
-  async listAvailableProfiles(accessToken, region = "us-east-1") {
+  async listAvailableProfiles(
+    accessToken,
+    region = "us-east-1",
+    proxyOptions = null,
+  ) {
     assertValidAwsRegion(region);
-    const endpoint = `https://codewhisperer.${region}.amazonaws.com`;
+    // q.<region>.amazonaws.com resolves in all regions;
+    // codewhisperer.<region> only works in us-east-1. PR #2314 fix.
+    const endpoint = `https://q.${region}.amazonaws.com`;
 
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-amz-json-1.0",
-        "x-amz-target": "AmazonCodeWhispererService.ListAvailableProfiles",
-        "Authorization": `Bearer ${accessToken}`,
-        "Accept": "application/json",
+    const response = await proxyAwareFetch(
+      endpoint,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-amz-json-1.0",
+          "x-amz-target": "AmazonCodeWhispererService.ListAvailableProfiles",
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ maxResults: 10 }),
       },
-      body: JSON.stringify({ maxResults: 10 }),
-    });
+      proxyOptions,
+    );
 
     if (!response.ok) {
       const error = await response.text();
@@ -298,7 +309,8 @@ export class KiroService {
     const data = await response.json();
     const profiles = Array.isArray(data?.profiles) ? data.profiles : [];
     const arnOf = (p) => p?.arn || p?.profileArn || null;
-    const match = profiles.find((p) => arnOf(p)?.split(":")[3] === region) || profiles[0];
+    const match =
+      profiles.find((p) => arnOf(p)?.split(":")[3] === region) || profiles[0];
     return arnOf(match);
   }
 

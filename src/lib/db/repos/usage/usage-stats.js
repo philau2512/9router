@@ -10,7 +10,11 @@
 
 import { getAdapter } from "../../driver.js";
 import { parseJson } from "../../helpers/jsonCol.js";
-import { PERIOD_MS, pendingRequests, lastErrorProvider } from "./usage-state.js";
+import {
+  PERIOD_MS,
+  pendingRequests,
+  lastErrorProvider,
+} from "./usage-state.js";
 import {
   getLocalDateKey,
   loadDaysInRange,
@@ -25,18 +29,37 @@ import {
 
 // --- Internal: aggregate daily summary data into stats ---
 
-function aggregateDailyData(dayRows, stats, connectionMap, providerNodeNameMap, apiKeyMap) {
+function aggregateDailyData(
+  dayRows,
+  stats,
+  connectionMap,
+  providerNodeNameMap,
+  apiKeyMap,
+) {
   for (const dr of dayRows) {
     const dateKey = dr.dateKey;
     const day = parseJson(dr.data, {});
     stats.totalPromptTokens += day.promptTokens || 0;
     stats.totalCompletionTokens += day.completionTokens || 0;
+    stats.totalCachedTokens += day.cachedTokens || 0;
     stats.totalCost += day.cost || 0;
 
     aggregateByProvider(day.byProvider, stats);
     aggregateByModel(day.byModel, stats, dateKey, providerNodeNameMap);
-    aggregateByAccount(day.byAccount, stats, dateKey, connectionMap, providerNodeNameMap);
-    aggregateByApiKey(day.byApiKey, stats, dateKey, apiKeyMap, providerNodeNameMap);
+    aggregateByAccount(
+      day.byAccount,
+      stats,
+      dateKey,
+      connectionMap,
+      providerNodeNameMap,
+    );
+    aggregateByApiKey(
+      day.byApiKey,
+      stats,
+      dateKey,
+      apiKeyMap,
+      providerNodeNameMap,
+    );
     aggregateByEndpoint(day.byEndpoint, stats, dateKey, providerNodeNameMap);
   }
 }
@@ -47,6 +70,8 @@ function aggregateByProvider(byProvider, stats) {
     stats.byProvider[prov].requests += p.requests || 0;
     stats.byProvider[prov].promptTokens += p.promptTokens || 0;
     stats.byProvider[prov].completionTokens += p.completionTokens || 0;
+    stats.byProvider[prov].cachedTokens =
+      (stats.byProvider[prov].cachedTokens || 0) + (p.cachedTokens || 0);
     stats.byProvider[prov].cost += p.cost || 0;
   }
 }
@@ -67,13 +92,21 @@ function aggregateByModel(byModel, stats, dateKey, providerNodeNameMap) {
     stats.byModel[statsKey].requests += m.requests || 0;
     stats.byModel[statsKey].promptTokens += m.promptTokens || 0;
     stats.byModel[statsKey].completionTokens += m.completionTokens || 0;
+    stats.byModel[statsKey].cachedTokens =
+      (stats.byModel[statsKey].cachedTokens || 0) + (m.cachedTokens || 0);
     stats.byModel[statsKey].cost += m.cost || 0;
     if (dateKey > (stats.byModel[statsKey].lastUsed || ""))
       stats.byModel[statsKey].lastUsed = dateKey;
   }
 }
 
-function aggregateByAccount(byAccount, stats, dateKey, connectionMap, providerNodeNameMap) {
+function aggregateByAccount(
+  byAccount,
+  stats,
+  dateKey,
+  connectionMap,
+  providerNodeNameMap,
+) {
   for (const [connId, a] of Object.entries(byAccount || {})) {
     const accountName =
       connectionMap[connId] || `Account ${connId.slice(0, 8)}...`;
@@ -93,13 +126,21 @@ function aggregateByAccount(byAccount, stats, dateKey, connectionMap, providerNo
     stats.byAccount[accountKey].requests += a.requests || 0;
     stats.byAccount[accountKey].promptTokens += a.promptTokens || 0;
     stats.byAccount[accountKey].completionTokens += a.completionTokens || 0;
+    stats.byAccount[accountKey].cachedTokens =
+      (stats.byAccount[accountKey].cachedTokens || 0) + (a.cachedTokens || 0);
     stats.byAccount[accountKey].cost += a.cost || 0;
     if (dateKey > (stats.byAccount[accountKey].lastUsed || ""))
       stats.byAccount[accountKey].lastUsed = dateKey;
   }
 }
 
-function aggregateByApiKey(byApiKey, stats, dateKey, apiKeyMap, providerNodeNameMap) {
+function aggregateByApiKey(
+  byApiKey,
+  stats,
+  dateKey,
+  apiKeyMap,
+  providerNodeNameMap,
+) {
   for (const [akKey, ak] of Object.entries(byApiKey || {})) {
     const rawModel = ak.rawModel || "";
     const provider = ak.provider || "";
@@ -126,6 +167,8 @@ function aggregateByApiKey(byApiKey, stats, dateKey, apiKeyMap, providerNodeName
     stats.byApiKey[apiKeyKey].requests += ak.requests || 0;
     stats.byApiKey[apiKeyKey].promptTokens += ak.promptTokens || 0;
     stats.byApiKey[apiKeyKey].completionTokens += ak.completionTokens || 0;
+    stats.byApiKey[apiKeyKey].cachedTokens =
+      (stats.byApiKey[apiKeyKey].cachedTokens || 0) + (ak.cachedTokens || 0);
     stats.byApiKey[apiKeyKey].cost += ak.cost || 0;
     if (dateKey > (stats.byApiKey[apiKeyKey].lastUsed || ""))
       stats.byApiKey[apiKeyKey].lastUsed = dateKey;
@@ -149,6 +192,8 @@ function aggregateByEndpoint(byEndpoint, stats, dateKey, providerNodeNameMap) {
     stats.byEndpoint[epKey].requests += ep.requests || 0;
     stats.byEndpoint[epKey].promptTokens += ep.promptTokens || 0;
     stats.byEndpoint[epKey].completionTokens += ep.completionTokens || 0;
+    stats.byEndpoint[epKey].cachedTokens =
+      (stats.byEndpoint[epKey].cachedTokens || 0) + (ep.cachedTokens || 0);
     stats.byEndpoint[epKey].cost += ep.cost || 0;
     if (dateKey > (stats.byEndpoint[epKey].lastUsed || ""))
       stats.byEndpoint[epKey].lastUsed = dateKey;
@@ -206,16 +251,25 @@ function overlayLastUsedFromHistory(db, stats, maxDays, connectionMap) {
 
 // --- Internal: aggregate live history (24h / today) ---
 
-function aggregateLiveHistory(filtered, stats, connectionMap, apiKeyMap, providerNodeNameMap) {
+function aggregateLiveHistory(
+  filtered,
+  stats,
+  connectionMap,
+  apiKeyMap,
+  providerNodeNameMap,
+) {
   for (const r of filtered) {
     const tokens = parseJson(r.tokens, {}) || {};
     const promptTokens = tokens.prompt_tokens || 0;
     const completionTokens = tokens.completion_tokens || 0;
+    const cachedTokens =
+      tokens.cached_tokens || tokens.cache_read_input_tokens || 0;
     const entryCost = r.cost || 0;
     const providerDisplayName = providerNodeNameMap[r.provider] || r.provider;
 
     stats.totalPromptTokens += promptTokens;
     stats.totalCompletionTokens += completionTokens;
+    stats.totalCachedTokens += cachedTokens;
     stats.totalCost += entryCost;
 
     // By provider
@@ -225,6 +279,7 @@ function aggregateLiveHistory(filtered, stats, connectionMap, apiKeyMap, provide
     prov.requests++;
     prov.promptTokens += promptTokens;
     prov.completionTokens += completionTokens;
+    prov.cachedTokens = (prov.cachedTokens || 0) + cachedTokens;
     prov.cost += entryCost;
 
     // By model
@@ -236,7 +291,14 @@ function aggregateLiveHistory(filtered, stats, connectionMap, apiKeyMap, provide
         lastUsed: r.timestamp,
       });
     }
-    incrementStatsEntry(stats.byModel[modelKey], promptTokens, completionTokens, entryCost, r.timestamp);
+    incrementStatsEntry(
+      stats.byModel[modelKey],
+      promptTokens,
+      completionTokens,
+      entryCost,
+      r.timestamp,
+      cachedTokens,
+    );
 
     // By account
     if (r.connectionId) {
@@ -253,7 +315,14 @@ function aggregateLiveHistory(filtered, stats, connectionMap, apiKeyMap, provide
           lastUsed: r.timestamp,
         });
       }
-      incrementStatsEntry(stats.byAccount[accountKey], promptTokens, completionTokens, entryCost, r.timestamp);
+      incrementStatsEntry(
+        stats.byAccount[accountKey],
+        promptTokens,
+        completionTokens,
+        entryCost,
+        r.timestamp,
+        cachedTokens,
+      );
     }
 
     // By API key
@@ -272,7 +341,14 @@ function aggregateLiveHistory(filtered, stats, connectionMap, apiKeyMap, provide
           lastUsed: r.timestamp,
         });
       }
-      incrementStatsEntry(stats.byApiKey[akKey], promptTokens, completionTokens, entryCost, r.timestamp);
+      incrementStatsEntry(
+        stats.byApiKey[akKey],
+        promptTokens,
+        completionTokens,
+        entryCost,
+        r.timestamp,
+        cachedTokens,
+      );
     } else {
       if (!stats.byApiKey["local-no-key"]) {
         stats.byApiKey["local-no-key"] = createStatsEntry({
@@ -284,7 +360,14 @@ function aggregateLiveHistory(filtered, stats, connectionMap, apiKeyMap, provide
           lastUsed: r.timestamp,
         });
       }
-      incrementStatsEntry(stats.byApiKey["local-no-key"], promptTokens, completionTokens, entryCost, r.timestamp);
+      incrementStatsEntry(
+        stats.byApiKey["local-no-key"],
+        promptTokens,
+        completionTokens,
+        entryCost,
+        r.timestamp,
+        cachedTokens,
+      );
     }
 
     // By endpoint
@@ -298,7 +381,14 @@ function aggregateLiveHistory(filtered, stats, connectionMap, apiKeyMap, provide
         lastUsed: r.timestamp,
       });
     }
-    incrementStatsEntry(stats.byEndpoint[epKey], promptTokens, completionTokens, entryCost, r.timestamp);
+    incrementStatsEntry(
+      stats.byEndpoint[epKey],
+      promptTokens,
+      completionTokens,
+      entryCost,
+      r.timestamp,
+      cachedTokens,
+    );
   }
 }
 
@@ -359,7 +449,9 @@ export async function getUsageStats(period = "all") {
 
   // Build lookup maps
   let allConnections = [];
-  try { allConnections = await getProviderConnections(); } catch {}
+  try {
+    allConnections = await getProviderConnections();
+  } catch {}
   const connectionMap = {};
   for (const c of allConnections)
     connectionMap[c.id] = c.name || c.email || c.id;
@@ -372,7 +464,9 @@ export async function getUsageStats(period = "all") {
   } catch {}
 
   let allApiKeys = [];
-  try { allApiKeys = await getApiKeys(); } catch {}
+  try {
+    allApiKeys = await getApiKeys();
+  } catch {}
   const apiKeyMap = {};
   for (const k of allApiKeys)
     apiKeyMap[k.key] = { name: k.name, id: k.id, createdAt: k.createdAt };
@@ -388,6 +482,7 @@ export async function getUsageStats(period = "all") {
     totalRequests: 0,
     totalPromptTokens: 0,
     totalCompletionTokens: 0,
+    totalCachedTokens: 0,
     totalCost: 0,
     byProvider: {},
     byModel: {},
@@ -411,10 +506,23 @@ export async function getUsageStats(period = "all") {
   const useDailySummary = period !== "24h" && period !== "today";
 
   if (useDailySummary) {
-    const periodDays = { "7d": 7, "30d": 30, "60d": 60 };
+    const periodDays = {
+      "7d": 7,
+      "30d": 30,
+      "60d": 60,
+      "90d": 90,
+      "180d": 180,
+      "365d": 365,
+    };
     const maxDays = periodDays[period] || null;
     const dayRows = loadDaysInRange(db, maxDays);
-    aggregateDailyData(dayRows, stats, connectionMap, providerNodeNameMap, apiKeyMap);
+    aggregateDailyData(
+      dayRows,
+      stats,
+      connectionMap,
+      providerNodeNameMap,
+      apiKeyMap,
+    );
     overlayLastUsedFromHistory(db, stats, maxDays, connectionMap);
   } else {
     // 24h / today: live history
@@ -430,7 +538,13 @@ export async function getUsageStats(period = "all") {
       `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, tokens FROM usageHistory WHERE timestamp >= ?`,
       [cutoff],
     );
-    aggregateLiveHistory(filtered, stats, connectionMap, apiKeyMap, providerNodeNameMap);
+    aggregateLiveHistory(
+      filtered,
+      stats,
+      connectionMap,
+      apiKeyMap,
+      providerNodeNameMap,
+    );
   }
 
   stats.totalRequests = Object.values(stats.byProvider).reduce(

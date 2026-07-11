@@ -15,7 +15,9 @@ describe("Proxy Helper Utilities", () => {
 
     it("redacts username and password in proxy URLs", () => {
       const url = "http://admin:secret123@myproxy.com:8080/path?query=1";
-      expect(maskProxyUrl(url)).toBe("http://***:***@myproxy.com:8080/path?query=1");
+      expect(maskProxyUrl(url)).toBe(
+        "http://***:***@myproxy.com:8080/path?query=1",
+      );
     });
 
     it("handles SOCKS proxy URLs with credentials", () => {
@@ -32,8 +34,14 @@ describe("Proxy Helper Utilities", () => {
 
   describe("sanitizeProxyError", () => {
     it("formats standard error properties", () => {
-      const err = { name: "ConnectTimeoutError", code: "ETIMEDOUT", message: "connection timed out" };
-      expect(sanitizeProxyError(err)).toBe("ConnectTimeoutError/ETIMEDOUT: connection timed out");
+      const err = {
+        name: "ConnectTimeoutError",
+        code: "ETIMEDOUT",
+        message: "connection timed out",
+      };
+      expect(sanitizeProxyError(err)).toBe(
+        "ConnectTimeoutError/ETIMEDOUT: connection timed out",
+      );
     });
 
     it("redacts credentials from proxy URLs embedded inside error messages", () => {
@@ -41,13 +49,16 @@ describe("Proxy Helper Utilities", () => {
         name: "Error",
         message: "Failed to connect to http://user:pass123@proxy.com:8080",
       };
-      expect(sanitizeProxyError(err)).toBe("Error: Failed to connect to <redacted-url>");
+      expect(sanitizeProxyError(err)).toBe(
+        "Error: Failed to connect to <redacted-url>",
+      );
     });
 
     it("redacts proxy-authorization headers inside error messages", () => {
       const err = {
         name: "ProxyError",
-        message: "Proxy rejected authorization: proxy-authorization=Basic dXNlcjpwYXNz",
+        message:
+          "Proxy rejected authorization: proxy-authorization=Basic dXNlcjpwYXNz",
       };
       expect(sanitizeProxyError(err)).toContain("authorization=<redacted>");
     });
@@ -67,7 +78,9 @@ describe("Proxy Helper Utilities", () => {
     });
 
     it("returns valid URL as is", () => {
-      expect(normalizeProxyUrl("http://localhost:7890")).toBe("http://localhost:7890");
+      expect(normalizeProxyUrl("http://localhost:7890")).toBe(
+        "http://localhost:7890",
+      );
     });
 
     it("automatically prepends http protocol to bare host:port inputs", () => {
@@ -85,14 +98,24 @@ describe("Proxy Helper Utilities", () => {
     });
 
     it("matches exact hostnames and subdomains of the suffix", () => {
-      expect(shouldBypassByNoProxy("https://api.openai.com/v1", "api.openai.com")).toBe(true);
-      expect(shouldBypassByNoProxy("https://api.openai.com/v1", "openai.com")).toBe(true);
-      expect(shouldBypassByNoProxy("https://api.anthropic.com/v1", "openai.com")).toBe(false);
+      expect(
+        shouldBypassByNoProxy("https://api.openai.com/v1", "api.openai.com"),
+      ).toBe(true);
+      expect(
+        shouldBypassByNoProxy("https://api.openai.com/v1", "openai.com"),
+      ).toBe(true);
+      expect(
+        shouldBypassByNoProxy("https://api.anthropic.com/v1", "openai.com"),
+      ).toBe(false);
     });
 
     it("matches suffix dot subdomains", () => {
-      expect(shouldBypassByNoProxy("https://sub.api.openai.com", ".openai.com")).toBe(true);
-      expect(shouldBypassByNoProxy("https://openai.com", ".openai.com")).toBe(true);
+      expect(
+        shouldBypassByNoProxy("https://sub.api.openai.com", ".openai.com"),
+      ).toBe(true);
+      expect(shouldBypassByNoProxy("https://openai.com", ".openai.com")).toBe(
+        true,
+      );
     });
   });
 });

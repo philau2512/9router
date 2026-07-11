@@ -6,6 +6,7 @@ import {
 } from "../../config/defaultThinkingSignature.js";
 import { ANTIGRAVITY_DEFAULT_SYSTEM } from "../../config/appConstants.js";
 import { openaiToClaudeRequestForAntigravity } from "./openai-to-claude.js";
+import { extractThinking } from "../concerns/thinkingUnified.js";
 
 function generateUUID() {
   return crypto.randomUUID();
@@ -22,6 +23,36 @@ import {
   cleanJSONSchemaForAntigravity,
 } from "../helpers/geminiHelper.js";
 import { deriveSessionId } from "../../utils/sessionManager.js";
+
+// ── Gemini thinking output floor (upstream 7610f28f4) ────────────────────────
+// Minimum output tokens when thinking is active — prevents truncated responses.
+const GEMINI_LEVEL_OUTPUT_FLOOR = {
+  minimal: 4096,
+  low: 8192,
+  medium: 16384,
+  high: 65535,
+};
+
+function geminiBudgetOutputFloor(budget) {
+  if (budget === -1) return 32768;
+  if (!Number.isFinite(budget)) return 32768;
+  if (budget <= 1024) return 8192;
+  if (budget <= 8192) return 16384;
+  if (budget <= 24576) return 32768;
+  return 65535;
+}
+
+function geminiLevelOutputFloor(level) {
+  return GEMINI_LEVEL_OUTPUT_FLOOR[level] || GEMINI_LEVEL_OUTPUT_FLOOR.high;
+}
+
+// Ensure generationConfig.maxOutputTokens >= floor (doesn't reduce it if already higher).
+function ensureGeminiOutputFloor(generationConfig, floor) {
+  const current = Number(generationConfig.maxOutputTokens);
+  if (!Number.isFinite(current) || current < floor) {
+    generationConfig.maxOutputTokens = floor;
+  }
+}
 
 // Sanitize function names for Gemini API.
 // Gemini requires: starts with [a-zA-Z_], followed by [a-zA-Z0-9_.:\-], max 64 chars.
@@ -296,6 +327,35 @@ export function openaiToGeminiCLIRequest(model, body, stream) {
     };
   }
 
+  // Raise output floor so thinking responses are not truncated (7610f28f4).
+  const thinkIntent = extractThinking(gemini);
+  if (thinkIntent && thinkIntent.mode !== "none") {
+    if (thinkIntent.mode === "level") {
+      ensureGeminiOutputFloor(
+        gemini.generationConfig,
+        geminiLevelOutputFloor(thinkIntent.level),
+      );
+    } else if (thinkIntent.mode === "budget") {
+      ensureGeminiOutputFloor(
+        gemini.generationConfig,
+        geminiBudgetOutputFloor(thinkIntent.budget),
+      );
+    } else {
+      ensureGeminiOutputFloor(
+        gemini.generationConfig,
+        GEMINI_LEVEL_OUTPUT_FLOOR.high,
+      );
+    }
+  } else if (gemini.generationConfig.thinkingConfig?.thinkingBudget) {
+    // Fallback: thinking config set but extractThinking didn't catch it
+    ensureGeminiOutputFloor(
+      gemini.generationConfig,
+      geminiBudgetOutputFloor(
+        gemini.generationConfig.thinkingConfig.thinkingBudget,
+      ),
+    );
+  }
+
   // Clean schema for tools
   if (gemini.tools?.[0]?.functionDeclarations) {
     for (const fn of gemini.tools[0].functionDeclarations) {
@@ -512,7 +572,9 @@ function wrapInCloudCodeEnvelopeForClaude(
 
   // Upstream fix from open-sse commit 8d1db46be
   // Normalize contents to prevent 400 invalid_argument on consecutive same-role messages
-  envelope.request.contents = normalizeGeminiContents(envelope.request.contents);
+  envelope.request.contents = normalizeGeminiContents(
+    envelope.request.contents,
+  );
 
   return envelope;
 }

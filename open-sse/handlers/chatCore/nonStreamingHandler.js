@@ -62,7 +62,8 @@ export function translateNonStreamingResponse(
         // Handle inline image data (from image generation models)
         const inlineData = part.inlineData || part.inline_data;
         if (inlineData?.data) {
-          const mimeType = inlineData.mimeType || inlineData.mime_type || "image/png";
+          const mimeType =
+            inlineData.mimeType || inlineData.mime_type || "image/png";
           textContent += `\n![image](data:${mimeType};base64,${inlineData.data})\n`;
         }
       }
@@ -240,8 +241,11 @@ export async function handleNonStreamingResponse({
   if (onRequestSuccess) {
     Promise.resolve()
       .then(onRequestSuccess)
-      .catch(err => {
-        console.error("[ChatCore] onRequestSuccess failed:", err?.message || err);
+      .catch((err) => {
+        console.error(
+          "[ChatCore] onRequestSuccess failed:",
+          err?.message || err,
+        );
       });
   }
 
@@ -259,7 +263,9 @@ export async function handleNonStreamingResponse({
     endpoint: clientRawRequest?.endpoint,
   });
 
-  const translatedResponse = needsTranslation(targetFormat, sourceFormat)
+  // needsTranslation signature is (sourceFormat, targetFormat) — pass in order
+  // (Red Team S3 Finding 16). translateNonStreamingResponse keeps its own arg order.
+  const translatedResponse = needsTranslation(sourceFormat, targetFormat)
     ? translateNonStreamingResponse(responseBody, targetFormat, sourceFormat)
     : responseBody;
 

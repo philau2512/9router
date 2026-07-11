@@ -339,21 +339,18 @@ describe("proxyAwareFetch — api.anthropic.com routing", () => {
   });
 
   it("routes api.anthropic.com to gotScraping (non-streaming) and returns ok response", async () => {
-    // Mock got-scraping before module load
-    vi.doMock("got-scraping", () => {
-      const mockGotScraping = vi.fn().mockResolvedValue({
-        statusCode: 200,
-        statusMessage: "OK",
-        headers: { "content-type": "application/json" },
-        rawBody: Buffer.from(JSON.stringify({ id: "msg_test" })),
-      });
-      mockGotScraping.stream = vi.fn();
-      return { gotScraping: mockGotScraping };
+    const gotScraping = vi.fn().mockResolvedValue({
+      statusCode: 200,
+      statusMessage: "OK",
+      headers: { "content-type": "application/json" },
+      rawBody: Buffer.from(JSON.stringify({ id: "msg_test" })),
     });
+    gotScraping.stream = vi.fn();
 
     vi.resetModules();
-    const { proxyAwareFetch } = await import("open-sse/utils/proxyFetch.js");
-    const { gotScraping } = await import("got-scraping");
+    const { proxyAwareFetch, __setGotScrapingLoaderForTest } =
+      await import("open-sse/utils/proxyFetch.js");
+    __setGotScrapingLoaderForTest(() => Promise.resolve({ gotScraping }));
 
     const res = await proxyAwareFetch("https://api.anthropic.com/v1/messages", {
       method: "POST",

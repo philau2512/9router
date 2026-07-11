@@ -6,6 +6,7 @@ import {
   IFlowCookieModal,
   KiroOAuthWrapper,
   OAuthModal,
+  ViewJsonModal,
 } from "@/shared/components";
 import AddApiKeyModal from "./AddApiKeyModal";
 import AddCustomModelModal from "./AddCustomModelModal";
@@ -46,6 +47,8 @@ export default function ProviderDetailModals({
   onAgRiskConfirm,
   confirmState,
   onCloseConfirm,
+  activeJsonConnection,
+  onCloseJsonModal,
 }) {
   return (
     <>
@@ -72,7 +75,9 @@ export default function ProviderDetailModals({
       ) : (
         <OAuthModal
           isOpen={showOAuthModal}
-          provider={providerId}
+          // xai provider page uses grok-cli OAuth (device-code → cli-chat-proxy.grok.com)
+          // xai PKCE flow targets api.x.ai which requires paid credits — not the same as Grok Build
+          provider={providerId === "xai" ? "grok-cli" : providerId}
           providerInfo={providerInfo}
           onSuccess={onOAuthSuccess}
           onClose={onCloseOAuthModal}
@@ -165,6 +170,12 @@ export default function ProviderDetailModals({
         }
         confirmText={confirmState?.confirmText || "Confirm"}
         variant="danger"
+      />
+
+      <ViewJsonModal
+        isOpen={!!activeJsonConnection}
+        onClose={onCloseJsonModal}
+        connection={activeJsonConnection}
       />
     </>
   );

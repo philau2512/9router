@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getRequestDetailsList } from "@/lib/requestDetailsDb";
+import { getDistinctProviders } from "@/lib/requestDetailsDb";
 import { getProviderNodes } from "@/lib/localDb";
 import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
 
@@ -9,12 +9,9 @@ import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
  */
 export async function GET() {
   try {
-    const { details } = await getRequestDetailsList({ pageSize: 9999 });
-
-    // Extract unique providers
-    const providerIds = [
-      ...new Set(details.map((r) => r.provider).filter(Boolean)),
-    ].sort();
+    // Query DISTINCT provider column directly — avoids parsing every row's
+    // full JSON blob (can be hundreds of MB). OOM fix. See upstream b25e10160.
+    const providerIds = await getDistinctProviders();
 
     const providerNodes = await getProviderNodes();
     const nodeMap = {};

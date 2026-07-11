@@ -25,12 +25,12 @@ describe("DNS Cache SWR (Stale-While-Revalidate)", () => {
             async resolve4(hostname) {
               return await mockResolve4(hostname);
             }
-          }
-        }
+          },
+        },
       };
       return {
         ...mockDns,
-        default: mockDns
+        default: mockDns,
       };
     });
 
@@ -66,7 +66,8 @@ describe("DNS Cache SWR (Stale-While-Revalidate)", () => {
   });
 
   it("triggers background refresh when cache is stale (30s before expiry) but returns old IP instantly", async () => {
-    const { resolveRealIP, DNS_CACHE } = await import("open-sse/utils/dns-resolver.js");
+    const { resolveRealIP, DNS_CACHE } =
+      await import("open-sse/utils/dns-resolver.js");
     const { MEMORY_CONFIG } = await import("open-sse/config/runtimeConfig.js");
 
     // 1st call - Cache miss

@@ -94,6 +94,15 @@ function CollapsibleSection({
   );
 }
 
+function getCacheTokens(tokens) {
+  return (
+    tokens?.cache_creation_input_tokens ||
+    tokens?.cache_read_input_tokens ||
+    tokens?.cached_tokens ||
+    0
+  );
+}
+
 function getInputTokens(tokens) {
   const prompt = tokens?.prompt_tokens || tokens?.input_tokens || 0;
   const cache = tokens?.cached_tokens || tokens?.cache_read_input_tokens || 0;
@@ -195,6 +204,10 @@ export default function RequestDetailsTab() {
     setPagination((prev) => ({ ...prev, pageSize: newPageSize, page: 1 }));
   };
 
+  const handleRefresh = useCallback(() => {
+    void fetchDetails();
+  }, [fetchDetails]);
+
   const handleClearFilters = () => {
     setFilters({ provider: "", startDate: "", endDate: "" });
   };
@@ -281,16 +294,34 @@ export default function RequestDetailsTab() {
             >
               Clear
             </span>
-            <Button
-              variant="ghost"
-              onClick={handleClearFilters}
-              disabled={
-                !filters.provider && !filters.startDate && !filters.endDate
-              }
-              className="w-full"
-            >
-              Clear Filters
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                onClick={handleRefresh}
+                disabled={loading}
+                className="flex-1"
+                title="Refresh"
+              >
+                <span
+                  className={cn(
+                    "material-symbols-outlined text-[18px]",
+                    loading ? "animate-spin" : "",
+                  )}
+                >
+                  {loading ? "progress_activity" : "refresh"}
+                </span>
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={handleClearFilters}
+                disabled={
+                  !filters.provider && !filters.startDate && !filters.endDate
+                }
+                className="flex-1"
+              >
+                Clear Filters
+              </Button>
+            </div>
           </div>
         </div>
       </Card>
@@ -475,6 +506,14 @@ export default function RequestDetailsTab() {
                     0}
                 </span>
               </div>
+              {getCacheTokens(selectedDetail.tokens) > 0 && (
+                <div>
+                  <span className="text-text-muted">Cache Tokens:</span>{" "}
+                  <span className="text-text-main font-mono">
+                    {getCacheTokens(selectedDetail.tokens).toLocaleString()}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="space-y-4">

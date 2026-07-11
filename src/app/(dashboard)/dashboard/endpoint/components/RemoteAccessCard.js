@@ -4,7 +4,7 @@ import PropTypes from "prop-types";
 import { Button, Card, Input, Toggle } from "@/shared/components";
 import { EndpointRow } from "./EndpointRow";
 import { SecurityWarning } from "./SecurityWarning";
-import { Tooltip } from "./Tooltip";
+import { Tooltip } from "./tooltip";
 
 export function RemoteAccessCard({
   currentEndpoint,

@@ -168,10 +168,21 @@ export default function AddApiKeyModal({
     let failed = 0;
     for (let i = 0; i < lines.length; i++) {
       const parts = lines[i].split("|");
-      const apiKey =
-        parts.length >= 2 ? parts.slice(1).join("|").trim() : parts[0].trim();
       const baseName = parts.length >= 2 ? parts[0].trim() : "Key";
       const name = `${baseName} ${i + 1}`;
+      // Cloudflare AI bulk format: name|apiKey|accountId
+      // See upstream fix 5cdcf6748.
+      let apiKey;
+      let bulkProviderSpecificData;
+      if (isCloudflareAi && parts.length >= 3) {
+        apiKey = parts.slice(1, -1).join("|").trim();
+        bulkProviderSpecificData = {
+          accountId: parts[parts.length - 1].trim(),
+        };
+      } else {
+        apiKey =
+          parts.length >= 2 ? parts.slice(1).join("|").trim() : parts[0].trim();
+      }
       try {
         const res = await fetch("/api/providers", {
           method: "POST",
@@ -182,6 +193,9 @@ export default function AddApiKeyModal({
             name,
             priority: 1,
             testStatus: "unknown",
+            ...(bulkProviderSpecificData
+              ? { providerSpecificData: bulkProviderSpecificData }
+              : {}),
           }),
         });
         if (res.ok) success++;

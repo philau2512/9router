@@ -101,6 +101,32 @@ function truncateField(obj, maxSize) {
   return obj || {};
 }
 
+/**
+ * Truncate request field while preserving tools array under a separate 64KB budget.
+ * Tools can be large (many definitions) and are important for debugging agent requests.
+ * Without this, a large request body causes tools to be lost along with the truncated blob.
+ * @param {object} request - Request object (may contain .tools array)
+ * @param {number} maxSize - Max bytes for the request body (excluding tools)
+ */
+function truncateRequestWithTools(request, maxSize) {
+  if (!request || typeof request !== "object") return request || {};
+  const TOOLS_MAX_SIZE = 64 * 1024; // 64KB separate budget for tools
+  const { tools, ...requestWithoutTools } = request;
+  const truncated = truncateField(requestWithoutTools, maxSize);
+  if (tools !== undefined) {
+    const toolsStr = JSON.stringify(tools);
+    truncated.tools =
+      toolsStr.length <= TOOLS_MAX_SIZE
+        ? tools
+        : {
+            _truncated: true,
+            _originalSize: toolsStr.length,
+            _preview: toolsStr.substring(0, 200),
+          };
+  }
+  return truncated;
+}
+
 async function flushToDatabase() {
   if (isFlushing) return;
   if (writeBuffer.length === 0) return;
@@ -139,9 +165,12 @@ async function flushToDatabase() {
               db.transaction(() => {
                 for (const item of _items) {
                   if (!item.id) item.id = generateDetailId(item.model);
-                  if (!item.timestamp) item.timestamp = new Date().toISOString();
+                  if (!item.timestamp)
+                    item.timestamp = new Date().toISOString();
                   if (item.request?.headers)
-                    item.request.headers = sanitizeHeaders(item.request.headers);
+                    item.request.headers = sanitizeHeaders(
+                      item.request.headers,
+                    );
 
                   const record = {
                     id: item.id,
@@ -152,7 +181,10 @@ async function flushToDatabase() {
                     status: item.status || null,
                     latency: item.latency || {},
                     tokens: item.tokens || {},
-                    request: truncateField(item.request, _config.maxJsonSize),
+                    request: truncateRequestWithTools(
+                      item.request,
+                      _config.maxJsonSize,
+                    ),
                     providerRequest: truncateField(
                       item.providerRequest,
                       _config.maxJsonSize,
@@ -377,6 +409,17 @@ export async function getRequestDetailById(id) {
   const db = await getAdapter();
   const row = db.get(`SELECT data FROM requestDetails WHERE id = ?`, [id]);
   return row ? parseJson(row.data, null) : null;
+}
+
+// Return DISTINCT provider values from requestDetails — avoids loading every
+// row's full JSON blob (can be hundreds of MB), which previously caused OOM
+// in the usage/providers route. See upstream fix b25e10160.
+export async function getDistinctProviders() {
+  const db = await getAdapter();
+  const rows = db.all(
+    `SELECT DISTINCT provider FROM requestDetails WHERE provider IS NOT NULL ORDER BY provider ASC`,
+  );
+  return rows.map((r) => r.provider);
 }
 
 const _shutdownHandler = async () => {

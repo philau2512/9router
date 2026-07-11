@@ -184,15 +184,18 @@ export async function executeResumeRequest({
       proxyOptions: activeProxyOptions,
     });
 
-    if (!result.response.ok || result.response.status === 502 || result.response.status === 429) {
+    if (
+      !result.response.ok ||
+      result.response.status === 502 ||
+      result.response.status === 429
+    ) {
       dbg(
         "RESUME",
         `First resume attempt failed with status: ${result.response.status}. Attempting key rotation...`,
       );
       try {
-        const { getProviderCredentials } = await import(
-          "../../src/sse/services/provider-credentials.js"
-        );
+        const { getProviderCredentials } =
+          await import("../../src/sse/services/provider-credentials.js");
         const rotated = await getProviderCredentials(
           provider,
           new Set([credentials?.connectionId]),
@@ -230,7 +233,10 @@ export async function executeResumeRequest({
           });
         }
       } catch (rotationErr) {
-        dbg("RESUME", `Credential rotation during resume failed: ${rotationErr.message}`);
+        dbg(
+          "RESUME",
+          `Credential rotation during resume failed: ${rotationErr.message}`,
+        );
       }
     }
 

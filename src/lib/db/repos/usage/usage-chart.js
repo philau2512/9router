@@ -1,7 +1,7 @@
 /**
  * Chart data generation — time-series bucketing for usage visualization.
  *
- * Supports daily, 24h, 7d, 30d, and 60d periods with hourly or daily buckets.
+ * Supports daily, 24h, 7d, 30d, 60d, 90d, 180d, 365d, and all-time periods with hourly or daily buckets.
  */
 
 import { getAdapter } from "../../driver.js";
@@ -78,14 +78,19 @@ export async function getChartData(period = "7d") {
     return buckets;
   }
 
-  // --- 7d / 30d / 60d / all: daily buckets from usageDaily ---
+  // --- 7d / 30d / 60d / 90d / 180d / 365d / all: daily buckets from usageDaily ---
   let bucketCount;
   if (period === "7d") bucketCount = 7;
   else if (period === "30d") bucketCount = 30;
   else if (period === "60d") bucketCount = 60;
+  else if (period === "90d") bucketCount = 90;
+  else if (period === "180d") bucketCount = 180;
+  else if (period === "365d") bucketCount = 365;
   else {
     // "all" — load all available days from usageDaily
-    const allRows = db.all(`SELECT dateKey FROM usageDaily ORDER BY dateKey ASC`);
+    const allRows = db.all(
+      `SELECT dateKey FROM usageDaily ORDER BY dateKey ASC`,
+    );
     bucketCount = allRows.length || 1;
   }
   const today = new Date();

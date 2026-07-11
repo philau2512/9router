@@ -5,8 +5,12 @@ import { autoDetectFilter } from "./autodetect.js";
 import { safeApply } from "./applyFilter.js";
 
 let _rtkEnabled = false;
-export function setRtkEnabled(v) { _rtkEnabled = !!v; }
-export function isRtkEnabled() { return _rtkEnabled; }
+export function setRtkEnabled(v) {
+  _rtkEnabled = !!v;
+}
+export function isRtkEnabled() {
+  return _rtkEnabled;
+}
 
 // Compress tool_result content in-place. Returns stats or null if disabled/failed.
 export function compressMessages(body, enabled) {

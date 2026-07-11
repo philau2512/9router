@@ -488,6 +488,56 @@ describe("handleImageGenerationCore", () => {
     );
   });
 
+  it("forwards xAI Grok Imagine options (size, quality, background, output_format)", async () => {
+    global.fetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          created: 1234567890,
+          data: [{ url: "https://example.com/xai.png" }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    const result = await handleImageGenerationCore({
+      body: {
+        prompt: "model female fashion size 1:1",
+        n: 3,
+        size: "1024x1024",
+        quality: "high",
+        background: "opaque",
+        image_detail: "high",
+        output_format: "png",
+      },
+      modelInfo: { provider: "xai", model: "grok-imagine-image" },
+      credentials: { apiKey: "xai-key" },
+      log: null,
+    });
+
+    expect(result.success).toBe(true);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://api.x.ai/v1/images/generations",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer xai-key",
+        }),
+      }),
+    );
+
+    const requestBody = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(requestBody).toMatchObject({
+      model: "grok-imagine-image",
+      prompt: "model female fashion size 1:1",
+      n: 3,
+      size: "1024x1024",
+      quality: "high",
+      background: "opaque",
+      image_detail: "high",
+      output_format: "png",
+    });
+  });
+
   it("handles provider error responses", async () => {
     global.fetch.mockResolvedValueOnce(
       new Response(

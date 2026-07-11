@@ -1058,7 +1058,9 @@ export const APIKEY_PROVIDERS = {
     serviceKinds: ["webSearch"],
     noAuth: true,
     searchConfig: {
-      baseUrl: "http://localhost:8888/search",
+      baseUrl:
+        (process.env.SEARXNG_URL || "").trim() ||
+        "http://localhost:8888/search",
       method: "GET",
       authType: "none",
       authHeader: "none",

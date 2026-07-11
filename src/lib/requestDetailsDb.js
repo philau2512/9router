@@ -4,4 +4,5 @@ export {
   getRequestDetails,
   getRequestDetailsList,
   getRequestDetailById,
+  getDistinctProviders,
 } from "@/lib/db/index.js";

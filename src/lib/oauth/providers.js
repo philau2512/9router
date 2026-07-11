@@ -23,9 +23,11 @@ import {
   KIMI_CODING_CONFIG,
   KILOCODE_CONFIG,
   CLINE_CONFIG,
+  CLINEPASS_CONFIG,
   GITLAB_CONFIG,
   CODEBUDDY_CONFIG,
   getOAuthClientMetadata,
+  GROK_CLI_CONFIG,
 } from "./constants/oauth";
 import { XAI_CONFIG, XAI_PKCE_VERIFIER_BYTES } from "./constants/xai";
 
@@ -132,20 +134,22 @@ function extractEmailFromAccessToken(accessToken) {
   );
 }
 
-
 // Resolve Kiro profileArn via CodeWhisperer (IDC/Builder-ID tokens omit it, causing 403)
 export async function fetchKiroProfileArn(accessToken) {
   if (!accessToken) return null;
   try {
-    const response = await fetch("https://codewhisperer.us-east-1.amazonaws.com/ListAvailableProfiles", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Authorization: `Bearer ${accessToken}`,
+    const response = await fetch(
+      "https://codewhisperer.us-east-1.amazonaws.com/ListAvailableProfiles",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ maxResults: 10 }),
       },
-      body: JSON.stringify({ maxResults: 10 }),
-    });
+    );
     if (!response.ok) return null;
     const data = await response.json();
     return data.profiles?.find((p) => p.arn?.trim())?.arn?.trim() || null;
@@ -359,6 +363,102 @@ const PROVIDERS = {
         mapped.providerSpecificData = { idToken: tokens.id_token };
       }
       return mapped;
+    },
+  },
+
+  // Grok CLI / Grok Build — device-code flow to auth.x.ai, inference on
+  // cli-chat-proxy.grok.com (OpenAI Responses API). See upstream a11937cdd.
+  "grok-cli": {
+    config: GROK_CLI_CONFIG,
+    flowType: "device_code",
+    requestDeviceCode: async (config) => {
+      const body = new URLSearchParams({
+        client_id: config.clientId,
+        scope: config.scope,
+      });
+      if (config.referrer) body.set("referrer", config.referrer);
+      const response = await fetch(config.deviceCodeUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+          "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+        },
+        body,
+      });
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Grok CLI device code request failed: ${error}`);
+      }
+      return await response.json();
+    },
+    pollToken: async (config, deviceCode) => {
+      const response = await fetch(config.tokenUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+          "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+        },
+        body: new URLSearchParams({
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          device_code: deviceCode,
+          client_id: config.clientId,
+        }),
+      });
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        const text = await response.text();
+        data = { error: "invalid_response", error_description: text };
+      }
+      const pending =
+        data?.error === "authorization_pending" || data?.error === "slow_down";
+      return { ok: response.ok || pending, data };
+    },
+    postExchange: async (tokens) => {
+      try {
+        const res = await fetch("https://cli-chat-proxy.grok.com/v1/user", {
+          headers: {
+            Authorization: `Bearer ${tokens.access_token}`,
+            Accept: "application/json",
+            "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+            "x-xai-token-auth": "xai-grok-cli",
+            "x-grok-client-version": "0.2.93",
+          },
+        });
+        if (res.ok) return { user: await res.json() };
+      } catch {
+        /* ignore */
+      }
+      return { user: null };
+    },
+    mapTokens: (tokens, extra) => {
+      const email =
+        decodeXaiIdTokenEmail(tokens.id_token) ||
+        extractEmailFromAccessToken(tokens.access_token) ||
+        extra?.user?.email ||
+        null;
+      const displayName =
+        [extra?.user?.firstName, extra?.user?.lastName]
+          .filter(Boolean)
+          .join(" ")
+          .trim() || null;
+      return {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token || null,
+        expiresIn: tokens.expires_in,
+        scope: tokens.scope,
+        email: email || undefined,
+        name: displayName || email || undefined,
+        displayName: displayName || undefined,
+        providerSpecificData: {
+          userId: extra?.user?.userId || extra?.user?.principalId || null,
+          hasGrokCodeAccess: extra?.user?.hasGrokCodeAccess ?? null,
+          ...(tokens.id_token ? { idToken: tokens.id_token } : {}),
+        },
+      };
     },
   },
 
@@ -881,6 +981,11 @@ const PROVIDERS = {
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
       expiresIn: tokens.expires_in,
+      // Surface GitHub identity fields at top level for connection labeling.
+      // Prefer login (stable) over name (display). See upstream fix 3a7a878f9.
+      name: extra?.userInfo?.login || extra?.userInfo?.name || null,
+      displayName: extra?.userInfo?.name || extra?.userInfo?.login || null,
+      email: extra?.userInfo?.email || null,
       providerSpecificData: {
         copilotToken: extra?.copilotToken?.token,
         copilotTokenExpiresAt: extra?.copilotToken?.expires_at,
@@ -1276,6 +1381,78 @@ const PROVIDERS = {
       },
     }),
   },
+  // ClinePass — shares Cline's OAuth endpoints + base64 token exchange
+  clinepass: {
+    config: CLINEPASS_CONFIG,
+    flowType: "authorization_code",
+    buildAuthUrl: (config, redirectUri) => {
+      const params = new URLSearchParams({
+        client_type: "extension",
+        callback_url: redirectUri,
+        redirect_uri: redirectUri,
+      });
+      return `${config.authorizeUrl}?${params.toString()}`;
+    },
+    exchangeToken: async (config, code, redirectUri) => {
+      try {
+        // Cline encodes token data as base64 in the code param
+        let base64 = code;
+        const padding = 4 - (base64.length % 4);
+        if (padding !== 4) base64 += "=".repeat(padding);
+        const decoded = Buffer.from(base64, "base64").toString("utf-8");
+        const lastBrace = decoded.lastIndexOf("}");
+        if (lastBrace === -1) throw new Error("No JSON found in decoded code");
+        const tokenData = JSON.parse(decoded.substring(0, lastBrace + 1));
+        return {
+          access_token: tokenData.accessToken,
+          refresh_token: tokenData.refreshToken,
+          email: tokenData.email,
+          firstName: tokenData.firstName,
+          lastName: tokenData.lastName,
+          expires_at: tokenData.expiresAt,
+        };
+      } catch {
+        const response = await fetch(config.tokenExchangeUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            grant_type: "authorization_code",
+            code,
+            client_type: "extension",
+            redirect_uri: redirectUri,
+          }),
+        });
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(`ClinePass token exchange failed: ${error}`);
+        }
+        const data = await response.json();
+        return {
+          access_token: data.data?.accessToken || data.accessToken,
+          refresh_token: data.data?.refreshToken || data.refreshToken,
+          email: data.data?.userInfo?.email || "",
+          expires_at: data.data?.expiresAt || data.expiresAt,
+        };
+      }
+    },
+    mapTokens: (tokens) => ({
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      expiresIn: tokens.expires_at
+        ? Math.floor(
+            (new Date(tokens.expires_at).getTime() - Date.now()) / 1000,
+          )
+        : 3600,
+      email: tokens.email,
+      providerSpecificData: {
+        firstName: tokens.firstName,
+        lastName: tokens.lastName,
+      },
+    }),
+  },
   // GitLab Duo - Authorization Code Flow with PKCE
   // Supports two login modes via loginMode metadata: "oauth" (default) or "pat"
   gitlab: {
@@ -1396,20 +1573,23 @@ const PROVIDERS = {
     pollToken: async (config, deviceCode) => {
       // CodeBuddy polls the token endpoint via GET with the state as a query
       // param (not POST/body) — matches the official CLI's /v2/plugin/auth/token?state=...
-      const response = await fetch(`${config.tokenUrl}?state=${encodeURIComponent(deviceCode)}`, {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-          "User-Agent": config.userAgent,
-          "X-Requested-With": "XMLHttpRequest",
-          "X-Domain": "copilot.tencent.com",
-          "X-No-Authorization": "true",
-          "X-No-User-Id": "true",
-          "X-Product": "SaaS",
-          "X-No-Enterprise-Id": "true",
-          "X-No-Department-Info": "true",
+      const response = await fetch(
+        `${config.tokenUrl}?state=${encodeURIComponent(deviceCode)}`,
+        {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            "User-Agent": config.userAgent,
+            "X-Requested-With": "XMLHttpRequest",
+            "X-Domain": "copilot.tencent.com",
+            "X-No-Authorization": "true",
+            "X-No-User-Id": "true",
+            "X-Product": "SaaS",
+            "X-No-Enterprise-Id": "true",
+            "X-No-Department-Info": "true",
+          },
         },
-      });
+      );
       if (!response.ok) return { ok: false, data: { error: "request_failed" } };
       const data = await response.json();
       // code 11217 = pending (RetryFetchToken), code 0 = success

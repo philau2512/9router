@@ -30,9 +30,8 @@ describe("OpenAI → Claude context mapping", () => {
     },
   );
 
-  // openai-to-claude.js:268-273 — assistant.reasoning_content not mapped to a thinking block
-  // KNOWN BUG
-  it.fails("assistant reasoning_content becomes a thinking block", () => {
+  // assistant.reasoning_content maps to a Claude thinking block.
+  it("assistant reasoning_content becomes a thinking block", () => {
     const out = T({
       messages: [
         { role: "user", content: "q" },

@@ -9,7 +9,9 @@ import Badge from "@/shared/components/Badge";
 import {
   isOpenAICompatibleProvider,
   isAnthropicCompatibleProvider,
+  AI_PROVIDERS,
 } from "@/shared/constants/providers";
+import Select from "@/shared/components/Select";
 
 function createInitialFormData(connection) {
   return {
@@ -35,6 +37,17 @@ function createInitialCloudflareData(connection) {
   };
 }
 
+function createInitialRegion(connection) {
+  const providerCfg = connection ? AI_PROVIDERS?.[connection.provider] : null;
+  if (!providerCfg?.regions) return "";
+  return (
+    connection?.providerSpecificData?.region ||
+    providerCfg.defaultRegion ||
+    providerCfg.regions[0]?.id ||
+    ""
+  );
+}
+
 function EditConnectionModalForm({ connection, onSave, onClose }) {
   const [formData, setFormData] = useState(() =>
     createInitialFormData(connection),
@@ -45,6 +58,7 @@ function EditConnectionModalForm({ connection, onSave, onClose }) {
   const [cloudflareData, setCloudflareData] = useState(() =>
     createInitialCloudflareData(connection),
   );
+  const [region, setRegion] = useState(() => createInitialRegion(connection));
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [validating, setValidating] = useState(false);
@@ -58,6 +72,16 @@ function EditConnectionModalForm({ connection, onSave, onClose }) {
     ? isOpenAICompatibleProvider(connection.provider) ||
       isAnthropicCompatibleProvider(connection.provider)
     : false;
+  const providerRegions = connection
+    ? AI_PROVIDERS?.[connection.provider]?.regions || null
+    : null;
+
+  // Build providerSpecificData for region-aware providers
+  const buildRegionSpecificData = () => {
+    if (providerRegions && region)
+      return { ...(connection?.providerSpecificData || {}), region };
+    return undefined;
+  };
 
   const handleTest = async () => {
     if (!connection?.provider) return;
@@ -89,6 +113,9 @@ function EditConnectionModalForm({ connection, onSave, onClose }) {
           apiKey: formData.apiKey,
           ...(isAzure ? { providerSpecificData: azureData } : {}),
           ...(isCloudflareAi ? { providerSpecificData: cloudflareData } : {}),
+          ...(providerRegions
+            ? { providerSpecificData: buildRegionSpecificData() }
+            : {}),
         }),
       });
       const data = await res.json();
@@ -125,6 +152,9 @@ function EditConnectionModalForm({ connection, onSave, onClose }) {
                 ...(isCloudflareAi
                   ? { providerSpecificData: cloudflareData }
                   : {}),
+                ...(providerRegions
+                  ? { providerSpecificData: buildRegionSpecificData() }
+                  : {}),
               }),
             });
             const data = await res.json();
@@ -153,6 +183,10 @@ function EditConnectionModalForm({ connection, onSave, onClose }) {
       }
       if (isCloudflareAi) {
         updates.providerSpecificData = { accountId: cloudflareData.accountId };
+      }
+      // Persist updated region for region-aware providers
+      if (providerRegions && region) {
+        updates.providerSpecificData = buildRegionSpecificData();
       }
 
       await onSave(updates);
@@ -265,6 +299,18 @@ function EditConnectionModalForm({ connection, onSave, onClose }) {
             />
           </div>
         </div>
+      )}
+
+      {providerRegions && (
+        <Select
+          label="Region"
+          value={region}
+          onChange={(e) => setRegion(e.target.value)}
+          options={providerRegions.map((r) => ({
+            value: r.id,
+            label: r.label,
+          }))}
+        />
       )}
 
       {!isCompatible && !isAzure && !isCloudflareAi && (

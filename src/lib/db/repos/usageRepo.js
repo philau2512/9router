@@ -17,7 +17,10 @@
 
 export { statsEmitter } from "./usage/usage-state.js";
 
-export { trackPendingRequest, getActiveRequests } from "./usage/pending-requests.js";
+export {
+  trackPendingRequest,
+  getActiveRequests,
+} from "./usage/pending-requests.js";
 
 export { saveRequestUsage } from "./usage/usage-writer.js";
 

@@ -2,22 +2,22 @@ Dưới đây là bản dịch tiếng Việt của tài liệu Markdown, giữ 
 
 <div align="center">
   <img src="../images/9router.png?1" alt="Bảng điều khiển 9Router" width="800"/>
-  
-  # 9Router - Free AI Router
-  
-  **Không bao giờ ngừng code. Tự động định tuyến tới các mô hình AI MIỄN PHÍ & giá rẻ với cơ chế dự phòng thông minh.**
-  
-  **Nhà cung cấp AI Miễn cho OpenClaw.**
-  
+
+# 9Router - Free AI Router
+
+**Không bao giờ ngừng code. Tự động định tuyến tới các mô hình AI MIỄN PHÍ & giá rẻ với cơ chế dự phòng thông minh.**
+
+**Nhà cung cấp AI Miễn cho OpenClaw.**
+
   <p align="center">
     <img src="../public/providers/openclaw.png" alt="OpenClaw" width="80"/>
   </p>
-  
-  [![npm](https://img.shields.io/npm/v/9router.svg)](https://www.npmjs.com/package/9router)
-  [![Downloads](https://img.shields.io/npm/dm/9router.svg)](https://www.npmjs.com/package/9router)
-  [![License](https://img.shields.io/npm/l/9router.svg)](https://github.com/decolua/9router/blob/main/LICENSE)
-  
-  [🚀 Bắt đầu nhanh](#-quick-start) • [💡 Tính năng](#-key-features) • [📖 Cài đặt](#-setup-guide) • [🌐 Website](https://9router.com)
+
+[![npm](https://img.shields.io/npm/v/9router.svg)](https://www.npmjs.com/package/9router)
+[![Downloads](https://img.shields.io/npm/dm/9router.svg)](https://www.npmjs.com/package/9router)
+[![License](https://img.shields.io/npm/l/9router.svg)](https://github.com/decolua/9router/blob/main/LICENSE)
+
+[🚀 Bắt đầu nhanh](#-quick-start) • [💡 Tính năng](#-key-features) • [📖 Cài đặt](#-setup-guide) • [🌐 Website](https://9router.com)
 </div>
 
 ---
@@ -120,9 +120,9 @@ URL mặc định:
 ## 🎥 Hướng dẫn Video
 
 <div align="center">
-  
+
 ### 📺 Hướng dẫn thiết lập hoàn chỉnh - 9Router + Claude Code MIỄN PHÍ
-  
+
 [![Thiết lập 9Router + Claude Code](https://img.youtube.com/vi/raEyZPg5xE0/maxresdefault.jpg)](https://www.youtube.com/watch?v=raEyZPg5xE0)
 
 **🎬 Xem hướng dẫn từng đầy đủ:**
@@ -492,7 +492,7 @@ Dịch chuyển liền mạch giữa các định dạng:
 
 ✅ **Phần mềm 9Router = MIỄN PHÍ mãi mãi** (mã nguồn mở, không bao giờ thu phí)  
 ✅ **"Chi phí" trên bảng điều khiển = Chỉ để Hiển thị/Theo dõi** (không phải hóa đơn thực tế)  
- **Bạn trả tiền trực tiếp cho nhà cung cấp** (gói đăng ký hoặc phí API)  
+**Bạn trả tiền trực tiếp cho nhà cung cấp** (gói đăng ký hoặc phí API)  
 ✅ **Nhà cung cấp MIỄN PHÍ vẫn MIỄN PHÍ** (iFlow, Kiro, Qwen = $0 không giới hạn)  
 ❌ **9Router không bao giờ gửi hóa đơn** hoặc tính phí thẻ của bạn
 

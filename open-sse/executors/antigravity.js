@@ -46,21 +46,17 @@ const ANTIGRAVITY_TRANSIENT_STATUSES = new Set([
 const ANTIGRAVITY_REQUEST_BLACKLIST = ["output_config"];
 
 // Strip blacklisted fields from an object (used for both body.request and top-level body)
-const stripBlacklisted = obj => {
+const stripBlacklisted = (obj) => {
   for (const key of ANTIGRAVITY_REQUEST_BLACKLIST) delete obj[key];
 };
 
 // Image generation model name patterns
-const IMAGE_MODEL_PATTERNS = [
-  /image/i,
-  /imagen/i,
-  /image-generation/i,
-];
+const IMAGE_MODEL_PATTERNS = [/image/i, /imagen/i, /image-generation/i];
 
 // Detect if a model is an image generation model
 function isImageModel(model) {
   if (!model) return false;
-  return IMAGE_MODEL_PATTERNS.some(p => p.test(model));
+  return IMAGE_MODEL_PATTERNS.some((p) => p.test(model));
 }
 
 // Parse aspect ratio / resolution from model name suffixes
@@ -76,9 +72,9 @@ function parseImageConfig(model) {
       config.aspectRatio = `${w}:${h}`;
     } else {
       // Resolution like 1024x768 — derive aspect ratio
-      const gcd = (a, b) => b ? gcd(b, a % b) : a;
+      const gcd = (a, b) => (b ? gcd(b, a % b) : a);
       const d = gcd(w, h);
-      config.aspectRatio = `${w/d}:${h/d}`;
+      config.aspectRatio = `${w / d}:${h / d}`;
     }
   }
   return config;
@@ -94,7 +90,10 @@ export class AntigravityExecutor extends BaseExecutor {
     const baseUrl = baseUrls[urlIndex] || baseUrls[0];
     // Image generation MUST use non-streaming generateContent
     const forceNonStream = isImageModel(model);
-    const action = (stream && !forceNonStream) ? "streamGenerateContent?alt=sse" : "generateContent";
+    const action =
+      stream && !forceNonStream
+        ? "streamGenerateContent?alt=sse"
+        : "generateContent";
     return `${baseUrl}/v1internal:${action}`;
   }
 
@@ -124,13 +123,16 @@ export class AntigravityExecutor extends BaseExecutor {
       const contents = [];
       const srcContents = body.request?.contents || body.contents || [];
       for (const c of srcContents) {
-        const textParts = (c.parts || []).filter(p => p.text !== undefined).map(p => ({ text: p.text }));
+        const textParts = (c.parts || [])
+          .filter((p) => p.text !== undefined)
+          .map((p) => ({ text: p.text }));
         if (textParts.length > 0) {
           contents.push({ role: c.role || "user", parts: textParts });
         }
       }
 
-      const sessionId = body.request?.sessionId ||
+      const sessionId =
+        body.request?.sessionId ||
         deriveSessionId(credentials?.email || credentials?.connectionId);
 
       return {
@@ -195,7 +197,10 @@ export class AntigravityExecutor extends BaseExecutor {
               : {
                   type: "object",
                   properties: {
-                    reason: { type: "string", description: "Brief explanation" },
+                    reason: {
+                      type: "string",
+                      description: "Brief explanation",
+                    },
                   },
                   required: ["reason"],
                 },
@@ -356,13 +361,73 @@ export class AntigravityExecutor extends BaseExecutor {
       errorJson?.message,
       errorJson?.error,
       bodyText,
-    ].filter(Boolean).map(v => typeof v === "string" ? v : JSON.stringify(v)).join("\n");
+    ]
+      .filter(Boolean)
+      .map((v) => (typeof v === "string" ? v : JSON.stringify(v)))
+      .join("\n");
   }
 
   isTransientAntigravityError(status, message) {
     if (status === HTTP_STATUS.RATE_LIMITED) return true;
     if (ANTIGRAVITY_TRANSIENT_STATUSES.has(status)) return true;
-    return ANTIGRAVITY_TRANSIENT_ERROR_PATTERNS.some(pattern => pattern.test(message || ""));
+    return ANTIGRAVITY_TRANSIENT_ERROR_PATTERNS.some((pattern) =>
+      pattern.test(message || ""),
+    );
+  }
+
+  /**
+   * Parse Antigravity 429 quota errors to extract precise reset timestamp.
+   * Looks for ErrorInfo.metadata.quotaResetTimeStamp (absolute) or
+   * RetryInfo.retryDelay (relative seconds, e.g. "12872.41s") in gRPC details array.
+   * Without this, the fallback backoff only locks for a few seconds despite a 3-4h quota reset.
+   * @param {Response} response
+   * @param {string} bodyText
+   */
+  parseError(response, bodyText) {
+    if (response.status === 429 && bodyText) {
+      try {
+        const json = JSON.parse(bodyText);
+        const details = json?.error?.details;
+        if (Array.isArray(details)) {
+          // Prefer absolute reset timestamp from ErrorInfo metadata (most reliable)
+          for (const detail of details) {
+            if (
+              detail["@type"]?.includes("ErrorInfo") &&
+              detail?.metadata?.quotaResetTimeStamp
+            ) {
+              const resetMs = new Date(
+                detail.metadata.quotaResetTimeStamp,
+              ).getTime();
+              if (resetMs > Date.now()) {
+                return {
+                  status: 429,
+                  message: json.error?.message || bodyText,
+                  resetsAtMs: resetMs,
+                };
+              }
+            }
+          }
+          // Fallback: relative delay from RetryInfo (e.g. "12872.411299746s")
+          for (const detail of details) {
+            if (detail["@type"]?.includes("RetryInfo") && detail?.retryDelay) {
+              const seconds = parseFloat(
+                String(detail.retryDelay).replace(/s$/, ""),
+              );
+              if (seconds > 0) {
+                return {
+                  status: 429,
+                  message: json.error?.message || bodyText,
+                  resetsAtMs: Date.now() + seconds * 1000,
+                };
+              }
+            }
+          }
+        }
+      } catch {
+        /* fall through to default */
+      }
+    }
+    return super.parseError(response, bodyText);
   }
 
   async execute({
@@ -427,7 +492,10 @@ export class AntigravityExecutor extends BaseExecutor {
           } catch {
             // ignore parse errors — fall through to status/message based retry
           }
-          const retryErrorMessage = this.extractErrorMessage(retryErrorJson, retryBodyText);
+          const retryErrorMessage = this.extractErrorMessage(
+            retryErrorJson,
+            retryBodyText,
+          );
 
           if (!retryMs) {
             retryMs = this.parseRetryFromErrorMessage(retryErrorMessage);
@@ -450,19 +518,26 @@ export class AntigravityExecutor extends BaseExecutor {
 
           // Auto retry transient errors (429 + 5xx capacity patterns) with bounded backoff
           if (
-            this.isTransientAntigravityError(response.status, retryErrorMessage) &&
+            this.isTransientAntigravityError(
+              response.status,
+              retryErrorMessage,
+            ) &&
             (!retryMs || retryMs === 0) &&
             retryAttemptsByUrl[urlIndex] < MAX_AUTO_RETRIES
           ) {
             retryAttemptsByUrl[urlIndex]++;
-            const cap = response.status === HTTP_STATUS.RATE_LIMITED
-              ? MAX_RETRY_AFTER_MS
-              : ANTIGRAVITY_TRANSIENT_RETRY_MAX_MS;
+            const cap =
+              response.status === HTTP_STATUS.RATE_LIMITED
+                ? MAX_RETRY_AFTER_MS
+                : ANTIGRAVITY_TRANSIENT_RETRY_MAX_MS;
             const backoffMs = Math.min(
               1000 * 2 ** retryAttemptsByUrl[urlIndex],
               cap,
             );
-            const label = response.status === HTTP_STATUS.RATE_LIMITED ? "429" : `${response.status} transient`;
+            const label =
+              response.status === HTTP_STATUS.RATE_LIMITED
+                ? "429"
+                : `${response.status} transient`;
             log?.debug?.(
               "RETRY",
               `${label} auto retry ${retryAttemptsByUrl[urlIndex]}/${MAX_AUTO_RETRIES} after ${backoffMs / 1000}s`,

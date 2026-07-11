@@ -1,3 +1,68 @@
+# v0.5.30 (2026-07-10)
+
+**Synced to upstream baseline:** `9845a170` (v0.5.30)
+
+## Upstream Sync (v0.5.25 → v0.5.30) — 26 commits
+
+### Features
+
+- **Featherless**: OpenAI-compatible provider presets (deepseek V4, GLM-5, Kimi K2)
+- **Perplexity Agent API**: new provider with OpenAI Responses format + web search capability
+- **Grok CLI / Grok Build**: full OAuth device-code provider (`cli-chat-proxy.grok.com`) — Grok 4.5 family
+- **Headroom extras**: detect/install/activate/uninstall extras (pxpipe, kompress) via dashboard UI
+- **PxPipe**: multimodal prompt compression — binary install, 8 API routes, dashboard page, Sidebar nav entry
+- **Proxy pools**: auto-rotate for no-auth providers (already in fork — P6 skipped)
+- **SearXNG**: `SEARXNG_URL` env var overrides hardcoded localhost endpoint
+
+### Fixes
+
+- **openai-to-claude**: unwrap bare `{function:{…}}` tools without parent `type` (name=undefined upstream)
+- **Volcengine Ark / Kimi**: clamp `max_tokens` ≤ 32768; clamp all 3 token fields (`max_tokens`, `max_completion_tokens`, `max_output_tokens`)
+- **reasoning_effort max→xhigh**: all OpenAI-format providers now clamp `max` → `xhigh` (HTTP 400 fix, H-1)
+- **RTK find**: Windows backslash-style paths grouped correctly; forward-slash output
+- **RTK autodetect**: `C:\path\file.js` correctly detected as path-like (drive-letter colon bypass)
+- **Codex fast tier**: `service_tier=fast` mapped to priority header
+- **Codex capacity SSE**: `selected model is at capacity` → 503 → account fallback rotation
+- **Codex `normalizeReasoningEffort`**: clamp `max` → `xhigh` in executor
+- **Codex bare-email OAuth dedup**: second login with same email no longer overwrites first workspace account
+- **GitHub Copilot**: label connections by `githubLogin` identity (not bare email); F8 null-email dedup fallback
+- **DB OOM**: `GET /api/usage/providers` uses `SELECT DISTINCT provider` instead of loading 9999 rows
+- **DB backup**: `backupDbLite()` via SQLite ATTACH — excludes `requestDetails` table (~300MB → few MB); KEEP_BACKUPS 5→3
+- **DB backup trigger**: both appVersion + schema triggers use `backupDbLite` with `backupFile` fallback
+- **Codex models**: add gpt-5.6-sol/terra/luna; remove deprecated xhigh/high/low/none variants
+- **Usage pagination NaN guard**: `parseInt` → `Number.isNaN` check
+- **Cloudflare AI bulk import**: parse `name|apiKey|accountId` format
+- **zh-CN i18n**: +618 upstream translation keys merged (fork-only keys preserved, F9)
+- **Gemini CLI output floor**: raise `maxOutputTokens` when thinking active to prevent truncation
+- **Gemini CLI toolConfig**: add `functionCallingConfig: { mode: "VALIDATED" }` for tool requests
+- **Kiro conversation state**: compress via Headroom (`conversationState.history/currentMessage`)
+- **GitHub OAuth `mapTokens`**: surface `name`, `displayName`, `email` for connection cards
+
+### Performance
+
+- **Turbopack**: `npm run dev` uses Turbopack; `npm run dev:webpack` fallback added
+- **optimizePackageImports**: tree-shake `@xyflow/react`, `@dnd-kit/*`, `material-symbols`, `marked`
+- **Tailwind v4**: `@import "tailwindcss" source("../../")` for webpack + Turbopack compat
+- **ProviderTopology**: lazy-loaded via `next/dynamic` (removes `@xyflow/react` from shared bundle)
+- **CLI startup**: `waitServerReady` TCP poll replaces `setTimeout(3000)` blind wait
+- **CLI update check**: runs in parallel with server start (not on critical path)
+- **Tunnel status**: 3s response cache (`global.__tunnelStatusCache`)
+- **Version route**: 1h npm latest-version cache (`global.__npmVersionCache`)
+
+### Logging
+
+- **Unified `▶` request line**: session-colored tag + format/model/account summary in chatCore
+- **Logger**: add `nextTag`, `tagForSession`, `line`, `errorLine`, `fmtThink` to `src/sse/utils/logger.js`
+
+### Infrastructure
+
+- **DB migration 005**: `pxpipe_stats TEXT` column on `requestDetails` (idempotent try-catch)
+- **OAuthModal**: `grok-cli` added to device-code providers list
+- **CLI Tools**: Grok Build entry in dashboard
+- **Sidebar**: PxPipe nav entry
+
+---
+
 # v0.5.15 (2026-06-30)
 
 **Synced to upstream baseline:** `0b3c794075dd2f4148f01fbc9cd561c8d6bbdb4c` (v0.5.15)
@@ -5,9 +70,11 @@
 ## Upstream Sync (open-sse 52623587 → 0b3c7940)
 
 ### Features
+
 - Qwen: refined model patterns (Omni audio/video, Qwen3.5/3.6/3.7 native vision/video, coder/max text-only reasoning)
 
 ### Fixes
+
 - Responses: handle `response.done` terminal event (prevents false "incomplete" errors)
 - Gemini: normalize contents to prevent 400 INVALID_ARGUMENT on consecutive same-role messages
 - Gemini: backfill `thoughtSignature` on functionCall parts (fixes 400 on client history replay)
@@ -18,6 +85,7 @@
 ## v0.5.12 (2026-06-29) — Fork baseline before upstream sync
 
 ### Fixes
+
 - Fallback: bypass fallback and prevent lock on invalid model id errors
 
 ---

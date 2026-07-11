@@ -29,11 +29,19 @@ export default function createOpenAIAdapter(providerId) {
         quality,
         style,
         response_format,
+        background,
+        image_detail,
+        output_format,
       } = body;
-      // xAI only accepts prompt, model, n, response_format
+      // xAI: forward known image options; skip empty/"auto" where provider rejects them
       if (providerId === "xai") {
         const req = { model, prompt, n };
+        if (size && size !== "auto") req.size = size;
+        if (quality && quality !== "auto") req.quality = quality;
+        if (background && background !== "auto") req.background = background;
         if (response_format) req.response_format = response_format;
+        if (image_detail) req.image_detail = image_detail;
+        if (output_format) req.output_format = output_format;
         return req;
       }
       const req = { model, prompt, n, size };

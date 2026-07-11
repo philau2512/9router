@@ -6,9 +6,10 @@ import {
 /**
  * Adjust max_tokens based on request context
  * @param {object} body - Request body
+ * @param {number} ceiling - Model output ceiling
  * @returns {number} Adjusted max_tokens
  */
-export function adjustMaxTokens(body) {
+export function adjustMaxTokens(body, ceiling = DEFAULT_MAX_TOKENS) {
   let maxTokens = body.max_tokens || DEFAULT_MAX_TOKENS;
 
   // Auto-increase for tool calling to prevent truncated arguments
@@ -27,6 +28,8 @@ export function adjustMaxTokens(body) {
   ) {
     maxTokens = body.thinking.budget_tokens + 1024;
   }
+
+  if (maxTokens > ceiling) maxTokens = ceiling;
 
   return maxTokens;
 }

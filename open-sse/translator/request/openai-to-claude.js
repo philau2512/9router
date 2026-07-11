@@ -1,6 +1,8 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { CLAUDE_SYSTEM_PROMPT } from "../../config/appConstants.js";
+import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
+import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { adjustMaxTokens } from "../helpers/maxTokensHelper.js";
 
 // Empty prefix matches real Claude Code behavior (no tool name prefix).
@@ -11,9 +13,11 @@ const CLAUDE_OAUTH_TOOL_PREFIX = "";
 export function openaiToClaudeRequest(model, body, stream) {
   // Tool name mapping for Claude OAuth (capitalizedName → originalName)
   const toolNameMap = new Map();
+  const modelCeiling =
+    getCapabilitiesForModel(null, model).maxOutput || DEFAULT_MAX_TOKENS;
   const result = {
     model: model,
-    max_tokens: adjustMaxTokens(body),
+    max_tokens: adjustMaxTokens(body, modelCeiling),
     stream: stream,
   };
 
@@ -59,6 +63,14 @@ export function openaiToClaudeRequest(model, body, stream) {
       const blocks = getContentBlocksFromMessage(msg, toolNameMap);
       const hasToolUse = blocks.some((b) => b.type === "tool_use");
       const hasToolResult = blocks.some((b) => b.type === "tool_result");
+
+      // reasoning_content → prepend leading thinking block (before text/tool_use blocks)
+      if (newRole === "assistant" && msg.reasoning_content) {
+        const hasThinking = blocks.some((b) => b.type === "thinking");
+        if (!hasThinking) {
+          blocks.unshift({ type: "thinking", thinking: msg.reasoning_content });
+        }
+      }
 
       // Separate tool_result from other content
       if (hasToolResult) {
@@ -166,8 +178,12 @@ Respond ONLY with the JSON object, no other text.`);
         continue;
       }
 
-      const toolData =
-        toolType === "function" && tool.function ? tool.function : tool;
+      // Function-shaped tools arrive in two flavors:
+      //   (a) openai-spec: { type: "function", function: { name, ... } }
+      //   (b) legacy/loose: { function: { name, ... } }  (no parent `type`)
+      // Unwrap whenever `function` key is present — avoids name=undefined upstream.
+      // See upstream fix ddd5509e9.
+      const toolData = tool.function ?? tool;
       const originalName = toolData.name;
 
       // Claude OAuth requires prefixed tool names to avoid conflicts

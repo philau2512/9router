@@ -2,6 +2,8 @@
 // This is a registry-free subset of the upstream thinkingUnified.js concern —
 // only extractThinking is ported here; full provider-native application (applyThinking)
 // is deferred until the registry migration lands (Phase 6).
+// TODO: When applyThinking/applyFormat lands, port upstream Kimi reasoning_effort
+// normalization so "disabled" maps to the backend's "auto" enum.
 
 import { LEVEL_TO_BUDGET } from "./thinking.js";
 
@@ -32,13 +34,16 @@ export function extractThinking(body) {
     if (t.type === "disabled") return { mode: "none" };
     if (t.type === "adaptive" || t.type === "enabled") {
       const budget = Number(t.budget_tokens);
-      if (Number.isFinite(budget) && budget > 0) return { mode: "budget", budget };
+      if (Number.isFinite(budget) && budget > 0)
+        return { mode: "budget", budget };
       return { mode: "auto" };
     }
   }
 
   // OpenAI chat / Responses shape
-  const effort = body.reasoning_effort ?? (typeof body.reasoning === "object" ? body.reasoning?.effort : null);
+  const effort =
+    body.reasoning_effort ??
+    (typeof body.reasoning === "object" ? body.reasoning?.effort : null);
   if (typeof effort === "string" && effort) {
     const e = effort.toLowerCase();
     if (e === "none" || e === "off") return { mode: "none" };
@@ -47,9 +52,13 @@ export function extractThinking(body) {
   }
 
   // Gemini shape (top-level, generationConfig, or request envelope)
-  const tc = body.thinkingConfig || body.generationConfig?.thinkingConfig || body.request?.generationConfig?.thinkingConfig;
+  const tc =
+    body.thinkingConfig ||
+    body.generationConfig?.thinkingConfig ||
+    body.request?.generationConfig?.thinkingConfig;
   if (tc && typeof tc === "object") {
-    if (typeof tc.thinkingLevel === "string") return { mode: "level", level: tc.thinkingLevel.toLowerCase() };
+    if (typeof tc.thinkingLevel === "string")
+      return { mode: "level", level: tc.thinkingLevel.toLowerCase() };
     const tb = Number(tc.thinkingBudget);
     if (Number.isFinite(tb)) {
       if (tb === 0) return { mode: "none" };

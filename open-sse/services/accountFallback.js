@@ -2,8 +2,77 @@ import {
   ERROR_RULES,
   BACKOFF_CONFIG,
   TRANSIENT_COOLDOWN_MS,
+  SOFT_RATE_LIMIT_THRESHOLD_MS,
+  SOFT_RETRY_WAIT_CAP_MS,
+  MAX_SOFT_RETRY,
+  parseRetryAfter,
 } from "../config/errorConfig.js";
-import { upsertCooldown, clearCooldown } from "@/lib/db/repos/usage/cooldown.js";
+import {
+  upsertCooldown,
+  clearCooldown,
+} from "@/lib/db/repos/usage/cooldown.js";
+
+/**
+ * Classify a 429 into one of three kinds (learned from CLIProxyAPI's
+ * classifyAntigravity429 / xaiStatusErr):
+ *   - "quotaExhausted": hard exhaustion (RESOURCE_EXHAUSTED / QUOTA_EXHAUSTED /
+ *     free-usage-exhausted). Long cooldown + fallback to another account.
+ *   - "softRateLimit": transient throttle with a short reset window
+ *     (<= SOFT_RATE_LIMIT_THRESHOLD_MS). Retry the SAME auth after a brief wait.
+ *   - "rateLimited": everything else 429. Existing exponential backoff + fallback.
+ * @param {number} status
+ * @param {{ message?: string, body?: any, headers?: Headers|object, resetsAtMs?: number }} info
+ * @returns {{ kind: "quotaExhausted"|"softRateLimit"|"rateLimited", retryAfterMs: number|null }}
+ */
+export function classify429(status, info = {}) {
+  const text = (info.message || "").toString().toLowerCase();
+
+  // Hard exhaustion signals → never retry same auth; cooldown + fallback.
+  if (
+    text.includes("resource_exhausted") ||
+    text.includes("quota_exhausted") ||
+    text.includes("free-usage-exhausted") ||
+    text.includes("free usage") ||
+    text.includes("spending-limit") ||
+    text.includes("usage_limit_reached")
+  ) {
+    return { kind: "quotaExhausted", retryAfterMs: parseRetryAfter(info) };
+  }
+
+  const retryAfterMs = parseRetryAfter(info);
+  // A short, known reset window is a soft throttle → retry same auth.
+  if (
+    retryAfterMs != null &&
+    retryAfterMs >= 0 &&
+    retryAfterMs <= SOFT_RATE_LIMIT_THRESHOLD_MS
+  ) {
+    return { kind: "softRateLimit", retryAfterMs };
+  }
+
+  return { kind: "rateLimited", retryAfterMs };
+}
+
+/**
+ * Decide whether a 429 should be retried on the SAME auth (instant-retry) or
+ * fall back to another account. Owner of the retry policy; the caller only
+ * executes the returned action.
+ * @param {number} status
+ * @param {object} info - same shape as classify429 info
+ * @param {number} retryCount - how many soft-retries already attempted this request
+ * @returns {{ action: "retry-same-auth", waitMs: number } | { action: "fallback" }}
+ */
+export function decideSoftRetry(status, info = {}, retryCount = 0) {
+  if (status !== 429) return { action: "fallback" };
+  const { kind, retryAfterMs } = classify429(status, info);
+  if (kind === "softRateLimit" && retryCount < MAX_SOFT_RETRY) {
+    const waitMs = Math.min(
+      Math.max(0, retryAfterMs ?? 0),
+      SOFT_RETRY_WAIT_CAP_MS,
+    );
+    return { action: "retry-same-auth", waitMs };
+  }
+  return { action: "fallback" };
+}
 
 /**
  * Calculate exponential backoff cooldown for rate limits (429)
@@ -249,15 +318,21 @@ export function applyErrorState(account, status, errorText) {
   };
   // Persist cooldown state so it survives server restart
   if (cooldownMs > 0 && account.provider && (account.id || account.email)) {
-    const authId = account.id || account.email || account.accessToken?.slice(-12) || "unknown";
-    setImmediate(() => upsertCooldown({
-      provider: account.provider,
-      authId,
-      model: "",
-      nextRetryAfter: Date.now() + cooldownMs,
-      reason: errorText?.toString?.()?.slice(0, 200),
-      status: String(status),
-    }).catch(() => {}));
+    const authId =
+      account.id ||
+      account.email ||
+      account.accessToken?.slice(-12) ||
+      "unknown";
+    setImmediate(() =>
+      upsertCooldown({
+        provider: account.provider,
+        authId,
+        model: "",
+        nextRetryAfter: Date.now() + cooldownMs,
+        reason: errorText?.toString?.()?.slice(0, 200),
+        status: String(status),
+      }).catch(() => {}),
+    );
   }
   return nextAccount;
 }

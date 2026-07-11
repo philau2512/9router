@@ -82,7 +82,12 @@ export function clearSessionStore() {
 }
 
 // Client headers/body fields that carry an upstream session id (priority order)
-const SESSION_HEADER_KEYS = ["x-session-id", "session_id", "x-amp-thread-id", "x-client-request-id"];
+const SESSION_HEADER_KEYS = [
+  "x-session-id",
+  "session_id",
+  "x-amp-thread-id",
+  "x-client-request-id",
+];
 const CLAUDE_CODE_SESSION_RE = /_session_([a-f0-9-]+)$/;
 
 function normalizeSessionId(value) {
@@ -97,7 +102,11 @@ function extractClaudeCodeSession(userId) {
   const m = userId.match(CLAUDE_CODE_SESSION_RE);
   if (m) return m[1];
   if (userId[0] === "{") {
-    try { return normalizeSessionId(JSON.parse(userId)?.session_id); } catch { /* noop */ }
+    try {
+      return normalizeSessionId(JSON.parse(userId)?.session_id);
+    } catch {
+      /* noop */
+    }
   }
   return null;
 }
@@ -114,10 +123,12 @@ function extractClientSessionId(headers, body) {
     const v = headerValue(headers, key);
     if (v) return v;
   }
-  return normalizeSessionId(body?.prompt_cache_key)
-    || normalizeSessionId(body?.session_id)
-    || normalizeSessionId(body?.conversation_id)
-    || null;
+  return (
+    normalizeSessionId(body?.prompt_cache_key) ||
+    normalizeSessionId(body?.session_id) ||
+    normalizeSessionId(body?.conversation_id) ||
+    null
+  );
 }
 
 /**
@@ -132,7 +143,12 @@ function extractClientSessionId(headers, body) {
  * @param {string} [opts.scope] - Scope prefix (e.g. "kiro")
  * @returns {string} Stable session id
  */
-export function resolveSessionId({ headers, body, connectionId, scope = "" } = {}) {
+export function resolveSessionId({
+  headers,
+  body,
+  connectionId,
+  scope = "",
+} = {}) {
   const client = extractClientSessionId(headers, body);
   if (client) return client;
   return deriveSessionId(connectionId);

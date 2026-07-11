@@ -1,5 +1,21 @@
 import PropTypes from "prop-types";
 
+function formatContextLength(value) {
+  if (value == null) return null;
+  const num = Number(value);
+  if (Number.isNaN(num)) return null;
+
+  if (num >= 1000000) {
+    const val = num / 1000000;
+    return `${Number.isInteger(val) ? val : val.toFixed(1)}M`;
+  }
+  if (num >= 1000) {
+    const val = num / 1000;
+    return `${Number.isInteger(val) ? val : val.toFixed(1)}K`;
+  }
+  return num.toString();
+}
+
 export default function ModelRow({
   model,
   fullModel,
@@ -28,6 +44,9 @@ export default function ModelRow({
         ? "#ef4444"
         : undefined;
 
+  const rawContext = model.context_length ?? model.contextLength;
+  const contextDisplay = formatContextLength(rawContext);
+
   return (
     <div
       className={`group min-w-0 max-w-full rounded-lg border px-3 py-2 ${borderColor} hover:bg-sidebar/50`}
@@ -50,6 +69,11 @@ export default function ModelRow({
           {model.name && (
             <span className="truncate pl-1 text-[9px] italic text-text-muted/70">
               {model.name}
+            </span>
+          )}
+          {contextDisplay && (
+            <span className="pl-1 text-[9px] font-medium text-text-muted/60">
+              Context: {contextDisplay}
             </span>
           )}
         </div>

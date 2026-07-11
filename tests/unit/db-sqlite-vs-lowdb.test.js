@@ -17,8 +17,29 @@ beforeAll(async () => {
   await sqliteDb.initDb();
 });
 
-afterAll(() => {
-  if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
+afterAll(async () => {
+  try {
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const adapter = await getAdapter();
+    if (adapter && typeof adapter.close === "function") {
+      adapter.close();
+    }
+  } catch (e) {}
+  if (global._dbAdapter) {
+    global._dbAdapter.instance = null;
+    global._dbAdapter.initPromise = null;
+  }
+  let retries = 5;
+  while (retries > 0) {
+    try {
+      if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
+      break;
+    } catch (err) {
+      retries--;
+      if (retries === 0) throw err;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
   if (originalDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = originalDataDir;
 });
@@ -247,6 +268,7 @@ describe("DB SQLite layer — public API parity", () => {
       endpoint: "/v1/chat/completions",
       status: "ok",
     });
+    await new Promise((r) => setTimeout(r, 200));
 
     const hist = await sqliteDb.getUsageHistory({ provider: "openai" });
     expect(hist.length).toBeGreaterThanOrEqual(2);

@@ -21,6 +21,7 @@ import {
   fetchProviderSettings,
   warmupProviderConnection,
   warmupSelectedConnections,
+  fetchRawProviderConnection,
 } from "../utils/providerDetailPageApi";
 
 const ACCOUNT_STATUS_FILTER_OPTIONS = ["all", "active", "inactive"];
@@ -68,6 +69,8 @@ export function useProviderDetailConnections({
   const [warmupRunning, setWarmupRunning] = useState(false);
   const [warmupResults, setWarmupResults] = useState({});
   const [warmupSummary, setWarmupSummary] = useState(null);
+  const [activeJsonConnection, setActiveJsonConnection] = useState(null);
+  const [loadingJson, setLoadingJson] = useState(false);
   const stopOneByOneRef = useRef(false);
   const lastClickedIndexRef = useRef(null);
   const connectionsRef = useRef([]);
@@ -93,8 +96,13 @@ export function useProviderDetailConnections({
       } = await fetchProviderDetailPageData(providerId);
 
       if (connectionsRes.ok) {
-        const filtered = (connectionsData.connections || []).filter(
-          (c) => c.provider === providerId,
+        // xai page shows both xai (API key) and grok-cli (Grok Build OAuth) connections
+        const matchProviders =
+          providerId === "xai"
+            ? new Set(["xai", "grok-cli"])
+            : new Set([providerId]);
+        const filtered = (connectionsData.connections || []).filter((c) =>
+          matchProviders.has(c.provider),
         );
         applyConnections(filtered);
       }
@@ -414,6 +422,92 @@ export function useProviderDetailConnections({
     } catch (error) {
       console.log("Error copying selected emails:", error);
       alert("Failed to copy selected emails.");
+    }
+  };
+
+  const copySelectedNames = async () => {
+    const names = selectedConnections
+      .map((conn) => conn.name || conn.email || conn.displayName)
+      .filter((value) => typeof value === "string" && value.trim().length > 0);
+
+    if (names.length === 0) {
+      alert("No selected names to copy.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(names.join("\n"));
+    } catch (error) {
+      console.log("Error copying selected names:", error);
+      alert("Failed to copy selected names.");
+    }
+  };
+
+  const handleToggleActiveSelected = async (isActive) => {
+    if (selectedConnectionIds.length === 0) return;
+
+    try {
+      let failed = 0;
+      for (const connectionId of selectedConnectionIds) {
+        try {
+          const res = await updateProviderConnection(connectionId, { isActive });
+          if (!res.ok) failed += 1;
+        } catch (error) {
+          console.log("Error updating connection status:", connectionId, error);
+          failed += 1;
+        }
+      }
+
+      const updatedIds = new Set(selectedConnectionIds);
+      applyConnections(
+        connectionsRef.current.map((conn) =>
+          updatedIds.has(conn.id) ? { ...conn, isActive } : conn,
+        ),
+      );
+
+      if (failed > 0) {
+        alert(`Updated active status with ${failed} failed request(s).`);
+      }
+    } catch (error) {
+      console.log("Error toggling active on selected connections:", error);
+      await fetchConnections();
+    }
+  };
+
+  const handleSetAllSelectedActive = async () => {
+    if (selectedConnectionIds.length === 0) return;
+
+    try {
+      let failed = 0;
+      for (const connectionId of selectedConnectionIds) {
+        try {
+          const res = await updateProviderConnection(connectionId, {
+            testStatus: "active",
+            lastError: null,
+            lastErrorAt: null,
+          });
+          if (!res.ok) failed += 1;
+        } catch (error) {
+          console.log("Error setting connection status active:", connectionId, error);
+          failed += 1;
+        }
+      }
+
+      const updatedIds = new Set(selectedConnectionIds);
+      applyConnections(
+        connectionsRef.current.map((conn) =>
+          updatedIds.has(conn.id)
+            ? { ...conn, testStatus: "active", lastError: null, lastErrorAt: null }
+            : conn,
+        ),
+      );
+
+      if (failed > 0) {
+        alert(`Set active with ${failed} failed request(s).`);
+      }
+    } catch (error) {
+      console.log("Error setting selected connections active:", error);
+      await fetchConnections();
     }
   };
 
@@ -800,6 +894,65 @@ export function useProviderDetailConnections({
     .slice(0, 5)
     .map(getConnectionLabel);
 
+  const handleClearSelectedErrors = async (
+    connectionIds = selectedConnectionIds,
+  ) => {
+    if (connectionIds.length === 0) return;
+
+    try {
+      let failed = 0;
+      for (const connectionId of connectionIds) {
+        try {
+          const res = await updateProviderConnection(connectionId, {
+            lastError: null,
+            lastErrorAt: null,
+            testStatus: null,
+          });
+          if (!res.ok) failed += 1;
+        } catch (error) {
+          console.log("Error clearing connection error:", connectionId, error);
+          failed += 1;
+        }
+      }
+
+      // Optimistically clear lastError/lastErrorAt/testStatus for succeeded connections
+      const clearedIds = new Set(connectionIds);
+      applyConnections(
+        connectionsRef.current.map((conn) =>
+          clearedIds.has(conn.id)
+            ? { ...conn, lastError: null, lastErrorAt: null, testStatus: null }
+            : conn,
+        ),
+      );
+      setSelectedConnectionIds([]);
+
+      if (failed > 0) {
+        alert(`Cleared with ${failed} failed request(s).`);
+        await fetchConnections();
+      }
+    } catch (error) {
+      console.log("Error clearing selected connection errors:", error);
+      await fetchConnections();
+    }
+  };
+
+  const handleViewJson = async (connectionId) => {
+    setLoadingJson(true);
+    try {
+      const { res, data } = await fetchRawProviderConnection(connectionId);
+      if (res.ok && data.connection) {
+        setActiveJsonConnection(data.connection);
+      } else {
+        alert(data.error || "Failed to fetch connection JSON");
+      }
+    } catch (error) {
+      console.log("Error fetching connection JSON:", error);
+      alert("Failed to fetch connection JSON");
+    } finally {
+      setLoadingJson(false);
+    }
+  };
+
   return {
     connections,
     setConnections,
@@ -837,6 +990,9 @@ export function useProviderDetailConnections({
     handleSwapPriority,
     setSelectedConnectionsAutoRefresh,
     copySelectedEmails,
+    copySelectedNames,
+    handleToggleActiveSelected,
+    handleSetAllSelectedActive,
     toggleSelectConnection,
     selectedConnections,
     allSelected,
@@ -861,5 +1017,10 @@ export function useProviderDetailConnections({
     handleWarmupSelected,
     handleWarmupSingle,
     clearWarmupResults,
+    handleClearSelectedErrors,
+    activeJsonConnection,
+    loadingJson,
+    handleViewJson,
+    setActiveJsonConnection,
   };
 }

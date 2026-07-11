@@ -26,11 +26,12 @@ describe("kiro/token-refresh wrapper", () => {
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({
-            accessToken: "mocked-access-token-123",
-            refreshToken: "mocked-refresh-token-rotated",
-            expiresIn: 3600,
-          }),
+          text: async () =>
+            JSON.stringify({
+              accessToken: "mocked-access-token-123",
+              refreshToken: "mocked-refresh-token-rotated",
+              expiresIn: 3600,
+            }),
           json: async () => ({
             accessToken: "mocked-access-token-123",
             refreshToken: "mocked-refresh-token-rotated",
@@ -42,12 +43,12 @@ describe("kiro/token-refresh wrapper", () => {
     });
 
     const mod = await import("../../open-sse/services/tokenRefresh.js");
-    
+
     const providerSpecificData = {
       clientId: "mock-client-id",
       clientSecret: "mock-client-secret",
       region: "us-east-1",
-      authMethod: "builder-id"
+      authMethod: "builder-id",
     };
 
     const out = await mod.refreshKiroToken(
@@ -55,7 +56,7 @@ describe("kiro/token-refresh wrapper", () => {
       providerSpecificData,
       null,
       null,
-      true
+      true,
     );
 
     // Assertions

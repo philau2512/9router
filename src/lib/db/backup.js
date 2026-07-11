@@ -3,7 +3,7 @@ import path from "node:path";
 import { BACKUPS_DIR, ensureDirs } from "./paths.js";
 import { timestampSlug, getAppVersion } from "./version.js";
 
-const KEEP_BACKUPS = 5;
+const KEEP_BACKUPS = 3; // was 5 — upstream b25e10160
 
 export function makeBackupDir(label) {
   ensureDirs();
@@ -19,6 +19,54 @@ export function backupFile(srcPath, destDir, destName = null) {
   const name = destName || path.basename(srcPath);
   const dest = path.join(destDir, name);
   fs.copyFileSync(srcPath, dest);
+  return dest;
+}
+
+// Tables excluded from lightweight backups (large, non-critical, auto-pruned).
+const BACKUP_EXCLUDE_TABLES = ["requestDetails"];
+
+// Lightweight DB backup via SQLite ATTACH — copies all tables EXCEPT excluded
+// ones (requestDetails can be hundreds of MB). Falls back to backupFile on error.
+// See upstream fix b25e10160.
+export function backupDbLite(adapter, destDir, destName = "data.sqlite") {
+  const dest = path.join(destDir, destName);
+  try {
+    fs.rmSync(dest, { force: true });
+  } catch {
+    /* ignore */
+  }
+  // SQLite string-escape: single quotes doubled
+  const escaped = dest.replace(/'/g, "''");
+
+  adapter.exec(`ATTACH DATABASE '${escaped}' AS bak`);
+  try {
+    const excluded = new Set(BACKUP_EXCLUDE_TABLES);
+    const tables = adapter
+      .all(
+        `SELECT name, sql FROM main.sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`,
+      )
+      .filter((t) => !excluded.has(t.name));
+
+    adapter.transaction(() => {
+      for (const t of tables) {
+        // Replace "CREATE TABLE " with "CREATE TABLE bak." to target backup DB
+        const createSql = t.sql.replace(
+          /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|\S+)/i,
+          (m) => m.replace(/(\S+)$/, "bak.$1"),
+        );
+        adapter.exec(createSql);
+        adapter.exec(
+          `INSERT INTO bak."${t.name}" SELECT * FROM main."${t.name}"`,
+        );
+      }
+    })();
+  } finally {
+    try {
+      adapter.exec("DETACH DATABASE bak");
+    } catch {
+      /* ignore */
+    }
+  }
   return dest;
 }
 

@@ -308,7 +308,7 @@ export function createDisconnectAwareStream(
 
               let newTransformStream;
               if (
-                needsTranslation(resumeCtx.targetFormat, resumeCtx.sourceFormat)
+                needsTranslation(resumeCtx.sourceFormat, resumeCtx.targetFormat)
               ) {
                 newTransformStream = createSSETransformStreamWithLogger(
                   resumeCtx.targetFormat,
@@ -453,6 +453,13 @@ export function pipeWithDisconnect(
   model = null,
   provider = null,
   resumeCtx = null,
+  // Phase 3 (option c): when set, pipe THIS stream (Kiro's object-mode decode
+  // output) through the stall tap + transform instead of providerResponse.body.
+  // The transform is the object-input translate builder, so its output is bytes
+  // and everything downstream (tap byte-count is guarded for non-byte chunks,
+  // client Response) is unchanged. Resume path is unaffected: it re-executes the
+  // provider in byte mode and rebuilds a byte transform.
+  bodyOverride = null,
 ) {
   let stallTimer = null;
   let semanticStallTimer = null;
@@ -497,9 +504,14 @@ export function pipeWithDisconnect(
   const startSemanticStallWatchdog = () => {
     clearSemanticStall();
     const isReasoningModel =
-      (model && (model.includes("reasoning") || model.includes("gpt-5") || model.includes("deepseek"))) ||
+      (model &&
+        (model.includes("reasoning") ||
+          model.includes("gpt-5") ||
+          model.includes("deepseek"))) ||
       provider === "codex";
-    const dynamicTimeoutMs = isReasoningModel ? 180000 : STREAM_SEMANTIC_STALL_TIMEOUT_MS;
+    const dynamicTimeoutMs = isReasoningModel
+      ? 180000
+      : STREAM_SEMANTIC_STALL_TIMEOUT_MS;
 
     semanticStallTimer = setInterval(() => {
       if (!streamController.isConnected()) {
@@ -585,7 +597,8 @@ export function pipeWithDisconnect(
       chunkCount++;
       if (!upstreamFirstByteAt) {
         upstreamFirstByteAt = Date.now();
-        if (timing && !timing.upstreamFirstByteAt) timing.upstreamFirstByteAt = upstreamFirstByteAt;
+        if (timing && !timing.upstreamFirstByteAt)
+          timing.upstreamFirstByteAt = upstreamFirstByteAt;
         startSemanticStallWatchdog();
       }
       const sz = chunk?.byteLength || chunk?.length || 0;
@@ -593,19 +606,32 @@ export function pipeWithDisconnect(
       const now = Date.now();
       const gap = now - lastChunkAt;
       lastChunkAt = now;
-      if (isDebugEnabled && (chunkCount <= 5 || chunkCount % 20 === 0 || gap > 5000)) {
-        dbg(tag, `chunk #${chunkCount} | size=${sz}B | gap=${gap}ms | total=${totalBytes}B`);
+      if (
+        isDebugEnabled &&
+        (chunkCount <= 5 || chunkCount % 20 === 0 || gap > 5000)
+      ) {
+        dbg(
+          tag,
+          `chunk #${chunkCount} | size=${sz}B | gap=${gap}ms | total=${totalBytes}B`,
+        );
       }
       armStall();
       controller.enqueue(chunk);
     },
     flush() {
-      dbg(tag, `upstream EOF | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);
+      dbg(
+        tag,
+        `upstream EOF | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`,
+      );
       clearStall();
     },
   });
 
-  const transformedBody = providerResponse.body
+  // Phase 3 (option c): pipe the object-mode source when provided, else the
+  // provider's byte body. Either way the stall tap (byte-count guarded) and the
+  // transform (object-input translate when overridden) run identically.
+  const pipeSource = bodyOverride || providerResponse.body;
+  const transformedBody = pipeSource
     .pipeThrough(upstreamStallTap)
     .pipeThrough(transformStream);
 

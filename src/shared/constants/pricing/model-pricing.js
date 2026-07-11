@@ -6,6 +6,38 @@
  */
 export const MODEL_PRICING = {
   // === Anthropic / Claude ===
+  // Source: https://platform.claude.com/docs/en/about-claude/pricing (2026-07-07)
+  "claude-fable-5": {
+    // Next-gen intelligence for long-running agents; $10/$50 per MTok
+    input: 10.0,
+    output: 50.0,
+    cached: 1.0,
+    reasoning: 50.0,
+    cache_creation: 12.5,
+  },
+  "claude-opus-4-8": {
+    // Complex agentic coding and enterprise work; $5/$25 per MTok
+    input: 5.0,
+    output: 25.0,
+    cached: 0.5,
+    reasoning: 25.0,
+    cache_creation: 6.25,
+  },
+  "claude-opus-4-7": {
+    input: 5.0,
+    output: 25.0,
+    cached: 0.5,
+    reasoning: 25.0,
+    cache_creation: 6.25,
+  },
+  "claude-sonnet-5": {
+    // Introductory pricing $2/$10 through 2026-08-31; standard $3/$15 from 2026-09-01
+    input: 2.0,
+    output: 10.0,
+    cached: 0.2,
+    reasoning: 10.0,
+    cache_creation: 2.5,
+  },
   "claude-opus-4-6": {
     input: 5.0,
     output: 25.0,
@@ -70,11 +102,12 @@ export const MODEL_PRICING = {
     cache_creation: 0.5,
   },
   "claude-opus-4.1": {
-    input: 5.0,
-    output: 25.0,
-    cached: 0.5,
-    reasoning: 37.5,
-    cache_creation: 5.0,
+    // deprecated — $15/$75 per MTok (source: platform.claude.com/docs/en/about-claude/pricing)
+    input: 15.0,
+    output: 75.0,
+    cached: 1.5,
+    reasoning: 75.0,
+    cache_creation: 18.75,
   },
   "claude-opus-4.5": {
     input: 5.0,
@@ -98,6 +131,20 @@ export const MODEL_PRICING = {
     cache_creation: 3.0,
   },
   "claude-sonnet-4.5": {
+    input: 3.0,
+    output: 15.0,
+    cached: 0.3,
+    reasoning: 22.5,
+    cache_creation: 3.0,
+  },
+  "claude-sonnet-4.5-thinking": {
+    input: 3.0,
+    output: 15.0,
+    cached: 0.3,
+    reasoning: 22.5,
+    cache_creation: 3.0,
+  },
+  "claude-sonnet-4.5-thinking-agentic": {
     input: 3.0,
     output: 15.0,
     cached: 0.3,
@@ -281,6 +328,13 @@ export const MODEL_PRICING = {
     reasoning: 12.0,
     cache_creation: 3.0,
   },
+  "gpt-5.5": {
+    input: 5.0,
+    output: 30.0,
+    cached: 0.5,
+    reasoning: 48.0,
+    cache_creation: 8.0,
+  },
   o1: {
     input: 15.0,
     output: 60.0,
@@ -333,39 +387,40 @@ export const MODEL_PRICING = {
     cache_creation: 4.0,
   },
   "gemini-3-flash-agent": {
-    input: 0.5,
-    output: 3.0,
-    cached: 0.03,
+    input: 1.5,
+    output: 9.0,
+    cached: 0.15,
     reasoning: 4.5,
     cache_creation: 0.5,
   },
   "gemini-3.5-flash-low": {
-    input: 0.5,
-    output: 3.0,
-    cached: 0.03,
+    input: 1.5,
+    output: 9.0,
+    cached: 0.15,
     reasoning: 4.5,
     cache_creation: 0.5,
   },
   "gemini-3.5-flash-extra-low": {
-    input: 0.5,
-    output: 3.0,
-    cached: 0.03,
+    input: 1.5,
+    output: 9.0,
+    cached: 0.15,
     reasoning: 4.5,
     cache_creation: 0.5,
   },
   "gemini-3-flash": {
-    input: 0.5,
-    output: 3.0,
-    cached: 0.03,
+    input: 1.5,
+    output: 9.0,
+    cached: 0.15,
     reasoning: 4.5,
     cache_creation: 0.5,
   },
   "gemini-2.5-pro": {
-    input: 2.0,
-    output: 12.0,
+    // Source: https://ai.google.dev/pricing — $1.25/$10 for ≤200k tokens
+    input: 1.25,
+    output: 10.0,
     cached: 0.25,
-    reasoning: 18.0,
-    cache_creation: 2.0,
+    reasoning: 15.0,
+    cache_creation: 1.25,
   },
   "gemini-2.5-flash": {
     input: 0.3,
@@ -375,11 +430,12 @@ export const MODEL_PRICING = {
     cache_creation: 0.3,
   },
   "gemini-2.5-flash-lite": {
-    input: 0.15,
-    output: 1.25,
-    cached: 0.015,
-    reasoning: 1.875,
-    cache_creation: 0.15,
+    // Source: https://ai.google.dev/pricing — $0.10/$0.40 per MTok
+    input: 0.1,
+    output: 0.4,
+    cached: 0.01,
+    reasoning: 0.6,
+    cache_creation: 0.1,
   },
 
   // === Xiaomi MiMo ===
@@ -420,11 +476,11 @@ export const MODEL_PRICING = {
     cache_creation: 0.14,
   },
   "mimo-v2-flash": {
-    input: 0.10,
-    output: 0.30,
+    input: 0.1,
+    output: 0.3,
     cached: 0.01,
-    reasoning: 0.30,
-    cache_creation: 0.10,
+    reasoning: 0.3,
+    cache_creation: 0.1,
   },
   // TTS models are currently free (limited time)
   "mimo-v2-tts": {
@@ -662,6 +718,11 @@ export const MODEL_PRICING = {
     cached: 0.25,
     reasoning: 3.0,
     cache_creation: 0.5,
+  },
+  "grok-4.5": {
+    input: 4,
+    output: 18,
+    cached: 0.5,
   },
 
   // === OpenRouter fallback ===

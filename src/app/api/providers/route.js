@@ -147,7 +147,8 @@ export async function POST(request) {
     const isWebCookieProvider = !!WEB_COOKIE_PROVIDERS[provider];
     // Dual-auth providers (e.g. codebuddy-cn, xai) live under category "oauth" but also
     // accept an API key via authModes — they aren't in APIKEY_PROVIDERS, so allow them here.
-    const supportsApiKeyMode = !!AI_PROVIDERS[provider]?.authModes?.includes("apikey");
+    const supportsApiKeyMode =
+      !!AI_PROVIDERS[provider]?.authModes?.includes("apikey");
     const isValidProvider =
       APIKEY_PROVIDERS[provider] ||
       FREE_TIER_PROVIDERS[provider] ||
@@ -185,17 +186,6 @@ export async function POST(request) {
         return NextResponse.json(
           { error: "OpenAI Compatible node not found" },
           { status: 404 },
-        );
-      }
-      // Compatible/embedding nodes allow exactly one connection each.
-      const existingConnections = await getProviderConnections({ provider });
-      if (existingConnections.length > 0) {
-        return NextResponse.json(
-          {
-            error:
-              "Only one connection is allowed for this OpenAI Compatible node",
-          },
-          { status: 400 },
         );
       }
       providerSpecificData = {

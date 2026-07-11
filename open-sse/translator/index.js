@@ -161,7 +161,11 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
   const directRoute = responseRegistry.get(`${targetFormat}:${sourceFormat}`);
   if (directRoute) {
     const converted = directRoute(chunk, state);
-    return converted == null ? [] : (Array.isArray(converted) ? converted : [converted]);
+    return converted == null
+      ? []
+      : Array.isArray(converted)
+        ? converted
+        : [converted];
   }
 
   // Step 1: target -> openai (if target is not openai)
@@ -289,3 +293,4 @@ import "./response/kiro-to-claude.js";
 import "./response/cursor-to-openai.js";
 import "./response/ollama-to-openai.js";
 import "./response/commandcode-to-openai.js";
+import "./response/openai-to-gemini.js";

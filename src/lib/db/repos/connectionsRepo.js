@@ -135,6 +135,22 @@ function reorderInTx(db, providerId) {
   });
 }
 
+// Derive a display name for a new OAuth connection.
+// GitHub login is more stable than displayName; prefer it for Copilot profiles.
+// See upstream fix 3a7a878f9.
+function deriveConnectionName(data, fallbackName) {
+  if (data.provider === "github") {
+    return (
+      data.providerSpecificData?.githubLogin ||
+      data.providerSpecificData?.githubEmail ||
+      data.email ||
+      data.providerSpecificData?.githubName ||
+      fallbackName
+    );
+  }
+  return fallbackName;
+}
+
 export async function createProviderConnection(data) {
   const db = await getAdapter();
   const now = new Date().toISOString();
@@ -149,18 +165,54 @@ export async function createProviderConnection(data) {
 
     let existing = null;
     if (data.authType === "oauth" && data.email) {
+      const incomingUsername = data.providerSpecificData?.username;
       const incomingWs = data.providerSpecificData?.chatgptAccountId;
       existing = all.find((c) => {
         if (c.authType !== "oauth" || c.email !== data.email) return false;
-        // If both sides have a workspace ID, they must match for dedup
+
+        // Codex: multiple OAuth grants can share the same email address.
+        // Only match when both rows expose the same ChatGPT account/workspace ID.
+        // See upstream fix c73c419d0.
+        if (data.provider === "codex") {
+          const existingWs = c.providerSpecificData?.chatgptAccountId;
+          return !!incomingWs && !!existingWs && incomingWs === existingWs;
+        }
+
+        // Workspace providers (Codex) use workspace ID when both sides have it
         const existingWs = c.providerSpecificData?.chatgptAccountId;
         if (incomingWs && existingWs) return incomingWs === existingWs;
-        return true; // fallback: email-only match for non-workspace providers
+        if (incomingWs && !existingWs) return false;
+        if (!incomingWs && existingWs) return false;
+        // Non-workspace providers: match on (email + username) so cross-IdP
+        // accounts don't overwrite each other. Require username on both sides
+        // — if only one side has it, treat as a distinct identity rather than
+        // collapsing onto the bare-email fallback (which would re-introduce
+        // the cross-IdP overwrite).
+        const existingUsername = c.providerSpecificData?.username;
+        if (incomingUsername && existingUsername) {
+          return incomingUsername === existingUsername;
+        }
+        if (incomingUsername || existingUsername) return false;
+        return true;
       });
     } else if (data.authType === "apikey" && data.name) {
       existing = all.find(
         (c) => c.authType === "apikey" && c.name === data.name,
       );
+    }
+    // GitHub F8 fix: existing connections created before email was stored have email=null.
+    // On re-auth (now has email), the email-match above won't find them → duplicate created.
+    // Fall back to githubLogin match which is stable across re-auths.
+    // See RED-TEAM finding F8 / upstream fix 3a7a878f9.
+    if (!existing && data.provider === "github" && data.authType === "oauth") {
+      const incomingLogin = data.providerSpecificData?.githubLogin;
+      if (incomingLogin) {
+        existing = all.find(
+          (c) =>
+            c.authType === "oauth" &&
+            c.providerSpecificData?.githubLogin === incomingLogin,
+        );
+      }
     }
     // access_token: never dedup — user manages duplicates manually
 
@@ -176,7 +228,10 @@ export async function createProviderConnection(data) {
       !connectionName &&
       (data.authType === "oauth" || data.authType === "access_token")
     ) {
-      connectionName = data.email || `Account ${all.length + 1}`;
+      connectionName = deriveConnectionName(
+        data,
+        data.email || `Account ${all.length + 1}`,
+      );
     }
     let connectionPriority = data.priority;
     if (!connectionPriority) {

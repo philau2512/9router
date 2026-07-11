@@ -253,6 +253,9 @@ export const CLINE_CONFIG = {
   refreshUrl: "https://api.cline.bot/api/v1/auth/refresh",
 };
 
+// ClinePass OAuth Configuration (shares Cline's OAuth endpoints)
+export const CLINEPASS_CONFIG = { ...CLINE_CONFIG };
+
 // GitLab Duo OAuth Configuration (Authorization Code Flow with PKCE)
 // Supports both OAuth (PKCE) and Personal Access Token (PAT) modes
 export const GITLAB_CONFIG = {
@@ -281,6 +284,19 @@ export const CODEBUDDY_CONFIG = {
 // OAuth timeout (5 minutes)
 export const OAUTH_TIMEOUT = 300000;
 
+// Grok CLI / Grok Build OAuth Configuration (Device Code Flow to auth.x.ai).
+// Same client_id as xAI PKCE flow; different grant + scopes. See upstream a11937cdd.
+export const GROK_CLI_CONFIG = {
+  clientId: "b1a00492-073a-47ea-816f-4c329264a828",
+  deviceCodeUrl: "https://auth.x.ai/oauth2/device/code",
+  tokenUrl: "https://auth.x.ai/oauth2/token",
+  // Scope from HAR capture of official grok-shell/grok-pager — matches registry/grok-cli.js
+  scope:
+    "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write",
+  referrer: "grok-build",
+  pollInterval: 5000,
+};
+
 // Provider list
 export const PROVIDERS = {
   CLAUDE: "claude",
@@ -297,6 +313,8 @@ export const PROVIDERS = {
   KIMI_CODING: "kimi-coding",
   KILOCODE: "kilocode",
   CLINE: "cline",
+  CLINEPASS: "clinepass",
   GITLAB: "gitlab",
   CODEBUDDY: "codebuddy-cn",
+  GROK_CLI: "grok-cli",
 };

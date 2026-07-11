@@ -42,16 +42,15 @@ export const PROVIDER_MODELS = {
     { id: "claude-haiku-4-5-20251001", name: "Claude 4.5 Haiku" },
   ],
   cx: withCodexReviewModels([
-    // OpenAI Codex
+    // OpenAI Codex — GPT 5.6 family (upstream b25e10160)
+    { id: "gpt-5.6-sol", name: "GPT 5.6 Sol" },
+    { id: "gpt-5.6-terra", name: "GPT 5.6 Terra" },
+    { id: "gpt-5.6-luna", name: "GPT 5.6 Luna" },
     { id: "gpt-5.5", name: "GPT 5.5" },
     { id: "gpt-5.4", name: "GPT 5.4" },
     { id: "gpt-5.4-mini", name: "GPT 5.4 Mini" },
-    // GPT 5.3 Codex - all thinking levels
+    // GPT 5.3 Codex — deprecated xhigh/high/low/none variants removed (b25e10160)
     { id: "gpt-5.3-codex", name: "GPT 5.3 Codex" },
-    { id: "gpt-5.3-codex-xhigh", name: "GPT 5.3 Codex (xHigh)" },
-    { id: "gpt-5.3-codex-high", name: "GPT 5.3 Codex (High)" },
-    { id: "gpt-5.3-codex-low", name: "GPT 5.3 Codex (Low)" },
-    { id: "gpt-5.3-codex-none", name: "GPT 5.3 Codex (None)" },
     { id: "gpt-5.3-codex-spark", name: "GPT 5.3 Codex Spark" },
     // Mini - medium and high only
     { id: "gpt-5.1-codex-mini", name: "GPT 5.1 Codex Mini" },
@@ -161,7 +160,13 @@ export const PROVIDER_MODELS = {
     { id: "gpt-oss-120b-medium", name: "GPT-OSS 120B (Medium)" },
     { id: "gemini-3-flash", name: "Gemini 3 Flash", thinking: false }, // command model; AG strips thinking
     // Image generation models
-    { id: "gemini-3.1-flash-image", name: "Gemini 3.1 Flash (Image)", type: "image", imageGen: true, capabilities: ["textToImage"] },
+    {
+      id: "gemini-3.1-flash-image",
+      name: "Gemini 3.1 Flash (Image)",
+      type: "image",
+      imageGen: true,
+      capabilities: ["textToImage"],
+    },
   ],
   gh: [
     // GitHub Copilot - OpenAI models
@@ -341,6 +346,22 @@ export const PROVIDER_MODELS = {
       name: "Gemini 3.1 Flash Lite Preview",
     },
     { id: "kwaipilot/kat-coder-pro", name: "KAT Coder Pro" },
+  ],
+  cp: [
+    // ClinePass — 10 curated models (live /v1/models resolver also active)
+    { id: "cline-pass/glm-5.2", name: "GLM-5.2 (ClinePass)" },
+    { id: "cline-pass/kimi-k2.7-code", name: "Kimi K2.7 Code (ClinePass)" },
+    { id: "cline-pass/kimi-k2.6", name: "Kimi K2.6 (ClinePass)" },
+    { id: "cline-pass/deepseek-v4-pro", name: "DeepSeek V4 Pro (ClinePass)" },
+    {
+      id: "cline-pass/deepseek-v4-flash",
+      name: "DeepSeek V4 Flash (ClinePass)",
+    },
+    { id: "cline-pass/mimo-v2.5", name: "MiMo-V2.5 (ClinePass)" },
+    { id: "cline-pass/mimo-v2.5-pro", name: "MiMo-V2.5-Pro (ClinePass)" },
+    { id: "cline-pass/minimax-m3", name: "MiniMax M3 (ClinePass)" },
+    { id: "cline-pass/qwen3.7-max", name: "Qwen3.7 Max (ClinePass)" },
+    { id: "cline-pass/qwen3.7-plus", name: "Qwen3.7 Plus (ClinePass)" },
   ],
 
   // API Key Providers (alias = id)
@@ -846,7 +867,23 @@ export const PROVIDER_MODELS = {
       id: "grok-2-image-1212",
       name: "Grok 2 Image",
       type: "image",
+      // Legacy xAI image endpoint: n + response_format only
       params: ["n", "response_format"],
+    },
+    {
+      id: "grok-imagine-image",
+      name: "Grok Imagine Image",
+      type: "image",
+      // Grok Imagine API options (UI filters Example extraFields by this list)
+      params: [
+        "n",
+        "size",
+        "quality",
+        "background",
+        "response_format",
+        "image_detail",
+        "output_format",
+      ],
     },
   ],
   mistral: [
@@ -858,6 +895,30 @@ export const PROVIDER_MODELS = {
   perplexity: [
     { id: "sonar-pro", name: "Sonar Pro" },
     { id: "sonar", name: "Sonar" },
+  ],
+  // Perplexity Agent API — OpenAI Responses format. See upstream ce6bdf7fc.
+  "perplexity-agent": [
+    { id: "perplexity/sonar", name: "Perplexity Sonar" },
+    { id: "openai/gpt-5.5", name: "GPT-5.5" },
+    { id: "openai/gpt-5.4", name: "GPT-5.4" },
+    { id: "openai/gpt-5.4-mini", name: "GPT-5.4 Mini" },
+    { id: "anthropic/claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
+    { id: "anthropic/claude-opus-4-8", name: "Claude Opus 4.8" },
+    { id: "google/gemini-3.1-pro-preview", name: "Gemini 3.1 Pro" },
+    { id: "xai/grok-4.20-reasoning", name: "Grok 4.20 Reasoning" },
+    { id: "perplexity/glm-5.2", name: "GLM 5.2" },
+    { id: "perplexity/kimi-k2.7-code", name: "Kimi K2.7 Code" },
+    { id: "nvidia/nemotron-3-super-120b-a12b", name: "Nemotron 3 Super 120B" },
+  ],
+  // Featherless — OpenAI-compatible inference. See upstream 0d4d4bc26.
+  featherless: [
+    { id: "deepseek-ai/DeepSeek-V4-Pro", name: "DeepSeek V4 Pro" },
+    { id: "deepseek-ai/DeepSeek-V4-Flash", name: "DeepSeek V4 Flash" },
+    { id: "zai-org/GLM-5.2", name: "GLM 5.2" },
+    { id: "zai-org/GLM-5.1", name: "GLM 5.1" },
+    { id: "moonshotai/Kimi-K2.7-Code", name: "Kimi K2.7 Code" },
+    { id: "moonshotai/Kimi-K2.6", name: "Kimi K2.6" },
+    { id: "moonshotai/Kimi-K2.5", name: "Kimi K2.5" },
   ],
   together: [
     {
@@ -1015,7 +1076,10 @@ export const PROVIDER_MODELS = {
     { id: "venice-uncensored-1-2", name: "Venice Uncensored 1.2" },
     { id: "zai-org-glm-5", name: "GLM-5 (Venice)" },
     { id: "qwen3-235b-a22b-instruct-2507", name: "Qwen3 235B A22B Instruct" },
-    { id: "qwen3-coder-480b-a35b-instruct-turbo", name: "Qwen3 Coder 480B A35B Turbo" },
+    {
+      id: "qwen3-coder-480b-a35b-instruct-turbo",
+      name: "Qwen3 Coder 480B A35B Turbo",
+    },
     { id: "qwen3-vl-235b-a22b", name: "Qwen3 VL 235B A22B" },
     { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro" },
     { id: "llama-3.3-70b", name: "Llama 3.3 70B" },
@@ -1035,6 +1099,21 @@ export const PROVIDER_MODELS = {
     { id: "grok-4.1-expert", name: "Grok 4.1 Expert" },
     { id: "grok-4.1-thinking", name: "Grok 4.1 Thinking" },
     { id: "grok-4.2", name: "Grok 4.2 (4.20 Beta)" },
+  ],
+  // Grok CLI / Grok Build — device-code OAuth. See upstream a11937cdd.
+  "grok-cli": [
+    { id: "grok-4.5", name: "Grok 4.5" },
+    {
+      id: "grok-4.5-high",
+      name: "Grok 4.5 (High)",
+      upstreamModelId: "grok-4.5",
+    },
+    {
+      id: "grok-4.5-medium",
+      name: "Grok 4.5 (Medium)",
+      upstreamModelId: "grok-4.5",
+    },
+    { id: "grok-4.5-low", name: "Grok 4.5 (Low)", upstreamModelId: "grok-4.5" },
   ],
   "perplexity-web": [
     { id: "pplx-auto", name: "Perplexity Auto (Free)" },
@@ -1496,6 +1575,7 @@ const OAUTH_ALIASES = {
   "kimi-coding": "kmc",
   kilocode: "kc",
   cline: "cl",
+  clinepass: "cp",
   opencode: "oc",
   "mimo-free": "mmf",
   vertex: "vertex",

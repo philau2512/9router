@@ -8,9 +8,16 @@ import Badge from "./Badge";
 
 const NONE_PROXY_POOL_VALUE = "__none__";
 
+const ROTATE_STRATEGIES = [
+  { value: "none", label: "None (use selected pool)" },
+  { value: "round-robin", label: "Round-robin" },
+  { value: "random", label: "Random" },
+];
+
 export default function NoAuthProxyCard({ providerId }) {
   const [proxyPools, setProxyPools] = useState([]);
   const [proxyPoolId, setProxyPoolId] = useState(NONE_PROXY_POOL_VALUE);
+  const [rotateStrategy, setRotateStrategy] = useState("none");
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
 
@@ -30,6 +37,7 @@ export default function NoAuthProxyCard({ providerId }) {
         const override =
           (settingsData.providerStrategies || {})[providerId] || {};
         setProxyPoolId(override.proxyPoolId || NONE_PROXY_POOL_VALUE);
+        setRotateStrategy(override.rotateStrategy || "none");
       })
       .catch(() => {});
     return () => {
@@ -64,6 +72,36 @@ export default function NoAuthProxyCard({ providerId }) {
     }
   };
 
+  const handleStrategyChange = async (newStrategy) => {
+    setRotateStrategy(newStrategy);
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings", { cache: "no-store" });
+      const data = res.ok ? await res.json() : {};
+      const current = data.providerStrategies || {};
+      const override = { ...(current[providerId] || {}) };
+      if (newStrategy === "none") delete override.rotateStrategy;
+      else override.rotateStrategy = newStrategy;
+      const updated = { ...current };
+      if (Object.keys(override).length === 0) delete updated[providerId];
+      else updated[providerId] = override;
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ providerStrategies: updated }),
+      });
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 1500);
+    } catch (e) {
+      console.log("Save rotateStrategy error:", e);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // When rotation is active, pool selector is managed automatically
+  const rotationActive = rotateStrategy !== "none";
+
   return (
     <Card>
       <div className="flex items-center gap-3 mb-4">
@@ -86,12 +124,24 @@ export default function NoAuthProxyCard({ providerId }) {
         )}
       </div>
       <Select
+        label="Rotation Strategy"
+        value={rotateStrategy}
+        onChange={(e) => handleStrategyChange(e.target.value)}
+        disabled={saving}
+        options={ROTATE_STRATEGIES}
+      />
+      <Select
         label="Proxy Pool"
         value={proxyPoolId}
         onChange={(e) => handleChange(e.target.value)}
-        disabled={saving}
+        disabled={saving || rotationActive}
         options={[
-          { value: NONE_PROXY_POOL_VALUE, label: "None (direct)" },
+          {
+            value: NONE_PROXY_POOL_VALUE,
+            label: rotationActive
+              ? "Auto (rotation picks pool)"
+              : "None (direct)",
+          },
           ...proxyPools.map((pool) => ({ value: pool.id, label: pool.name })),
         ]}
       />

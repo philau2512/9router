@@ -94,7 +94,6 @@ export function shouldBypassMitmDns(url) {
   }
 }
 
-
 /**
  * Pre-resolve DNS for a list of hostnames using Google DNS.
  * Fire-and-forget — does not block startup.
@@ -103,8 +102,8 @@ export function shouldBypassMitmDns(url) {
 export async function warmupDnsCache(hostnames) {
   if (!Array.isArray(hostnames) || hostnames.length === 0) return;
   const results = await Promise.allSettled(
-    hostnames.map(h => performDnsResolve(h))
+    hostnames.map((h) => performDnsResolve(h)),
   );
-  const ok = results.filter(r => r.status === "fulfilled" && r.value).length;
+  const ok = results.filter((r) => r.status === "fulfilled" && r.value).length;
   console.log(`[WARMUP] Pre-resolved ${ok}/${hostnames.length} DNS entries`);
 }

@@ -149,9 +149,22 @@ function npmInstall(pkgs, opts = {}) {
 // built-in. This is purely a *speed optimization* — app works without
 // better-sqlite3 via fallbacks.
 function isSqlJsWasmValid() {
-  const bundledWasm = path.join(__dirname, "..", "app", "node_modules", "sql.js", "dist", "sql-wasm.wasm");
+  const bundledWasm = path.join(
+    __dirname,
+    "..",
+    "app",
+    "node_modules",
+    "sql.js",
+    "dist",
+    "sql-wasm.wasm",
+  );
   if (fs.existsSync(bundledWasm)) return true;
-  const runtimeWasm = path.join(getRuntimeNodeModules(), "sql.js", "dist", "sql-wasm.wasm");
+  const runtimeWasm = path.join(
+    getRuntimeNodeModules(),
+    "sql.js",
+    "dist",
+    "sql-wasm.wasm",
+  );
   return fs.existsSync(runtimeWasm);
 }
 

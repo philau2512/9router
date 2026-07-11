@@ -12,7 +12,7 @@ import Button from "./Button";
 import { ConfirmModal } from "./Modal";
 
 // const VISIBLE_MEDIA_KINDS = ["embedding", "image", "imageToText", "tts", "stt", "webSearch", "webFetch", "video", "music"];
-const VISIBLE_MEDIA_KINDS = ["embedding", "image", "tts", "stt"];
+const VISIBLE_MEDIA_KINDS = ["embedding", "image", "tts", "stt", "video"];
 // Combined entry: webSearch + webFetch share one page at /dashboard/media-providers/web
 const COMBINED_WEB_ITEM = {
   id: "web",
@@ -34,6 +34,7 @@ const navItems = [
   },
   { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
   { href: "/dashboard/mitm", label: "MITM", icon: "security" },
+  { href: "/dashboard/pxpipe", label: "PxPipe", icon: "compress" },
   { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },
 ];
 

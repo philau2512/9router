@@ -12,6 +12,7 @@ export const UNSUPPORTED_SCHEMA_CONSTRAINTS = [
   "format",
   // Claude rejects these in VALIDATED mode
   "default",
+  "multipleOf", // strip before sending to Gemini/Antigravity — causes HTTP 400 (PR #2317)
   "examples",
   // JSON Schema meta keywords
   "$schema",

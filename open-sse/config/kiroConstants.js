@@ -18,24 +18,75 @@
 export const KIRO_AGENTIC_SUFFIX = "-agentic";
 export const KIRO_THINKING_SUFFIX = "-thinking";
 
-// Public default CodeWhisperer profile ARNs (us-east-1), keyed by auth method.
-// Used when an account cannot resolve its own profileArn. Builder ID and social
-// (Google/GitHub) sign-ins map to different shared profiles.
+// Shared CodeWhisperer profile ARNs. These are ENDPOINT-SPECIFIC — the same
+// account needs a DIFFERENT profileArn depending on which host it hits. This
+// was verified empirically against a real Builder ID account (see matrix below,
+// generateAssistantResponse):
+//
+//   endpoint                              omit profileArn   AAAACCCCXXXX
+//   runtime.us-east-1.kiro.dev            400 "required"    200 OK
+//   codewhisperer.us-east-1.amazonaws     200 OK            403 "not authorized"
+//   q.us-east-1.amazonaws                 200 OK            403 "not authorized"
+//
+// So for a free-tier Builder ID account (which CANNOT resolve its own ARN —
+// ListAvailableProfiles returns 403 "AWS Builder ID is not supported"):
+//   * kiro.dev surface  -> MUST send the shared builder ARN (AAAACCCCXXXX)
+//   * amazonaws surface -> MUST omit the ARN entirely
+// Social (google/github) tokens carry their own real ARN from token refresh.
 export const KIRO_DEFAULT_PROFILE_ARNS = {
+  // kiro.dev shared free-tier Builder ID profile (required on that surface).
   "builder-id":
     "arn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX",
   social: "arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK",
 };
 
-// Back-compat single default (Builder ID).
-export const KIRO_DEFAULT_PROFILE_ARN = KIRO_DEFAULT_PROFILE_ARNS["builder-id"];
+/** True when the resolved request URL targets the kiro.dev gateway surface. */
+export function isKiroDevEndpoint(url) {
+  return typeof url === "string" && url.includes("kiro.dev");
+}
 
-/** Resolve the shared default profileArn for a given auth method. */
-export function resolveDefaultProfileArn(authMethod) {
-  const social = authMethod === "google" || authMethod === "github";
-  return social
-    ? KIRO_DEFAULT_PROFILE_ARNS.social
-    : KIRO_DEFAULT_PROFILE_ARNS["builder-id"];
+/**
+ * Last-resort shared profileArn for a given auth method + endpoint when no
+ * account-specific ARN is available.
+ * - social (google/github): shared social profile.
+ * - builder-id / imported / unknown free-tier: shared builder ARN ONLY on the
+ *   kiro.dev surface; "" (omit) on the amazonaws surface.
+ */
+export function resolveDefaultProfileArn(authMethod, endpoint) {
+  if (authMethod === "google" || authMethod === "github") {
+    return KIRO_DEFAULT_PROFILE_ARNS.social;
+  }
+  // Free-tier Builder ID (and imported/unknown): endpoint-dependent.
+  return isKiroDevEndpoint(endpoint)
+    ? KIRO_DEFAULT_PROFILE_ARNS["builder-id"]
+    : "";
+}
+
+/**
+ * Single source of truth for the profileArn sent with a Kiro request.
+ *
+ * ENDPOINT-AWARE (see the matrix on KIRO_DEFAULT_PROFILE_ARNS):
+ * - An account-specific ARN (stored on the credential, e.g. IDC/api_key/social
+ *   discovered ARN) always wins — it's the account's own profile.
+ * - Otherwise, free-tier Builder ID accounts have NO discoverable profile, so
+ *   we use the endpoint-specific shared value: AAAACCCCXXXX on kiro.dev, omit
+ *   on amazonaws. Sending the wrong one for the endpoint yields 400 (omit on
+ *   kiro.dev) or 403 (AAAA on amazonaws).
+ *
+ * @param {object} credentials Credential object with providerSpecificData
+ * @param {object} [opts]
+ * @param {string} [opts.endpoint] The resolved request URL for this attempt.
+ * @returns {string} profileArn to send ('' means "omit the ARN")
+ */
+export function resolveKiroRequestProfileArn(credentials, opts = {}) {
+  const psd = credentials?.providerSpecificData || {};
+  const endpoint = opts.endpoint;
+  // A real, account-specific ARN (not the shared builder placeholder) always wins.
+  const stored = psd.profileArn;
+  if (stored && stored !== KIRO_DEFAULT_PROFILE_ARNS["builder-id"]) {
+    return stored;
+  }
+  return resolveDefaultProfileArn(psd.authMethod, endpoint);
 }
 
 export const KIRO_THINKING_BUDGET_DEFAULT = 16000;
@@ -47,8 +98,10 @@ export const KIRO_THINKING_BUDGET_DEFAULT = 16000;
 let _extractThinking, _effortToBudget;
 async function getThinkingHelpers() {
   if (!_extractThinking) {
-    ({ extractThinking: _extractThinking } = await import("../translator/concerns/thinkingUnified.js"));
-    ({ effortToBudget: _effortToBudget } = await import("../translator/concerns/thinking.js"));
+    ({ extractThinking: _extractThinking } =
+      await import("../translator/concerns/thinkingUnified.js"));
+    ({ effortToBudget: _effortToBudget } =
+      await import("../translator/concerns/thinking.js"));
   }
   return { extractThinking: _extractThinking, effortToBudget: _effortToBudget };
 }
@@ -69,13 +122,17 @@ export function resolveKiroThinkingBudget(body, headers, model) {
   if (cfg) {
     if (cfg.mode === "none") return null;
     if (cfg.mode === "budget") return cfg.budget;
-    if (cfg.mode === "level") return effortToBudgetSync(cfg.level) ?? KIRO_THINKING_BUDGET_DEFAULT;
+    if (cfg.mode === "level")
+      return effortToBudgetSync(cfg.level) ?? KIRO_THINKING_BUDGET_DEFAULT;
     return KIRO_THINKING_BUDGET_DEFAULT;
   }
 
   if (headers) {
     const beta = pickHeader(headers, "anthropic-beta");
-    if (typeof beta === "string" && beta.toLowerCase().includes("interleaved-thinking")) {
+    if (
+      typeof beta === "string" &&
+      beta.toLowerCase().includes("interleaved-thinking")
+    ) {
       return KIRO_THINKING_BUDGET_DEFAULT;
     }
   }
@@ -84,14 +141,23 @@ export function resolveKiroThinkingBudget(body, headers, model) {
 
   if (typeof model === "string" && model) {
     const m = model.toLowerCase();
-    if (m.includes("thinking") || m.includes("-reason")) return KIRO_THINKING_BUDGET_DEFAULT;
+    if (m.includes("thinking") || m.includes("-reason"))
+      return KIRO_THINKING_BUDGET_DEFAULT;
   }
 
   return null;
 }
 
 // Inline sync helpers (avoid async import for sync call sites)
-const LEVEL_TO_BUDGET_INLINE = { none: 0, minimal: 512, low: 1024, medium: 8192, high: 24576, xhigh: 32768, max: 128000 };
+const LEVEL_TO_BUDGET_INLINE = {
+  none: 0,
+  minimal: 512,
+  low: 1024,
+  medium: 8192,
+  high: 24576,
+  xhigh: 32768,
+  max: 128000,
+};
 function effortToBudgetSync(effort) {
   if (!effort) return undefined;
   return LEVEL_TO_BUDGET_INLINE[String(effort).toLowerCase()];
@@ -109,15 +175,13 @@ function extractThinkingSync(body) {
   const t = body.thinking;
   if (t && typeof t === "object") {
     if (t.type === "disabled") return { mode: "none" };
-    if (t.type === "adaptive" || t.type === "enabled") {
-      const budget = Number(t.budget_tokens);
-      if (Number.isFinite(budget) && budget > 0) return { mode: "budget", budget };
-      return { mode: "auto" };
-    }
+    if (t.type === "adaptive" || t.type === "enabled") return { mode: "auto" };
+    if (typeof t.budget === "number")
+      return { mode: "budget", budget: t.budget };
   }
-  const effort = body.reasoning_effort ?? (typeof body.reasoning === "object" ? body.reasoning?.effort : null);
-  if (typeof effort === "string" && effort) {
-    const e = effort.toLowerCase();
+  const re = body.reasoning_effort;
+  if (typeof re === "string" && re) {
+    const e = re.toLowerCase();
     if (e === "none" || e === "off") return { mode: "none" };
     if (e === "auto") return { mode: "auto" };
     return { mode: "level", level: e };
@@ -125,107 +189,31 @@ function extractThinkingSync(body) {
   return null;
 }
 
-export const KIRO_AGENTIC_SYSTEM_PROMPT = `
-# CRITICAL: CHUNKED WRITE PROTOCOL (MANDATORY)
-
-You MUST follow these rules for ALL file operations. Violation causes server timeouts and task failure.
-
-## ABSOLUTE LIMITS
-- **MAXIMUM 350 LINES** per single write/edit operation - NO EXCEPTIONS
-- **RECOMMENDED 300 LINES** or less for optimal performance
-- **NEVER** write entire files in one operation if >300 lines
-
-## MANDATORY CHUNKED WRITE STRATEGY
-
-### For NEW FILES (>300 lines total):
-1. FIRST: Write initial chunk (first 250-300 lines) using write_to_file/fsWrite
-2. THEN: Append remaining content in 250-300 line chunks using file append operations
-3. REPEAT: Continue appending until complete
-
-### For EDITING EXISTING FILES:
-1. Use surgical edits (apply_diff/targeted edits) - change ONLY what's needed
-2. NEVER rewrite entire files - use incremental modifications
-3. Split large refactors into multiple small, focused edits
-
-### For LARGE CODE GENERATION:
-1. Generate in logical sections (imports, types, functions separately)
-2. Write each section as a separate operation
-3. Use append operations for subsequent sections
-
-## EXAMPLES OF CORRECT BEHAVIOR
-
-CORRECT: Writing a 600-line file
-- Operation 1: Write lines 1-300 (initial file creation)
-- Operation 2: Append lines 301-600
-
-CORRECT: Editing multiple functions
-- Operation 1: Edit function A
-- Operation 2: Edit function B
-- Operation 3: Edit function C
-
-WRONG: Writing 500 lines in single operation -> TIMEOUT
-WRONG: Rewriting entire file to change 5 lines -> TIMEOUT
-WRONG: Generating massive code blocks without chunking -> TIMEOUT
-
-## WHY THIS MATTERS
-- Server has 2-3 minute timeout for operations
-- Large writes exceed timeout and FAIL completely
-- Chunked writes are FASTER and more RELIABLE
-- Failed writes waste time and require retry
-
-REMEMBER: When in doubt, write LESS per operation. Multiple small operations > one large operation.
-`.trim();
-
 /**
- * Detect whether an inbound request is asking for reasoning / thinking output.
+ * Detect whether reasoning features are explicitly requested via body or model id.
+ * Used to decide whether to inject thinking tags even without a -thinking suffix.
  *
- * Sources of intent (any one is enough):
- *   - HTTP header `Anthropic-Beta: ...interleaved-thinking...`
- *   - JSON `thinking.type === "enabled"` (Claude Messages API)
- *   - JSON `reasoning_effort` in {low, medium, high, auto} (OpenAI o1/o3)
- *   - JSON `reasoning.effort` in {low, medium, high, auto} (OpenAI Responses)
- *   - System prompt contains `<thinking_mode>enabled</thinking_mode>` or
- *     `<thinking_mode>interleaved</thinking_mode>` (AMP / Cursor)
- *   - Model name contains `thinking` or `-reason`
- *
- * @param {object} body OpenAI-shaped request body (post-translation)
- * @param {object} [headers] Original inbound HTTP headers (case-insensitive)
- * @param {string} [model] Model id the caller asked for (post-strip ok)
+ * @param {object} body OpenAI/Claude-shaped request body
+ * @param {object} [headers] Original inbound HTTP headers
+ * @param {string} [model] Model id the caller asked for
  * @returns {boolean}
  */
-export function isThinkingEnabled(body, headers, model) {
+export function isReasoningRequested(body, headers, model) {
   if (headers) {
     const beta = pickHeader(headers, "anthropic-beta");
-    if (
-      typeof beta === "string" &&
-      beta.toLowerCase().includes("interleaved-thinking")
-    ) {
-      return true;
+    if (typeof beta === "string") {
+      const b = beta.toLowerCase();
+      if (b.includes("thinking") || b.includes("interleaved-thinking")) {
+        return true;
+      }
     }
   }
 
   if (body && typeof body === "object") {
-    const thinking = body.thinking;
-    if (
-      thinking &&
-      typeof thinking === "object" &&
-      thinking.type === "enabled"
-    ) {
-      const budget = Number(thinking.budget_tokens);
-      if (!Number.isFinite(budget) || budget > 0) {
-        return true;
-      }
-    }
-
-    const effort =
-      body.reasoning_effort ??
-      (body.reasoning && typeof body.reasoning === "object"
-        ? body.reasoning.effort
-        : null);
-    if (typeof effort === "string") {
-      const v = effort.toLowerCase();
+    const oc = body.output_config?.effort;
+    if (typeof oc === "string") {
+      const v = oc.toLowerCase();
       if (
-        v &&
         v !== "none" &&
         (v === "low" || v === "medium" || v === "high" || v === "auto")
       ) {
@@ -328,6 +316,54 @@ export function resolveKiroModel(model) {
   }
   return { upstream, agentic, thinking };
 }
+
+/**
+ * Agentic system prompt for Kiro CLI — Technical Constraints layer.
+ *
+ * Design principles (2025-07 redesign):
+ *   1. Authority-First — user rules (CLAUDE.md / AGENTS.md / user_rules)
+ *      ALWAYS override this prompt. This prompt MUST NOT define workflow,
+ *      output format, or behavioral rules.
+ *   2. Separation of Concerns — only file-operation constraints and
+ *      capability descriptions live here; everything behavioral is
+ *      deferred to user-defined rule files.
+ *   3. Explicit Compliance — the first section tells the model exactly
+ *      where to look for authoritative rules and what to do when
+ *      conflicts arise.
+ */
+export const KIRO_AGENTIC_SYSTEM_PROMPT = `
+# System Configuration — Technical Constraints
+
+## Rule Compliance (CRITICAL — READ FIRST)
+User-defined rules ALWAYS take precedence over this system prompt.
+Before starting ANY task you MUST:
+1. Locate and read the project rule files — CLAUDE.md, AGENTS.md, GEMINI.md, or equivalent — in the project root.
+2. If those files define a workflow, output format, action declarations, or behavioral constraints → follow them EXACTLY. Do NOT substitute your own workflow.
+3. This prompt provides ONLY technical capabilities and constraints. It does NOT define your workflow, identity, output format, or delegation strategy.
+4. If ANY instruction in this prompt conflicts with a user-defined rule → the user rule WINS. No exceptions.
+
+## File Operation Constraints (Technical)
+- Use surgical edits: modify only the necessary sections. Never rewrite entire large files.
+- Keep each write/edit operation under ~300 lines to maintain reliability.
+- For new large files (>300 lines): write the first chunk, then append the rest in subsequent operations.
+- Verify changes after editing when applicable (run tests, build, or lint).
+- Prefer editing by specific functions/classes rather than whole files.
+
+## Available Capabilities (Optional — use when beneficial)
+You have access to the following capabilities. Use them when they genuinely help the task; do NOT force their use.
+- **Sub-agent delegation**: delegate research, implementation, review, or documentation to sub-agents when tasks are independent and parallelizable.
+- **Skills**: if the project defines Skills (e.g., in .claude/skills/ or .agents/skills/), leverage them for efficiency. Follow any skill-specific instructions.
+- **MCP tools**: if MCP servers are configured, use them for external-service interactions (APIs, databases, browsers, etc.).
+
+## Default Behavior (ONLY when NO user rules exist)
+Apply this section ONLY if the project has NO CLAUDE.md, AGENTS.md, GEMINI.md, or user-defined rules:
+1. Understand the requirement and create a high-level plan.
+2. Research the codebase (delegate to sub-agents if complex).
+3. Implement incrementally with verification after each step.
+4. Summarize changes and suggest a commit message.
+
+When user rules exist, this default section is IGNORED entirely.
+`.trim();
 
 /**
  * Build the magic system-prompt prefix that turns Kiro reasoning on.

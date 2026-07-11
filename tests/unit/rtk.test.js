@@ -7,6 +7,7 @@ import {
 } from "../../open-sse/rtk/index.js";
 import { gitDiff } from "../../open-sse/rtk/filters/gitDiff.js";
 import { gitStatus } from "../../open-sse/rtk/filters/gitStatus.js";
+import { gitLog } from "../../open-sse/rtk/filters/gitLog.js";
 import { grep } from "../../open-sse/rtk/filters/grep.js";
 import { find } from "../../open-sse/rtk/filters/find.js";
 import { dedupLog } from "../../open-sse/rtk/filters/dedupLog.js";
@@ -99,6 +100,25 @@ describe("RTK filters", () => {
     expect(out.length).toBeLessThan(input.length);
   });
 
+  it("gitLog keeps commit metadata and omits embedded diff body", () => {
+    const input = [
+      "commit 1234567890abcdef",
+      "Author: A <a@example.com>",
+      "Date:   Wed Jul 8 01:00:00 2026 +0700",
+      "",
+      "    fix thing",
+      "",
+      "diff --git a/a.js b/a.js",
+      "+very long diff line",
+    ].join("\n");
+    const out = gitLog(input);
+    expect(out).toContain("commit 1234567890abcdef");
+    expect(out).toContain("Subject: fix thing");
+    expect(out).toContain("diff body omitted");
+    expect(out).not.toContain("very long diff line");
+    expect(out.length).toBeLessThan(input.length);
+  });
+
   it("grep groups matches by file and caps per-file lines (Rust format)", () => {
     const input = makeGrepOutput();
     const out = grep(input);
@@ -141,6 +161,27 @@ describe("autoDetectFilter", () => {
     expect(
       autoDetectFilter("On branch main\n  modified:   x.js\n").filterName,
     ).toBe("git-status");
+  });
+  it("detects git log before git diff", () => {
+    const input = [
+      "commit 1234567890abcdef",
+      "Author: A <a@example.com>",
+      "Date:   Wed Jul 8 01:00:00 2026 +0700",
+      "",
+      "    fix thing",
+      "diff --git a/a.js b/a.js",
+    ].join("\n");
+    expect(autoDetectFilter(input).filterName).toBe("git-log");
+  });
+  it("detects git log oneline output", () => {
+    const input = [
+      "1234567 fix one",
+      "89abcde feat two",
+      "fedcba9 docs three",
+      "4567890 chore four",
+      "abcdef1 refactor five",
+    ].join("\n");
+    expect(autoDetectFilter(input).filterName).toBe("git-log");
   });
   it("detects grep", () => {
     expect(

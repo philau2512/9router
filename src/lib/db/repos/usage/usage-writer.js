@@ -69,14 +69,21 @@ export async function saveRequestUsage(entry) {
                  AND completionTokens = ?
                ORDER BY id DESC LIMIT 1`,
               [
-                _entry.timestamp, _entry.provider || null, _entry.model || null,
-                _entry.connectionId || null, _entry.apiKey || null,
-                promptTokens, completionTokens,
-              ]
+                _entry.timestamp,
+                _entry.provider || null,
+                _entry.model || null,
+                _entry.connectionId || null,
+                _entry.apiKey || null,
+                promptTokens,
+                completionTokens,
+              ],
             );
             if (existing) {
               if (!existing.endpoint && _entry.endpoint) {
-                db.run(`UPDATE usageHistory SET endpoint = ? WHERE id = ?`, [_entry.endpoint, existing.id]);
+                db.run(`UPDATE usageHistory SET endpoint = ? WHERE id = ?`, [
+                  _entry.endpoint,
+                  existing.id,
+                ]);
               }
               return;
             }

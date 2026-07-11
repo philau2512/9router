@@ -4,6 +4,7 @@ import {
   saveRequestDetail,
 } from "@/lib/usageDb.js";
 import { COLORS } from "../../utils/stream.js";
+import { canonicalizeUsage } from "../../utils/usageTracking.js";
 
 const OPTIONAL_PARAMS = [
   "temperature",
@@ -70,6 +71,7 @@ export function extractUsageFromResponse(responseBody) {
     return {
       prompt_tokens: responseBody.usageMetadata.promptTokenCount || 0,
       completion_tokens: responseBody.usageMetadata.candidatesTokenCount || 0,
+      cached_tokens: responseBody.usageMetadata.cachedContentTokenCount,
       reasoning_tokens: responseBody.usageMetadata.thoughtsTokenCount,
     };
   }
@@ -119,12 +121,15 @@ export function saveUsageStats({
   const accountSuffix = connectionId
     ? ` | account=${connectionId.slice(0, 8)}...`
     : "";
-  console.log(
-    `${COLORS.green}[${time}] 📊 [${label}] ${provider.toUpperCase()} | in=${inTokens} | out=${outTokens}${accountSuffix}${COLORS.reset}`,
-  );
+  if (label !== "STREAM USAGE") {
+    console.log(
+      `${COLORS.green}[${time}] 📊 [${label}] ${provider.toUpperCase()} | in=${inTokens} | out=${outTokens}${accountSuffix}${COLORS.reset}`,
+    );
+  }
 
-  // Normalize to OpenAI token shape for storage
-  const normalized = {
+  // Canonicalize to one storage convention (prompt_tokens cache-inclusive) so
+  // cached/cache-creation tokens survive to cost calc + stats. See canonicalizeUsage.
+  const normalized = canonicalizeUsage(tokens) || {
     prompt_tokens: tokens.prompt_tokens ?? tokens.input_tokens ?? 0,
     completion_tokens: tokens.completion_tokens ?? tokens.output_tokens ?? 0,
   };

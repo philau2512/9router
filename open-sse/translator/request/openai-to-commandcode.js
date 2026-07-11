@@ -107,6 +107,10 @@ function convertMessages(messages = []) {
           });
         }
       }
+      // reasoning_content → prepend reasoning block before text/tool-call blocks
+      if (m.reasoning_content) {
+        blocks.unshift({ type: "reasoning", text: m.reasoning_content });
+      }
       out.push({
         role: "assistant",
         content: blocks.length ? blocks : [{ type: "text", text: "" }],

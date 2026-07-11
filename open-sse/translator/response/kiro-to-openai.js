@@ -192,11 +192,25 @@ export function convertKiroToOpenAI(chunk, state) {
   if (eventType === "usageEvent" || data.usageEvent) {
     const usage = data.usageEvent || data;
     if (usage && typeof usage === "object") {
+      const input = usage.inputTokens || 0;
+      const output = usage.outputTokens || 0;
+      // Kiro is Claude-backed: inputTokens EXCLUDES cache (Claude convention).
+      // Emit cache_read_input_tokens (not cached_tokens) so canonicalizeUsage
+      // takes the Claude fold path and adds cache back into prompt total.
+      const cacheRead =
+        usage.cacheReadInputTokens || usage.cache_read_input_tokens || 0;
+      const cacheCreation =
+        usage.cacheCreationInputTokens ||
+        usage.cache_creation_input_tokens ||
+        0;
       state.usage = {
-        prompt_tokens: usage.inputTokens || 0,
-        completion_tokens: usage.outputTokens || 0,
-        total_tokens: (usage.inputTokens || 0) + (usage.outputTokens || 0),
+        prompt_tokens: input,
+        completion_tokens: output,
+        total_tokens: input + output,
       };
+      if (cacheRead > 0) state.usage.cache_read_input_tokens = cacheRead;
+      if (cacheCreation > 0)
+        state.usage.cache_creation_input_tokens = cacheCreation;
     }
     return null;
   }

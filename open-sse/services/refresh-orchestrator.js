@@ -72,6 +72,11 @@ async function _getAccessTokenInternal(provider, credentials, log) {
     case "xai":
       return await refreshXaiToken(credentials.refreshToken, log);
 
+    // Grok CLI shares xAI token endpoint. See upstream a11937cdd.
+    case "grok-cli":
+    case "gcli":
+      return await refreshXaiToken(credentials.refreshToken, log);
+
     case "codebuddy-cn":
       return await refreshCodebuddyToken(credentials.refreshToken, log);
 
@@ -124,6 +129,10 @@ export async function refreshTokenByProvider(provider, credentials, log) {
       );
     case "xai":
       return refreshXaiToken(credentials.refreshToken, log);
+    case "grok-cli":
+    case "gcli":
+      // Grok CLI shares xAI token endpoint. See upstream a11937cdd.
+      return refreshXaiToken(credentials.refreshToken, log);
     case "codebuddy-cn":
       return refreshCodebuddyToken(credentials.refreshToken, log);
     case "vertex":
@@ -175,6 +184,8 @@ export function formatProviderCredentials(provider, credentials, log) {
     case "openai":
     case "openrouter":
     case "xai":
+    case "grok-cli":
+    case "gcli":
       return {
         apiKey: credentials.apiKey,
         accessToken: credentials.accessToken,

@@ -160,3 +160,29 @@ export async function resolveConnectionProxyConfig(providerSpecificData = {}) {
     };
   }
 }
+
+// In-memory round-robin counters keyed by providerId.
+// Intentionally not persisted — resets on restart.
+const _rrCounters = new Map();
+
+/**
+ * Pick a proxy pool ID from a list according to the given strategy.
+ * @param {string[]} poolIds - Active pool IDs to rotate across
+ * @param {"round-robin"|"random"} strategy
+ * @param {string} providerId - Used as round-robin key
+ * @returns {string} Selected pool ID
+ */
+export function pickProxyPoolId(poolIds, strategy, providerId) {
+  if (!poolIds || poolIds.length === 0) return "";
+  if (poolIds.length === 1) return poolIds[0];
+
+  if (strategy === "random") {
+    return poolIds[Math.floor(Math.random() * poolIds.length)];
+  }
+
+  // round-robin (default)
+  const current = _rrCounters.get(providerId) || 0;
+  const picked = poolIds[current % poolIds.length];
+  _rrCounters.set(providerId, current + 1);
+  return picked;
+}

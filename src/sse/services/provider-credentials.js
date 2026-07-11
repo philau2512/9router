@@ -17,6 +17,8 @@ import {
   FREE_PROVIDERS,
 } from "@/shared/constants/providers.js";
 import * as log from "../utils/logger.js";
+import { getProxyPools } from "@/models";
+import { pickProxyPoolId } from "@/lib/network/connectionProxy";
 
 // Mutex to prevent race conditions during account selection
 let selectionMutex = Promise.resolve();
@@ -59,8 +61,21 @@ export async function getProviderCredentials(
     if (FREE_PROVIDERS[providerId]?.noAuth) {
       const settings = await getSettings();
       const override = (settings.providerStrategies || {})[providerId] || {};
+      const rotateStrategy = override.rotateStrategy || "none";
+      let resolvedProxyPoolId;
+      if (rotateStrategy !== "none") {
+        const allPools = await getProxyPools({ isActive: true });
+        const poolIds = (allPools || []).map((p) => p.id);
+        resolvedProxyPoolId = pickProxyPoolId(
+          poolIds,
+          rotateStrategy,
+          providerId,
+        );
+      } else {
+        resolvedProxyPoolId = override.proxyPoolId || "";
+      }
       const resolvedProxy = await resolveConnectionProxyConfig({
-        proxyPoolId: override.proxyPoolId || "",
+        proxyPoolId: resolvedProxyPoolId,
       });
       return {
         id: "noauth",
@@ -79,10 +94,16 @@ export async function getProviderCredentials(
       };
     }
 
-    const connections = await getProviderConnections({
-      provider: providerId,
-      isActive: true,
-    });
+    // xai and grok-cli share auth.x.ai infrastructure.
+    // Connections stored as grok-cli (Grok Build OAuth) are valid for xai requests.
+    const _providerIds =
+      providerId === "xai" ? [providerId, "grok-cli"] : [providerId];
+    const _connArrays = await Promise.all(
+      _providerIds.map((pid) =>
+        getProviderConnections({ provider: pid, isActive: true }),
+      ),
+    );
+    const connections = _connArrays.flat();
     log.debug(
       "AUTH",
       `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`,
@@ -313,7 +334,10 @@ export async function markAccountUnavailable(
     lowerError.includes("usage limit") ||
     lowerError.includes("limit has been reached") ||
     lowerError.includes("limit reached") ||
-    lowerError.includes("monthly_request_count");
+    lowerError.includes("monthly_request_count") ||
+    lowerError.includes("individual quota reached");
+  lowerError.includes("usage limit exceeded");
+  lowerError.includes("out of credits");
 
   const isSuspended =
     lowerError.includes("suspended") ||

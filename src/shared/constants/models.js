@@ -40,6 +40,16 @@ export const AI_MODELS = Object.entries(MODELS).flatMap(([alias, models]) =>
 // Metadata for model capability badges (vision, reasoning).
 // search is temporarily hidden until the feature is fully wired.
 export const CAPACITY_META = {
-  vision: { icon: "visibility", label: "Vision", desc: "Supports image input", color: "text-blue-500" },
-  reasoning: { icon: "neurology", label: "Reasoning", desc: "Supports reasoning / thinking", color: "text-amber-500" },
+  vision: {
+    icon: "visibility",
+    label: "Vision",
+    desc: "Supports image input",
+    color: "text-blue-500",
+  },
+  reasoning: {
+    icon: "neurology",
+    label: "Reasoning",
+    desc: "Supports reasoning / thinking",
+    color: "text-amber-500",
+  },
 };

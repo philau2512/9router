@@ -5,6 +5,7 @@
  * cleanup and debounced event emission.
  */
 
+import { logContextStore } from "../../../../sse/utils/logger.js";
 import { getAdapter } from "../../driver.js";
 import { parseJson } from "../../helpers/jsonCol.js";
 import {
@@ -18,7 +19,10 @@ import {
   connCache,
   CONN_CACHE_TTL_MS,
 } from "./usage-state.js";
-import { deduplicateRecentRequests, extractActiveFromPending } from "./usage-helpers.js";
+import {
+  deduplicateRecentRequests,
+  extractActiveFromPending,
+} from "./usage-helpers.js";
 
 async function getConnectionMapCached() {
   if (Date.now() - connCache.ts < CONN_CACHE_TTL_MS) return connCache.map;
@@ -123,15 +127,22 @@ export function trackPendingRequest(
     minute: "2-digit",
     second: "2-digit",
   });
+  const store = logContextStore.getStore();
+  const prefix = store
+    ? `[${store.reqId}${store.connectionId ? `:${store.connectionId.slice(0, 6)}` : ""}] `
+    : "";
   console.log(
-    `[${t}] [PENDING] ${started ? "START" : "END"}${error ? " (ERROR)" : ""} | provider=${provider} | model=${model}`,
+    `[${t}] ${prefix}[PENDING] ${started ? "START" : "END"}${error ? " (ERROR)" : ""} | provider=${provider} | model=${model}`,
   );
   emitPending();
 }
 
 export async function getActiveRequests() {
   const connectionMap = await getConnectionMapCached();
-  const activeRequests = extractActiveFromPending(pendingRequests, connectionMap);
+  const activeRequests = extractActiveFromPending(
+    pendingRequests,
+    connectionMap,
+  );
 
   await ensureRingInitialized();
   const recentRequests = deduplicateRecentRequests(recentRing.items);

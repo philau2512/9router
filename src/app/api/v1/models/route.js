@@ -18,7 +18,11 @@ import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveOpenCodeModels } from "open-sse/services/opencodeModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
+import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
+import { resolveCodexModels } from "open-sse/services/codexModels.js";
+import { resolveAntigravityModels } from "open-sse/services/antigravityModels.js";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
+import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { PROVIDERS } from "open-sse/config/providers.js";
 
 // Per-provider live model resolvers. Each receives a connection record and
@@ -26,13 +30,32 @@ import { PROVIDERS } from "open-sse/config/providers.js";
 // Adding a provider here makes /v1/models prefer the live catalog for it.
 const LIVE_MODEL_RESOLVERS = {
   kiro: async (conn) => {
+    const resolvedProxy = await resolveConnectionProxyConfig(
+      conn.providerSpecificData || {},
+    );
     const result = await resolveKiroModels(
       {
         accessToken: conn.accessToken,
         refreshToken: conn.refreshToken,
+        expiresAt: conn.expiresAt || null,
         providerSpecificData: conn.providerSpecificData || {},
       },
-      { log: console },
+      {
+        log: console,
+        proxyOptions: resolvedProxy,
+        onCredentialsRefreshed: async (refreshed) => {
+          if (refreshed?.accessToken) {
+            await updateProviderCredentials(conn.id, {
+              accessToken: refreshed.accessToken,
+              refreshToken: refreshed.refreshToken || conn.refreshToken,
+              expiresIn: refreshed.expiresIn,
+            });
+            conn.accessToken = refreshed.accessToken;
+            if (refreshed.refreshToken)
+              conn.refreshToken = refreshed.refreshToken;
+          }
+        },
+      },
     );
     return result?.models?.length ? { models: result.models } : null;
   },
@@ -40,20 +63,62 @@ const LIVE_MODEL_RESOLVERS = {
   opencode: async (_conn) => resolveOpenCodeModels(),
   // GitHub Copilot — fetch live model catalog from Copilot /models endpoint
   github: async (conn) => {
-    const result = await resolveCopilotModels({
-      accessToken: conn.accessToken,
-      refreshToken: conn.refreshToken,
-      providerSpecificData: conn.providerSpecificData || {},
-    }, {
-      log: console,
-      onCredentialsRefreshed: async (refreshed) => {
-        await updateProviderCredentials(conn.id, {
-          copilotToken: refreshed.copilotToken,
-          copilotTokenExpiresAt: refreshed.copilotTokenExpiresAt,
-          existingProviderSpecificData: conn.providerSpecificData || {},
-        });
+    const result = await resolveCopilotModels(
+      {
+        accessToken: conn.accessToken,
+        refreshToken: conn.refreshToken,
+        providerSpecificData: conn.providerSpecificData || {},
       },
+      {
+        log: console,
+        onCredentialsRefreshed: async (refreshed) => {
+          await updateProviderCredentials(conn.id, {
+            copilotToken: refreshed.copilotToken,
+            copilotTokenExpiresAt: refreshed.copilotTokenExpiresAt,
+            existingProviderSpecificData: conn.providerSpecificData || {},
+          });
+        },
+      },
+    );
+    return result?.models?.length ? { models: result.models } : null;
+  },
+  clinepass: async (conn) => {
+    const result = await resolveClinepassModels({
+      accessToken: conn.accessToken,
+      apiKey: conn.apiKey,
     });
+    return result?.models?.length ? { models: result.models } : null;
+  },
+  // Codex (OpenAI) — live catalog from chatgpt.com/backend-api/codex/models.
+  // Falls back to static PROVIDER_MODELS["cx"] on any failure (resolver → null).
+  codex: async (conn) => {
+    const resolvedProxy = await resolveConnectionProxyConfig(
+      conn.providerSpecificData || {},
+    );
+    const result = await resolveCodexModels(
+      {
+        accessToken: conn.accessToken,
+        providerSpecificData: conn.providerSpecificData || {},
+        connectionId: conn.id,
+      },
+      { log: console, proxyOptions: resolvedProxy },
+    );
+    return result?.models?.length ? { models: result.models } : null;
+  },
+  // Antigravity — live catalog from cloudcode-pa fetchAvailableModels.
+  // Falls back to static PROVIDER_MODELS["ag"] on any failure (resolver → null).
+  antigravity: async (conn) => {
+    const resolvedProxy = await resolveConnectionProxyConfig(
+      conn.providerSpecificData || {},
+    );
+    const result = await resolveAntigravityModels(
+      {
+        accessToken: conn.accessToken,
+        providerSpecificData: conn.providerSpecificData || {},
+        connectionId: conn.id,
+      },
+      { log: console, proxyOptions: resolvedProxy },
+    );
     return result?.models?.length ? { models: result.models } : null;
   },
 };

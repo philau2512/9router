@@ -61,7 +61,7 @@ describe("Connection Pooling (undici Agent)", () => {
 
     // We make requests to different domains to populate the pool
     const maxAgents = MEMORY_CONFIG.directAgentsMaxSize;
-    
+
     // Fill the pool to max limit
     for (let i = 0; i < maxAgents; i++) {
       const url = `https://host-${i}.com/v1/chat`;
