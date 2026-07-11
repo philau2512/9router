@@ -58,6 +58,7 @@ import {
 } from "../utils/antigravityReasoningReplay.js";
 import { stripOrphanedToolResults } from "../translator/concerns/toolCall.js";
 import { compressWithPxpipe, formatPxpipeLog } from "../rtk/pxpipe.js";
+import { decideSoftRetry } from "../services/accountFallback.js";
 
 function maskLoggedUrl(rawUrl) {
   try {
@@ -486,11 +487,10 @@ export async function handleChatCore({
   // Execute request
   let providerResponse, providerUrl, providerHeaders, finalBody;
   let providerObjectStream = null;
-  try {
-    if (timing && !timing.upstreamFetchStartedAt) {
-      timing.upstreamFetchStartedAt = Date.now();
-    }
-    const result = await executor.execute({
+  // Reusable executor invocation (same credential) — used for the initial call,
+  // the 401/403 refresh-retry, and the Phase 2 soft-rate-limit instant-retry.
+  const runExecutor = () =>
+    executor.execute({
       model,
       body: translatedBody,
       stream,
@@ -501,6 +501,11 @@ export async function handleChatCore({
       emitObjects: wantKiroObjects,
       onProfileArnDiscovered,
     });
+  try {
+    if (timing && !timing.upstreamFetchStartedAt) {
+      timing.upstreamFetchStartedAt = Date.now();
+    }
+    const result = await runExecutor();
     providerResponse = result.response;
     providerUrl = result.url;
     providerHeaders = result.headers;
@@ -603,6 +608,57 @@ export async function handleChatCore({
         "TOKEN",
         `${provider.toUpperCase()} | refresh threw: ${e.message}`,
       );
+    }
+  }
+
+  // Phase 2: soft-rate-limit instant-retry-same-auth. A 429 whose reset window
+  // is within SOFT_RATE_LIMIT_THRESHOLD_MS (~5s) is a brief throttle: retry the
+  // SAME credential after a short capped wait instead of cooling it down and
+  // rotating accounts. Hard/long 429s (quota exhausted, multi-hour resets) skip
+  // this and fall through to the normal error path so the caller rotates auth.
+  {
+    let softRetryCount = 0;
+    while (!providerResponse.ok && providerResponse.status === 429) {
+      // Peek the error on a clone so the original body stays readable for the
+      // final error path if we decide not to retry.
+      let peeked;
+      try {
+        peeked = await parseUpstreamError(providerResponse.clone(), executor);
+      } catch {
+        break;
+      }
+      const decision = decideSoftRetry(
+        peeked.statusCode,
+        {
+          message: peeked.message,
+          resetsAtMs: peeked.resetsAtMs,
+          headers: providerResponse.headers,
+        },
+        softRetryCount,
+      );
+      if (decision.action !== "retry-same-auth") break;
+      softRetryCount++;
+      log?.warn?.(
+        "RATELIMIT",
+        `${provider.toUpperCase()} | soft 429, instant retry #${softRetryCount} in ${decision.waitMs}ms (same auth)`,
+      );
+      if (decision.waitMs > 0) {
+        await new Promise((r) => setTimeout(r, decision.waitMs));
+      }
+      try {
+        const r = await runExecutor();
+        providerResponse = r.response;
+        providerUrl = r.url;
+        providerHeaders = r.headers;
+        finalBody = r.transformedBody;
+        providerObjectStream = r.kiroObjectStream || null;
+      } catch (e) {
+        log?.warn?.(
+          "RATELIMIT",
+          `${provider.toUpperCase()} | soft-retry threw: ${e.message}`,
+        );
+        break;
+      }
     }
   }
 

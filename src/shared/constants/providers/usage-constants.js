@@ -19,6 +19,8 @@ export const USAGE_SUPPORTED_PROVIDERS = [
   "minimax-cn",
   "qoder",
   "vercel-ai-gateway",
+  "grok-cli",
+  "xai", // Grok Build OAuth connections are stored under provider "xai"
 ];
 
 // Subset that uses apikey auth (still surfaced on quota page)

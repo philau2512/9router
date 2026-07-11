@@ -19,6 +19,8 @@ import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveOpenCodeModels } from "open-sse/services/opencodeModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
+import { resolveCodexModels } from "open-sse/services/codexModels.js";
+import { resolveAntigravityModels } from "open-sse/services/antigravityModels.js";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { PROVIDERS } from "open-sse/config/providers.js";
@@ -85,6 +87,38 @@ const LIVE_MODEL_RESOLVERS = {
       accessToken: conn.accessToken,
       apiKey: conn.apiKey,
     });
+    return result?.models?.length ? { models: result.models } : null;
+  },
+  // Codex (OpenAI) — live catalog from chatgpt.com/backend-api/codex/models.
+  // Falls back to static PROVIDER_MODELS["cx"] on any failure (resolver → null).
+  codex: async (conn) => {
+    const resolvedProxy = await resolveConnectionProxyConfig(
+      conn.providerSpecificData || {},
+    );
+    const result = await resolveCodexModels(
+      {
+        accessToken: conn.accessToken,
+        providerSpecificData: conn.providerSpecificData || {},
+        connectionId: conn.id,
+      },
+      { log: console, proxyOptions: resolvedProxy },
+    );
+    return result?.models?.length ? { models: result.models } : null;
+  },
+  // Antigravity — live catalog from cloudcode-pa fetchAvailableModels.
+  // Falls back to static PROVIDER_MODELS["ag"] on any failure (resolver → null).
+  antigravity: async (conn) => {
+    const resolvedProxy = await resolveConnectionProxyConfig(
+      conn.providerSpecificData || {},
+    );
+    const result = await resolveAntigravityModels(
+      {
+        accessToken: conn.accessToken,
+        providerSpecificData: conn.providerSpecificData || {},
+        connectionId: conn.id,
+      },
+      { log: console, proxyOptions: resolvedProxy },
+    );
     return result?.models?.length ? { models: result.models } : null;
   },
 };

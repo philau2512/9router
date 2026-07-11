@@ -26,7 +26,13 @@ import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { U, parseResetTime, toFiniteNumber } from "./shared.js";
 
 const USAGE = U("grok-cli");
-const BILLING_URL = USAGE.url || "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
+// CLIProxyAPI parity: quota needs BOTH billing shapes.
+//   /v1/billing?format=credits → Weekly limit (currentPeriod + creditUsagePercent),
+//                                 Api usage (productUsage), Pay-as-you-go (onDemandCap)
+//   /v1/billing (plain)         → Monthly credits (monthlyLimit / used)
+const CREDITS_URL =
+  USAGE.url || "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
+const PLAIN_URL = "https://cli-chat-proxy.grok.com/v1/billing";
 const USER_URL = USAGE.userUrl || "https://cli-chat-proxy.grok.com/v1/user?include=subscription";
 
 /** Unwrap protobuf-json `{ val: n }` or plain numbers/strings. */
@@ -92,6 +98,171 @@ function makeQuota({ used, total, resetAt, unlimited = false }) {
   };
 }
 
+/** Build a percentage-window quota row from a "used %" value (0-100). */
+function percentUsedQuota(usedPercent, resetAt) {
+  const used = Math.max(0, Math.min(100, Math.round(toFiniteNumber(usedPercent, 0))));
+  return {
+    used,
+    total: 100,
+    remainingPercentage: Math.max(0, 100 - used),
+    resetAt: resetAt || null,
+    unlimited: false,
+  };
+}
+
+/**
+ * Parse the `?format=credits` shape into the credit-window rows:
+ *   config: {
+ *     currentPeriod: { type: "...WEEKLY", start, end },
+ *     creditUsagePercent: 59.0,
+ *     productUsage: [{ product: "Api", usagePercent: 59.0 }],
+ *     onDemandCap: { val }, onDemandUsed: { val }, prepaidBalance: { val },
+ *   }
+ * Returns { quotas: { "Weekly limit", "Api usage" }, payAsYouGo }.
+ */
+export function parseGrokCreditsShape(config = {}) {
+  const quotas = {};
+  const weeklyReset = parseResetTime(config.currentPeriod?.end);
+
+  // Weekly limit — overall credit usage over the rolling weekly window.
+  if (config.creditUsagePercent !== undefined || config.currentPeriod) {
+    quotas["Weekly limit"] = percentUsedQuota(
+      config.creditUsagePercent,
+      weeklyReset,
+    );
+  }
+
+  // Api usage — per-product usage (find the Api product, else first entry).
+  if (Array.isArray(config.productUsage) && config.productUsage.length > 0) {
+    const api =
+      config.productUsage.find(
+        (p) => String(p?.product || "").toLowerCase() === "api",
+      ) || config.productUsage[0];
+    if (api && api.usagePercent !== undefined) {
+      quotas["Api usage"] = percentUsedQuota(api.usagePercent, weeklyReset);
+    }
+  }
+
+  const onDemandCap = unwrapVal(config.onDemandCap, NaN);
+  const payAsYouGo =
+    Number.isFinite(onDemandCap) && onDemandCap > 0 ? "Enabled" : "Disabled";
+
+  return { quotas, payAsYouGo };
+}
+
+/**
+ * Merge the credits shape (weekly/api/pay-as-you-go) with the plain shape
+ * (monthly credits) into the ordered rows CLIProxyAPI shows:
+ *   Weekly limit → Api usage → Monthly credits.
+ * Either input may be null (fail-open); whatever is available renders.
+ */
+export function buildMergedGrokQuotas(creditsBilling, plainBilling, user = null) {
+  const creditsConfig = creditsBilling?.config || creditsBilling || {};
+  const plainConfig = plainBilling?.config || plainBilling || {};
+
+  const { quotas: creditQuotas, payAsYouGo } =
+    parseGrokCreditsShape(creditsConfig);
+
+  const quotas = {};
+  if (creditQuotas["Weekly limit"]) quotas["Weekly limit"] = creditQuotas["Weekly limit"];
+  if (creditQuotas["Api usage"]) quotas["Api usage"] = creditQuotas["Api usage"];
+
+  // Monthly credits from the plain shape (monthlyLimit / used, in credit units).
+  if (plainConfig.monthlyLimit !== undefined || plainConfig.used !== undefined) {
+    const monthlyLimit = unwrapVal(plainConfig.monthlyLimit, 0);
+    const monthlyUsed = unwrapVal(plainConfig.used, 0);
+    quotas["Monthly credits"] = makeQuota({
+      used: monthlyUsed,
+      total: monthlyLimit,
+      resetAt: parseResetTime(plainConfig.billingPeriodEnd),
+    });
+  }
+
+  const finiteBars = Object.values(quotas).filter((q) => q.unlimited !== true);
+  const exhausted =
+    finiteBars.length > 0 &&
+    finiteBars.every((q) => (q.remainingPercentage ?? 100) <= 0);
+
+  return {
+    plan: resolvePlan(user, creditsConfig.isUnifiedBillingUser ? creditsConfig : plainConfig),
+    quotas,
+    payAsYouGo,
+    exhausted,
+  };
+}
+
+/**
+ * Parse the plain `/v1/billing` shape (grok-shell/grok-pager default, no
+ * `?format=credits`). Observed:
+ *   config: {
+ *     monthlyLimit: { val }, used: { val }, onDemandCap: { val },
+ *     billingPeriodStart, billingPeriodEnd,
+ *     currentPeriod?: { type: "...WEEKLY", start, end },  // not always present
+ *     history: [{ billingCycle, includedUsed, onDemandUsed, totalUsed }]
+ *   }
+ * Renders three UI rows to match the official pager: Weekly limit, Pay as you
+ * go, Monthly credits. Always emits at least "Monthly credits" so a depleted
+ * ($0.00/$0.00) account still shows the table instead of being hidden.
+ */
+export function parsePlainGrokBilling(config, user = null, periodEnd = null) {
+  const quotas = {};
+
+  // Monthly credits — from monthlyLimit/used. Always present (even 0/0) so the
+  // dashboard renders instead of hiding the table on a depleted account.
+  const monthlyLimit = unwrapVal(config.monthlyLimit, 0);
+  const monthlyUsed = unwrapVal(config.used, 0);
+  quotas["Monthly credits"] = makeQuota({
+    used: monthlyUsed,
+    total: monthlyLimit,
+    resetAt: periodEnd || parseResetTime(config.billingPeriodEnd),
+  });
+
+  // Weekly limit — rolling usage window. Only present in some payloads via
+  // currentPeriod (or user.rateLimits). Show it when we have data; otherwise
+  // emit an unknown/unlimited-style row so the label still appears like the CLI.
+  const weekly = config.currentPeriod || user?.currentPeriod || user?.rateLimits?.weekly;
+  if (weekly && typeof weekly === "object") {
+    const wTotal = unwrapVal(weekly.limit ?? weekly.total ?? weekly.cap, NaN);
+    const wUsed = unwrapVal(weekly.used ?? weekly.consumed, NaN);
+    const wReset = parseResetTime(weekly.end || weekly.resetAt || weekly.reset);
+    if (Number.isFinite(wTotal) && wTotal > 0) {
+      quotas["Weekly limit"] = makeQuota({
+        used: Number.isFinite(wUsed) ? wUsed : 0,
+        total: wTotal,
+        resetAt: wReset,
+      });
+    } else {
+      // Data present but no numeric allotment → unknown row ("Used --").
+      quotas["Weekly limit"] = {
+        used: 0,
+        total: 0,
+        remainingPercentage: 100,
+        resetAt: wReset,
+        unlimited: true,
+      };
+    }
+  }
+
+  const onDemandCap = unwrapVal(config.onDemandCap, NaN);
+  const payAsYouGo =
+    Number.isFinite(onDemandCap) && onDemandCap > 0 ? "Enabled" : "Disabled";
+
+  // Exhausted when every finite (non-unlimited) bar is at 0% remaining.
+  const finiteBars = Object.values(quotas).filter((q) => q.unlimited !== true);
+  const exhausted =
+    finiteBars.length > 0 &&
+    finiteBars.every((q) => (q.remainingPercentage ?? 100) <= 0);
+
+  return {
+    plan: resolvePlan(user, config),
+    quotas,
+    periodEnd: periodEnd || parseResetTime(config.billingPeriodEnd),
+    payAsYouGo,
+    exhausted,
+    rawConfig: config,
+  };
+}
+
 /**
  * Map billing JSON → normalized quotas object for the dashboard.
  * Returns { quotas, periodEnd, exhaustedHint } or empty quotas when nothing usable.
@@ -108,6 +279,19 @@ export function parseGrokCliBilling(billing, user = null) {
     parseResetTime(config.currentPeriod?.end) ||
     parseResetTime(root.billingPeriodEnd) ||
     null;
+
+  // Shape detection: the plain `/v1/billing` response (grok-shell/grok-pager)
+  // carries monthlyLimit/used/billingPeriodStart, unlike the `?format=credits`
+  // shape (onDemandCap>0 / prepaidBalance / currentPeriod). The plain shape used
+  // to fall through to `quotas={}` → dashboard hid the table. Handle it here so
+  // Weekly limit + Monthly credits + Pay as you go render like the official CLI.
+  const isPlainShape =
+    config.monthlyLimit !== undefined ||
+    config.billingPeriodStart !== undefined ||
+    Array.isArray(config.history);
+  if (isPlainShape) {
+    return parsePlainGrokBilling(config, user, periodEnd);
+  }
 
   const quotas = {};
 
@@ -214,60 +398,61 @@ export async function getGrokCliUsage(accessToken, providerSpecificData = null, 
   }
 
   const headers = buildGrokCliHeaders(accessToken, providerSpecificData);
+  const getJson = async (url) => {
+    try {
+      const res = await proxyAwareFetch(url, { method: "GET", headers }, proxyOptions);
+      if (res.status === 401 || res.status === 403) return { authError: true };
+      if (!res.ok) return null;
+      return await res.json().catch(() => null);
+    } catch {
+      return null;
+    }
+  };
 
   try {
-    // Fetch billing + user profile in parallel (same pattern as official CLI startup)
-    const [billingRes, userRes] = await Promise.all([
-      proxyAwareFetch(
-        BILLING_URL,
-        { method: "GET", headers },
-        proxyOptions,
-      ),
-      proxyAwareFetch(
-        USER_URL,
-        { method: "GET", headers },
-        proxyOptions,
-      ).catch(() => null),
+    // CLIProxyAPI parity: hit BOTH billing shapes + the user profile in parallel.
+    //   credits shape → Weekly limit + Api usage + Pay-as-you-go
+    //   plain shape   → Monthly credits
+    const [creditsBilling, plainBilling, userJson] = await Promise.all([
+      getJson(CREDITS_URL),
+      getJson(PLAIN_URL),
+      getJson(USER_URL),
     ]);
 
-    if (billingRes.status === 401 || billingRes.status === 403) {
+    if (creditsBilling?.authError && plainBilling?.authError) {
       return { message: "Grok CLI authentication expired. Please re-authorize." };
     }
 
-    if (!billingRes.ok) {
-      const errText = await billingRes.text().catch(() => "");
-      const trimmed = errText ? `: ${errText.slice(0, 200)}` : "";
-      return { message: `Grok CLI billing API error (${billingRes.status})${trimmed}` };
+    const credits =
+      creditsBilling && !creditsBilling.authError ? creditsBilling : null;
+    const plain = plainBilling && !plainBilling.authError ? plainBilling : null;
+    const user = userJson && !userJson.authError ? userJson : null;
+
+    if (!credits && !plain) {
+      return { message: "Grok CLI billing response was not available." };
     }
 
-    const billing = await billingRes.json().catch(() => null);
-    if (!billing || typeof billing !== "object") {
-      return { message: "Grok CLI billing response was not JSON." };
+    const merged = buildMergedGrokQuotas(credits, plain, user);
+
+    if (!merged.quotas || Object.keys(merged.quotas).length === 0) {
+      // Fall back to the single-shape parser (covers older/edge payloads).
+      const parsed = parseGrokCliBilling(credits || plain, user);
+      if (!parsed.quotas || Object.keys(parsed.quotas).length === 0) {
+        return {
+          plan: parsed.plan,
+          message:
+            "Grok Build connected, but no credit allotment was returned. Free promo may be exhausted — upgrade at https://grok.com/supergrok or add credits at https://grok.com/?_s=usage.",
+          quotas: {},
+        };
+      }
+      const fb = { plan: parsed.plan, quotas: parsed.quotas };
+      if (parsed.payAsYouGo) fb.payAsYouGo = parsed.payAsYouGo;
+      return fb;
     }
 
-    let user = null;
-    if (userRes?.ok) {
-      user = await userRes.json().catch(() => null);
-    }
-
-    const parsed = parseGrokCliBilling(billing, user);
-
-    if (!parsed.quotas || Object.keys(parsed.quotas).length === 0) {
-      return {
-        plan: parsed.plan,
-        message:
-          "Grok Build connected, but no credit allotment was returned. Free promo may be exhausted — upgrade at https://grok.com/supergrok or add credits at https://grok.com/?_s=usage.",
-        quotas: {},
-      };
-    }
-
-    // Dashboard hides QuotaTable whenever `message` is set, so only attach a
-    // message when there are no quota rows to render. Depleted accounts keep
-    // the 0% On-demand bar without a blocking message.
-    return {
-      plan: parsed.plan,
-      quotas: parsed.quotas,
-    };
+    const result = { plan: merged.plan, quotas: merged.quotas };
+    if (merged.payAsYouGo) result.payAsYouGo = merged.payAsYouGo;
+    return result;
   } catch (error) {
     return { message: `Grok CLI usage error: ${error.message}` };
   }
