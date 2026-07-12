@@ -15,6 +15,7 @@ import {
   isOpenAICompatibleProvider,
 } from "@/shared/constants/providers";
 import { getModelsByProviderId } from "@/shared/constants/models";
+import { mergeProviderModels } from "@/shared/utils/mergeProviderModels";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import BulkProxyAssignmentModal from "./components/BulkProxyAssignmentModal";
@@ -266,11 +267,10 @@ export default function ProviderDetailPage() {
     onThinkingModeLoaded: setThinkingMode,
   });
 
-  // Dynamic model fetch for the "Available Models" panel: for OAuth providers
-  // with a live catalog (codex/antigravity/kiro/gemini-cli/...), pull the live
-  // list from /api/providers/{id}/models (which routes codex/antigravity through
-  // the Phase 1 resolvers) and overlay it on the static catalog. Fail-open:
-  // any error keeps the static list.
+  // Dynamic model fetch for the "Available Models" panel: OAuth providers with
+  // a live catalog (codex/antigravity/kiro/...) pull /api/providers/{id}/models.
+  // Merge policy: most providers union static∪live; kiro is live-only when the
+  // account catalog is non-empty (see mergeProviderModels). Fail-open → static.
   useEffect(() => {
     if (isCompatible) {
       queueMicrotask(() => setLiveModels(null));
@@ -302,17 +302,11 @@ export default function ProviderDetailPage() {
     };
   }, [connections, isCompatible, providerId]);
 
-  // Overlay live models on the static catalog (union by id, live metadata wins).
-  const models = (() => {
-    if (!liveModels || liveModels.length === 0) return staticModels;
-    const byId = new Map((staticModels || []).map((m) => [m.id, m]));
-    for (const lm of liveModels) {
-      const id = lm?.id || lm?.name || lm?.model;
-      if (!id) continue;
-      byId.set(id, { ...(byId.get(id) || {}), ...lm, id });
-    }
-    return Array.from(byId.values());
-  })();
+  const { models, shelvedModels } = mergeProviderModels({
+    providerId,
+    staticModels,
+    liveModels,
+  });
 
   const openOAuthConnection = () => {
     setShowOAuthModal(true);
@@ -647,6 +641,7 @@ export default function ProviderDetailPage() {
         connections={connections}
         isAnthropicCompatible={authCompatibility.isAnthropicCompatible}
         models={models}
+        shelvedModels={shelvedModels}
         kiloFreeModels={kiloFreeModels}
         disabledModelIds={disabledModelIds}
         modelsTestError={modelsTestError}

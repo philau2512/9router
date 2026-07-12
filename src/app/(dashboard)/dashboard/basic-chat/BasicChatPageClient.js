@@ -7,6 +7,7 @@ import {
   isAnthropicCompatibleProvider,
   isOpenAICompatibleProvider,
 } from "@/shared/constants/providers";
+import { isLiveOnlyModelProvider } from "@/shared/utils/mergeProviderModels";
 
 const STORAGE_KEYS = {
   sessions: "basic-chat.sessions",
@@ -292,6 +293,8 @@ export default function BasicChatPageClient() {
         }
 
         const providerMap = new Map();
+        // Track whether any connection for a provider returned a non-empty live catalog.
+        const liveHitByProvider = new Map();
 
         for (const connection of connections) {
           const providerId = connection.provider || connection.id;
@@ -309,6 +312,8 @@ export default function BasicChatPageClient() {
               providerType,
               connections: [],
               models: [],
+              staticModels: [],
+              liveModels: [],
             });
           }
 
@@ -320,7 +325,7 @@ export default function BasicChatPageClient() {
           const staticModels = getModelsByProviderId(providerId)
             .map((model) => normalizeStaticModel(model, connection))
             .filter(Boolean);
-          group.models.push(...staticModels);
+          group.staticModels.push(...staticModels);
         }
 
         const liveResults = await Promise.all(
@@ -346,12 +351,31 @@ export default function BasicChatPageClient() {
           const providerId = result.connection.provider || result.connection.id;
           const group = providerMap.get(providerId);
           if (!group) continue;
-          group.models.push(...result.models);
+          if (result.models.length > 0) {
+            liveHitByProvider.set(providerId, true);
+            group.liveModels.push(...result.models);
+          }
+        }
+
+        // Per-provider: live-only (kiro) when any connection returned a catalog;
+        // otherwise union static + live (legacy basic-chat behavior).
+        for (const group of providerMap.values()) {
+          if (
+            isLiveOnlyModelProvider(group.providerId) &&
+            liveHitByProvider.get(group.providerId)
+          ) {
+            group.models = group.liveModels;
+          } else {
+            group.models = [...group.staticModels, ...group.liveModels];
+          }
         }
 
         const normalized = Array.from(providerMap.values())
           .map((group) => ({
-            ...group,
+            providerId: group.providerId,
+            providerName: group.providerName,
+            providerType: group.providerType,
+            connections: group.connections,
             models: dedupeModels(group.models).sort((a, b) =>
               a.name.localeCompare(b.name),
             ),

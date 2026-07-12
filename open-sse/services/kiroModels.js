@@ -159,15 +159,26 @@ function formatDisplayName(modelName, modelId, rateMultiplier) {
 async function fetchKiroCatalogRaw(credentials, signal, proxyOptions = null) {
   const profileArn = credentials?.providerSpecificData?.profileArn || "";
   const region = regionFromProfileArn(profileArn);
+  const authMethod = credentials?.providerSpecificData?.authMethod;
   const params = new URLSearchParams();
   params.set("origin", "AI_EDITOR");
   if (profileArn) params.set("profileArn", profileArn);
-  const url = `https://q.${region}.amazonaws.com/ListAvailableModels?${params.toString()}`;
+  // q.* and codewhisperer.* both expose ListAvailableModels; external_idp
+  // (Microsoft Entra) often only works cleanly on the codewhisperer host.
+  const hosts = [
+    `https://q.${region}.amazonaws.com/ListAvailableModels`,
+    `https://codewhisperer.${region}.amazonaws.com/ListAvailableModels`,
+  ];
 
   const headers = {
     ...buildKiroFingerprintHeaders(credentials),
     Authorization: `Bearer ${credentials?.accessToken || ""}`,
   };
+  // Match KiroExecutor / usage: Entra tokens need TokenType or AWS mis-binds
+  // the request and can surface "Invalid ARN <clientId>".
+  if (authMethod === "external_idp") {
+    headers.TokenType = "EXTERNAL_IDP";
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort("timeout"), FETCH_TIMEOUT_MS);
@@ -176,34 +187,47 @@ async function fetchKiroCatalogRaw(credentials, signal, proxyOptions = null) {
     signal.addEventListener("abort", () => controller.abort(signal.reason));
   }
 
-  let response;
+  let lastError = null;
   try {
-    response = await proxyAwareFetch(
-      url,
-      {
-        method: "GET",
-        headers,
-        signal: controller.signal,
-      },
-      proxyOptions,
-    );
+    for (const host of hosts) {
+      const url = `${host}?${params.toString()}`;
+      let response;
+      try {
+        response = await proxyAwareFetch(
+          url,
+          {
+            method: "GET",
+            headers,
+            signal: controller.signal,
+          },
+          proxyOptions,
+        );
+      } catch (networkErr) {
+        lastError = networkErr;
+        continue;
+      }
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        const err = new Error(
+          `Kiro ListAvailableModels ${response.status}: ${text || response.statusText}`,
+        );
+        err.status = response.status;
+        err.body = text;
+        lastError = err;
+        // Try next host on 4xx/5xx — external_idp often fails on q.* first.
+        continue;
+      }
+
+      const data = await response.json();
+      const models = Array.isArray(data?.models) ? data.models : [];
+      return models;
+    }
   } finally {
     clearTimeout(timer);
   }
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    const err = new Error(
-      `Kiro ListAvailableModels ${response.status}: ${text || response.statusText}`,
-    );
-    err.status = response.status;
-    err.body = text;
-    throw err;
-  }
-
-  const data = await response.json();
-  const models = Array.isArray(data?.models) ? data.models : [];
-  return models;
+  throw lastError || new Error("Kiro ListAvailableModels failed on all hosts");
 }
 
 /**

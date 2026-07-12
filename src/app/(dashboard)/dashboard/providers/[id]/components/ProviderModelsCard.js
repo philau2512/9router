@@ -15,6 +15,7 @@ function renderModelsSection({
   connections,
   isAnthropicCompatible,
   models,
+  shelvedModels = [],
   kiloFreeModels,
   disabledModelIds,
   providerInfo,
@@ -52,7 +53,12 @@ function renderModelsSection({
   ].filter((m) => !m.type || m.type === "llm");
   const disabledSet = new Set(disabledModelIds);
   const displayModels = allModels.filter((m) => !disabledSet.has(m.id));
-  const disabledDisplayModels = allModels.filter((m) => disabledSet.has(m.id));
+  // Manual disables + static catalog rows not in this account's live list.
+  const disabledByUser = allModels.filter((m) => disabledSet.has(m.id));
+  const shelvedByAccount = (shelvedModels || []).filter(
+    (m) => !disabledSet.has(m.id) && !allModels.some((am) => am.id === m.id),
+  );
+  const disabledDisplayModels = [...disabledByUser, ...shelvedByAccount];
   const customModels = Object.entries(modelAliases)
     .filter(([alias, fullModel]) => {
       const prefix = `${providerStorageAlias}/`;
@@ -179,19 +185,35 @@ function renderModelsSection({
             Disabled models ({disabledDisplayModels.length}):
           </p>
           <div className="flex flex-wrap gap-2">
-            {disabledDisplayModels.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => handleEnableModel(m.id)}
-                className="flex items-center gap-1 rounded-lg border border-dashed border-black/10 px-2.5 py-1.5 text-xs text-text-muted transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary dark:border-white/10"
-                title="Restore model"
-              >
-                <span className="material-symbols-outlined text-[13px]">
-                  add
-                </span>
-                {m.id}
-              </button>
-            ))}
+            {disabledDisplayModels.map((m) => {
+              const isAccountUnavailable = !!m.accountUnavailable;
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => {
+                    // Live-catalog shelved rows are not in disabledModels DB;
+                    // Restore only applies to user-disabled entries.
+                    if (!isAccountUnavailable) handleEnableModel(m.id);
+                  }}
+                  disabled={isAccountUnavailable}
+                  className={`flex items-center gap-1 rounded-lg border border-dashed px-2.5 py-1.5 text-xs text-text-muted transition-colors dark:border-white/10 ${
+                    isAccountUnavailable
+                      ? "cursor-default border-black/10 opacity-80"
+                      : "border-black/10 hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+                  }`}
+                  title={
+                    isAccountUnavailable
+                      ? "Not available on this account's live catalog"
+                      : "Restore model"
+                  }
+                >
+                  <span className="material-symbols-outlined text-[13px]">
+                    {isAccountUnavailable ? "block" : "add"}
+                  </span>
+                  {m.id}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -211,6 +233,7 @@ export default function ProviderModelsCard({
   connections,
   isAnthropicCompatible,
   models,
+  shelvedModels = [],
   kiloFreeModels,
   disabledModelIds,
   modelsTestError,
@@ -265,6 +288,7 @@ export default function ProviderModelsCard({
           connections,
           isAnthropicCompatible,
           models,
+          shelvedModels,
           kiloFreeModels,
           disabledModelIds,
           providerInfo,
