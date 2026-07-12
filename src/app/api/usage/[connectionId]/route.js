@@ -7,6 +7,11 @@ import {
 } from "@/lib/localDb";
 import { getUsageForProvider } from "open-sse/services/usage.js";
 import { getExecutor } from "open-sse/executors/index.js";
+import {
+  refreshProviderCredentials,
+  shouldRefreshCredentials,
+} from "open-sse/services/oauthCredentialManager.js";
+import { isUnrecoverableRefreshError } from "open-sse/services/tokenRefresh.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { USAGE_APIKEY_PROVIDERS } from "@/shared/constants/providers";
 
@@ -24,20 +29,8 @@ function isAuthExpiredMessage(usage) {
   return AUTH_EXPIRED_PATTERNS.some((p) => msg.includes(p));
 }
 
-/**
- * Refresh credentials using executor and update database
- * @param {boolean} force - Skip needsRefresh check and always attempt refresh
- * @returns Promise<{ connection, refreshed: boolean }>
- */
-export async function refreshAndUpdateCredentials(
-  connection,
-  force = false,
-  proxyOptions = null,
-) {
-  const executor = getExecutor(connection.provider);
-
-  // Build credentials object from connection
-  const credentials = {
+function buildCredentialsFromConnection(connection) {
+  return {
     accessToken: connection.accessToken,
     refreshToken: connection.refreshToken,
     idToken: connection.idToken,
@@ -50,22 +43,58 @@ export async function refreshAndUpdateCredentials(
     copilotTokenExpiresAt:
       connection.providerSpecificData?.copilotTokenExpiresAt,
   };
+}
 
-  // Check if refresh is needed (skip when force=true)
-  const needsRefresh = force || executor.needsRefresh(credentials);
+/**
+ * Refresh OAuth credentials the same way chat does (oauthCredentialManager),
+ * then persist to localDb. GitHub still uses its executor for Copilot token.
+ *
+ * @param {boolean} force - Skip needsRefresh check and always attempt refresh
+ * @returns Promise<{ connection, refreshed: boolean }>
+ */
+export async function refreshAndUpdateCredentials(
+  connection,
+  force = false,
+  proxyOptions = null,
+) {
+  const provider = connection.provider;
+  const credentials = buildCredentialsFromConnection(connection);
+  // GitHub needs specialized Copilot exchange; other OAuth providers use the
+  // shared manager so aliases like `xai` (no dedicated executor) still refresh.
+  const useExecutorPath = provider === "github";
+  const executor = useExecutorPath ? getExecutor(provider) : null;
+
+  const needsRefresh =
+    force ||
+    (useExecutorPath
+      ? executor.needsRefresh(credentials)
+      : shouldRefreshCredentials(provider, credentials));
 
   if (!needsRefresh) {
     return { connection, refreshed: false };
   }
 
-  // Use executor's refreshCredentials method (with optional proxy)
-  const refreshResult = await executor.refreshCredentials(
-    credentials,
-    console,
-    proxyOptions,
-  );
+  let refreshResult = null;
+  if (useExecutorPath) {
+    refreshResult = await executor.refreshCredentials(
+      credentials,
+      console,
+      proxyOptions,
+    );
+  } else {
+    refreshResult = await refreshProviderCredentials(
+      provider,
+      credentials,
+      console,
+    );
+    if (isUnrecoverableRefreshError(refreshResult)) {
+      throw new Error(
+        "Failed to refresh credentials. Please re-authorize the connection.",
+      );
+    }
+  }
 
-  if (!refreshResult) {
+  if (!refreshResult?.accessToken && !refreshResult?.apiKey && !refreshResult?.copilotToken) {
     // Refresh failed but we still have an accessToken — try with existing token
     if (connection.accessToken) {
       return { connection, refreshed: false };

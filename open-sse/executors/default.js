@@ -9,6 +9,8 @@ import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
+import { refreshProviderCredentials } from "../services/oauthCredentialManager.js";
+import { isUnrecoverableRefreshError } from "../services/tokenRefresh.js";
 
 export class DefaultExecutor extends BaseExecutor {
   constructor(provider) {
@@ -288,12 +290,34 @@ export class DefaultExecutor extends BaseExecutor {
     };
 
     const refresher = refreshers[this.provider];
-    if (!refresher) return null;
+    if (refresher) {
+      try {
+        const result = await refresher();
+        if (result) log?.info?.("TOKEN", `${this.provider} refreshed`);
+        return result;
+      } catch (error) {
+        log?.error?.(
+          "TOKEN",
+          `${this.provider} refresh error: ${error.message}`,
+        );
+        return null;
+      }
+    }
 
+    // Fallback for OAuth providers without a hard-coded refresher (e.g. xai).
+    // Same path as chat proactive refresh via oauthCredentialManager.
     try {
-      const result = await refresher();
-      if (result) log?.info?.("TOKEN", `${this.provider} refreshed`);
-      return result;
+      const result = await refreshProviderCredentials(
+        this.provider,
+        credentials,
+        log,
+      );
+      if (isUnrecoverableRefreshError(result)) return null;
+      if (result?.accessToken || result?.apiKey) {
+        log?.info?.("TOKEN", `${this.provider} refreshed via oauth manager`);
+        return result;
+      }
+      return null;
     } catch (error) {
       log?.error?.("TOKEN", `${this.provider} refresh error: ${error.message}`);
       return null;
