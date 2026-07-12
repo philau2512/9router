@@ -1,16 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 
 /**
- * Fetch model capabilities from /api/models and expose a lookup by model key.
- * API-driven (no registry dependency) — capabilities come from the server's
- * /api/models response which includes per-model `caps` fields.
- *
- * Note: full reorderByCapabilities (combo autoswitch) requires the registry
- * migration (Phase 6). This hook provides client-side display caps only.
- *
- * @returns {{ getCaps: (key: string) => object|null }}
+ * Fetch model capabilities once and expose a lookup by fullModel ("provider/model")
+ * or bare model id. Falls back to client-side getCapabilitiesForModel for
+ * dynamic/custom/passthrough models missing from /api/models static list.
  */
 export function useModelCaps() {
   const [byFull, setByFull] = useState({});
@@ -48,7 +44,11 @@ export function useModelCaps() {
     if (!key) return null;
     if (byFull[key]) return byFull[key];
     const bare = key.includes("/") ? key.slice(key.indexOf("/") + 1) : key;
-    return byId[bare] || null;
+    if (byId[bare]) return byId[bare];
+    // Fallback: compute caps for dynamic models (passthrough/custom/suggested)
+    const provider = key.includes("/") ? key.slice(0, key.indexOf("/")) : null;
+    const c = getCapabilitiesForModel(provider, bare);
+    return { vision: c.vision, search: c.search, reasoning: c.reasoning };
   };
 
   return { getCaps };

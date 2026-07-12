@@ -74,9 +74,9 @@ async function showCaps() {
     { type: "image_url", image_url: { url: PNG } },
   ]);
 
-  // 3. Search: should auto-switch to a search-capable member.
-  // Claude built-in web search requires a versioned tool type.
-  await send("search (needs search)", "What is the latest news today?", {
+  // 3. Search auto-switch is intentionally disabled (upstream parity).
+  // Keep this case as a control: should NOT force a search-capable member.
+  await send("search (auto-switch off)", "What is the latest news today?", {
     tools: [{ type: "web_search_20250305", name: "web_search" }],
   });
 

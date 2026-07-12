@@ -37,6 +37,10 @@ export const AI_MODELS = Object.entries(MODELS).flatMap(([alias, models]) =>
   models.map((m) => ({ provider: alias, model: m.id, name: m.name })),
 );
 
+// Prefer kind, fall back to type (providerModels uses type for media models)
+export const getModelKind = (m, fallback = null) =>
+  m?.kind || m?.type || fallback;
+
 // Metadata for model capability badges (vision, reasoning).
 // search is temporarily hidden until the feature is fully wired.
 export const CAPACITY_META = {

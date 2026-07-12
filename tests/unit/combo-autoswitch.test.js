@@ -67,12 +67,14 @@ describe("detectRequiredCapabilities", () => {
     expect(r.has("vision")).toBe(true);
   });
 
-  it("web_search tool -> search", () => {
+  it("web_search tool -> search stays disabled (upstream parity)", () => {
     const r = detectRequiredCapabilities({
       messages: [{ role: "user", content: "q" }],
       tools: [{ type: "web_search" }],
     });
-    expect(r.has("search")).toBe(true);
+    // search auto-switch intentionally off until feature is fully wired
+    expect(r.has("search")).toBe(false);
+    expect(r.size).toBe(0);
   });
 
   it("responses input_image -> vision", () => {
@@ -92,20 +94,18 @@ describe("reorderByCapabilities", () => {
   });
 
   it("floats vision-capable model to front, keeps fallback", () => {
-    // TODO: requires capabilities registry (Phase 6) — skip until registry migration
     // deepseek-chat = no vision; claude-sonnet = vision
     const models = ["deepseek/deepseek-chat", "anthropic/claude-sonnet-4.6"];
     const out = reorderByCapabilities(models, new Set(["vision"]));
-    // Without registry, order is unchanged (graceful fallback)
-    expect(out).toContain("deepseek/deepseek-chat");
-    expect(out).toContain("anthropic/claude-sonnet-4.6");
+    expect(out[0]).toBe("anthropic/claude-sonnet-4.6");
+    expect(out).toContain("deepseek/deepseek-chat"); // not dropped
     expect(out).toHaveLength(2);
   });
 
   it("keeps order when no model matches", () => {
     const models = ["deepseek/deepseek-chat", "deepseek/deepseek-reasoner"];
     const out = reorderByCapabilities(models, new Set(["vision"]));
-    expect(out).toBe(models);
+    expect(out).toEqual(models);
   });
 
   it("single model -> unchanged", () => {

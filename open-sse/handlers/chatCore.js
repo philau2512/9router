@@ -59,6 +59,9 @@ import {
 import { stripOrphanedToolResults } from "../translator/concerns/toolCall.js";
 import { compressWithPxpipe, formatPxpipeLog } from "../rtk/pxpipe.js";
 import { decideSoftRetry } from "../services/accountFallback.js";
+import { getCapabilitiesForModel } from "../providers/capabilities.js";
+import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
+import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 
 function maskLoggedUrl(rawUrl) {
   try {
@@ -240,6 +243,31 @@ export async function handleChatCore({
   // on strict upstreams (Anthropic, Gemini). Port of upstream PR #2298.
   if (targetFormat !== FORMATS.KIRO) {
     stripOrphanedToolResults(body);
+  }
+
+  // Auto-strip media blocks the model can't read (vision/audio/pdf) before translation.
+  // Upstream decolua: strip + optional remote image prefetch for non-passthrough paths.
+  if (!passthrough) {
+    const caps = getCapabilitiesForModel(provider, model);
+    if (stripUnsupportedModalities(body, sourceFormat, caps)) {
+      log?.debug?.(
+        "MODALITY",
+        `stripped unsupported media for ${provider}/${model}`,
+      );
+    }
+    try {
+      const n = await prefetchRemoteImages(body, sourceFormat, targetFormat, {
+        signal: undefined,
+      });
+      if (n > 0) {
+        log?.debug?.(
+          "MODALITY",
+          `prefetched ${n} remote image(s) for ${targetFormat}`,
+        );
+      }
+    } catch (e) {
+      log?.warn?.("MODALITY", `image prefetch failed: ${e.message}`);
+    }
   }
 
   let translatedBody;

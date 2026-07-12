@@ -1,4 +1,5 @@
 import PropTypes from "prop-types";
+import { CapacityBadges } from "@/shared/components";
 
 function formatContextLength(value) {
   if (value == null) return null;
@@ -29,6 +30,7 @@ export default function ModelRow({
   onTest,
   isTesting,
   onDisable,
+  caps,
 }) {
   const borderColor =
     testStatus === "ok"
@@ -66,11 +68,18 @@ export default function ModelRow({
           <code className="max-w-[72vw] truncate rounded bg-sidebar px-1.5 py-0.5 font-mono text-xs text-text-muted sm:max-w-[360px]">
             {fullModel}
           </code>
-          {model.name && (
-            <span className="truncate pl-1 text-[9px] italic text-text-muted/70">
-              {model.name}
-            </span>
-          )}
+          <span className="flex min-w-0 items-center gap-1 pl-1 text-[9px]">
+            {model.name && (
+              <span className="truncate italic text-text-muted/70">
+                {model.name}
+              </span>
+            )}
+            <CapacityBadges
+              caps={caps}
+              colorOverride="text-text-muted/70"
+              size={12}
+            />
+          </span>
           {contextDisplay && (
             <span className="pl-1 text-[9px] font-medium text-text-muted/60">
               Context: {contextDisplay}
@@ -150,4 +159,5 @@ ModelRow.propTypes = {
   onTest: PropTypes.func,
   isTesting: PropTypes.bool,
   onDisable: PropTypes.func,
+  caps: PropTypes.object,
 };

@@ -3,8 +3,9 @@ import { getModelAliases, setModelAlias } from "@/models";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { AI_MODELS } from "@/shared/constants/config";
 import { getProviderAlias } from "@/shared/constants/providers";
+import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 
-// GET /api/models - Get models with aliases
+// GET /api/models - Get models with aliases + capability badges
 export async function GET() {
   try {
     const modelAliases = await getModelAliases();
@@ -16,10 +17,13 @@ export async function GET() {
       return !list.includes(m.model);
     }).map((m) => {
       const fullModel = `${m.provider}/${m.model}`;
+      // Slim payload for dashboard badges (eye/brain); search kept for future UI
+      const c = getCapabilitiesForModel(m.provider, m.model);
       return {
         ...m,
         fullModel,
         alias: modelAliases[fullModel] || m.model,
+        caps: { vision: c.vision, search: c.search, reasoning: c.reasoning },
       };
     });
 

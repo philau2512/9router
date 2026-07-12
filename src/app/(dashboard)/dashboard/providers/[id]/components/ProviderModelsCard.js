@@ -1,6 +1,7 @@
 import CompatibleModelsSection from "./CompatibleModelsSection";
 import ModelRow from "./ModelRow";
 import ProviderModelsPanel from "./ProviderModelsPanel";
+import { useModelCaps } from "@/shared/hooks/useModelCaps";
 
 function renderModelsSection({
   isCompatible,
@@ -26,6 +27,7 @@ function renderModelsSection({
   setShowAddCustomModel,
   handleEnableModel,
   providerId,
+  getCaps,
 }) {
   if (isCompatible) {
     return (
@@ -87,6 +89,7 @@ function renderModelsSection({
           isTesting={testingModelId === model.id}
           isCustom
           isFree={false}
+          caps={getCaps(`${providerStorageAlias}/${model.id}`)}
         />
       ))}
 
@@ -117,6 +120,7 @@ function renderModelsSection({
             isTesting={testingModelId === model.id}
             isFree={model.isFree}
             onDisable={() => handleDisableModel(model.id)}
+            caps={getCaps(fullModel)}
           />
         );
       })}
@@ -220,6 +224,8 @@ export default function ProviderModelsCard({
   handleDisableAll,
   providerId,
 }) {
+  const { getCaps } = useModelCaps();
+
   return (
     <ProviderModelsPanel
       isCompatible={isCompatible}
@@ -261,6 +267,7 @@ export default function ProviderModelsCard({
           setShowAddCustomModel,
           handleEnableModel,
           providerId,
+          getCaps,
         })
       }
       handleEnableAll={handleEnableAll}

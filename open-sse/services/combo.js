@@ -4,6 +4,7 @@
 
 import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
 import { unavailableResponse } from "../utils/error.js";
+import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { extractTextContent } from "../translator/helpers/geminiHelper.js";
 
 // Hard capabilities = input modalities; missing one drops request data (e.g. image
@@ -20,8 +21,9 @@ function trailingUserItems(arr) {
 }
 
 /**
- * Detect which capabilities a request needs (vision, pdf, search).
- * Only scans current user turn for modalities; tools array for search.
+ * Detect which capabilities a request needs.
+ * Modalities (vision/pdf) are scanned only on the current user turn.
+ * Returns a Set of: "vision" | "pdf" | "search".
  */
 export function detectRequiredCapabilities(body) {
   const required = new Set();
@@ -49,12 +51,8 @@ export function detectRequiredCapabilities(body) {
   const contents = body.contents || body.request?.contents;
   for (const c of trailingUserItems(contents)) scanContent(c.parts);
 
-  // search: web_search tool in request
-  if (Array.isArray(body.tools)) {
-    for (const t of body.tools) {
-      if (t?.type === "web_search") required.add("search");
-    }
-  }
+  // search: temporarily disabled in auto-switch (feature not wired yet).
+  // Keep aligned with upstream decolua until search routing is fully ready.
 
   return required;
 }
@@ -62,7 +60,6 @@ export function detectRequiredCapabilities(body) {
 /**
  * Reorder combo models by capability fit. Stable; never drops a model (fallback intact).
  * Tier 0: satisfies all hard + all soft. Tier 1: all hard only. Tier 2: rest.
- * Falls back to original order when capabilities registry unavailable.
  */
 export function reorderByCapabilities(models, required) {
   if (
@@ -73,16 +70,6 @@ export function reorderByCapabilities(models, required) {
   )
     return models;
 
-  // Try to load capabilities — gracefully skip reorder if registry not available
-  let getCapabilities;
-  try {
-    // Dynamic require pattern — capabilities.js may not exist pre-registry-migration
-    getCapabilities = null; // registry migration pending (Phase 6)
-  } catch {
-    getCapabilities = null;
-  }
-  if (!getCapabilities) return models;
-
   const hard = [...required].filter((c) => HARD_CAPS.has(c));
   const soft = [...required].filter((c) => !HARD_CAPS.has(c));
 
@@ -90,11 +77,12 @@ export function reorderByCapabilities(models, required) {
     const slash = typeof m === "string" ? m.indexOf("/") : -1;
     const provider = slash > 0 ? m.slice(0, slash) : "";
     const model = slash > 0 ? m.slice(slash + 1) : m;
-    const caps = getCapabilities(provider, model) || {};
+    const caps = getCapabilitiesForModel(provider, model) || {};
     if (!hard.every((c) => caps[c] === true)) return 2;
     return soft.every((c) => caps[c] === true) ? 0 : 1;
   };
 
+  // Stable sort by tier (Array.prototype.sort is stable in modern engines).
   return models
     .map((m, i) => ({ m, i, t: tierOf(m) }))
     .sort((a, b) => a.t - b.t || a.i - b.i)

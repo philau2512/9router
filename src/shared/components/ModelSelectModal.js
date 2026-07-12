@@ -4,7 +4,9 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import PropTypes from "prop-types";
 import Modal from "./Modal";
 import ProviderIcon from "./ProviderIcon";
-import { getModelsByProviderId } from "@/shared/constants/models";
+import CapacityBadges from "./CapacityBadges";
+import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
+import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import {
   OAUTH_PROVIDERS,
   APIKEY_PROVIDERS,
@@ -56,6 +58,8 @@ export default function ModelSelectModal({
   const [providerNodes, setProviderNodes] = useState([]);
   const [customModels, setCustomModels] = useState([]);
   const [disabledModels, setDisabledModels] = useState({});
+  // vision/reasoning badges (eye/brain) for each model chip
+  const { getCaps } = useModelCaps();
 
   const fetchCombos = useCallback(async () => {
     try {
@@ -141,7 +145,7 @@ export default function ModelSelectModal({
 
     // Kinds where the provider IS the model (no per-model selection needed)
     const PROVIDER_AS_MODEL_KINDS = new Set(["webSearch", "webFetch"]);
-    // Kinds that map directly to model.type field
+    // Kinds that map via getModelKind (kind || type)
     const TYPED_KINDS = new Set([
       "image",
       "tts",
@@ -152,15 +156,22 @@ export default function ModelSelectModal({
     // For these kinds, providers without hardcoded models can still be picked (provider-as-model fallback)
     const ALLOW_PROVIDER_FALLBACK_KINDS = new Set(["tts", "image", "webFetch"]);
 
-    // Filter a models[] array by kindFilter (keep only matching m.type)
+    // Filter a models[] array by kindFilter (keep only matching kind)
     const filterByKind = (models) => {
-      // No kindFilter → LLM context: keep LLM models + custom models (may have typed capabilities like imageToText)
+      // No kindFilter means the LLM selector. Keep custom models visible because
+      // they may expose typed capabilities while still being selectable as chat models.
       if (!kindFilter)
         return models.filter(
-          (m) => m.isPlaceholder || m.isCustom || !m.type || m.type === "llm",
+          (m) =>
+            m.isPlaceholder ||
+            m.isCustom ||
+            !getModelKind(m) ||
+            getModelKind(m) === "llm",
         );
       if (!TYPED_KINDS.has(kindFilter)) return models;
-      return models.filter((m) => m.isPlaceholder || m.type === kindFilter);
+      return models.filter(
+        (m) => m.isPlaceholder || getModelKind(m) === kindFilter,
+      );
     };
 
     // Get all active provider IDs from connections (filtered by kindFilter if set)
@@ -222,12 +233,12 @@ export default function ModelSelectModal({
         let combined = aliasModels;
         if (kindFilter && TYPED_KINDS.has(kindFilter)) {
           combined = getModelsByProviderId(providerId)
-            .filter((m) => m.type === kindFilter)
+            .filter((m) => getModelKind(m) === kindFilter)
             .map((m) => ({
               id: m.id,
               name: m.name,
               value: `${alias}/${m.id}`,
-              type: m.type,
+              kind: getModelKind(m),
             }));
           // Fallback: provider-as-model when no hardcoded models match (tts/image/webFetch only)
           if (
@@ -245,11 +256,12 @@ export default function ModelSelectModal({
         } else if (!kindFilter) {
           // LLM context: merge hardcoded LLM models
           const hardcodedModels = getModelsByProviderId(providerId)
-            .filter((m) => !m.type || m.type === "llm")
+            .filter((m) => !getModelKind(m) || getModelKind(m) === "llm")
             .map((m) => ({
               id: m.id,
               name: m.name,
               value: `${alias}/${m.id}`,
+              kind: getModelKind(m),
             }));
           const hardcodedIds = new Set(hardcodedModels.map((m) => m.id));
           const filteredAliases = aliasModels.filter(
@@ -384,7 +396,7 @@ export default function ModelSelectModal({
             id: m.id,
             name: m.name,
             value: `${alias}/${m.id}`,
-            type: m.type,
+            kind: getModelKind(m),
           })),
           ...customAliasModels,
           ...customRegisteredModels,
@@ -678,7 +690,18 @@ export default function ModelSelectModal({
                             {model.name}
                           </span>
                         ) : (
-                          model.name
+                          <span className="inline-flex items-center gap-1 min-w-0">
+                            <span className="truncate">{model.name}</span>
+                            <CapacityBadges
+                              caps={getCaps(model.value)}
+                              size={12}
+                              colorOverride={
+                                isSelected || isAdded
+                                  ? "text-white/80"
+                                  : undefined
+                              }
+                            />
+                          </span>
                         )}
                       </span>
                       {!isPlaceholder && (
