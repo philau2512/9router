@@ -2,7 +2,7 @@
 
 import { useParams, notFound, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Card,
   Badge,
@@ -28,15 +28,54 @@ import { getTtsVoicesForModel } from "open-sse/config/ttsModels.js";
 import { GOOGLE_TTS_LANGUAGES } from "open-sse/config/googleTtsLanguages.js";
 
 // Shared row layout — defined outside components to avoid re-mount on re-render
-function Row({ label, children }) {
+function Row({ label, children, hint }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-      <span className="w-full text-xs font-medium text-text-muted sm:w-20 sm:shrink-0">
+    <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-3">
+      <span
+        className="w-full text-xs font-medium text-text-muted sm:w-24 sm:shrink-0 sm:pt-1.5 inline-flex items-center gap-1"
+        title={hint || undefined}
+      >
         {label}
+        {hint ? (
+          <span
+            className="material-symbols-outlined text-[14px] text-text-muted/70 cursor-help"
+            title={hint}
+            aria-label={hint}
+          >
+            info
+          </span>
+        ) : null}
       </span>
-      <div className="w-full min-w-0 flex-1">{children}</div>
+      <div className="w-full min-w-0 flex-1">
+        {children}
+        {hint ? (
+          <p className="mt-1 text-[11px] leading-snug text-text-muted">{hint}</p>
+        ) : null}
+      </div>
     </div>
   );
+}
+
+/** Label for connection picker — name + email when both exist */
+function formatConnectionLabel(c) {
+  const name = (c.displayName || c.name || "").trim();
+  const email = (c.email || "").trim();
+  const auth =
+    c.authType === "oauth"
+      ? "OAuth"
+      : c.authType === "apikey" || c.apiKey
+        ? "API key"
+        : "";
+  const providerTag =
+    c.provider === "grok-cli" ? "grok-cli" : c.provider === "xai" ? "xai" : "";
+  let base;
+  if (name && email && name.toLowerCase() !== email.toLowerCase()) {
+    base = `${name} · ${email}`;
+  } else {
+    base = email || name || c.id?.slice?.(0, 8) || "connection";
+  }
+  const tags = [auth, providerTag].filter(Boolean).join(" · ");
+  return tags ? `${base} (${tags})` : base;
 }
 
 const DEFAULT_TTS_RESPONSE_EXAMPLE = `// Audio will appear here after running.
@@ -222,49 +261,69 @@ const KIND_EXAMPLE_CONFIG = {
     inputPlaceholder: "A serene lake at sunset, cinematic, 4k",
     defaultInput: "A serene lake at sunset, cinematic, 4k",
     bodyKey: "prompt",
-    defaultResponse: `{\n  "request_id": "...",\n  "status": "pending"\n}`,
-    // Sample params — only non-empty values are sent. When no video models are
-    // registered for the provider, all fields show; otherwise they filter by
-    // the selected model's `params` list.
+    defaultResponse: `{
+  "request_id": "...",
+  "status": "pending"
+}`,
+    // xAI Imagine: duration (1-15), aspect_ratio, resolution; optional i2v/edit/ref.
     extraFields: [
       {
         key: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
         default: "16:9",
-        options: ["", "16:9", "9:16", "1:1", "4:3", "3:4"],
+        options: ["", "16:9", "9:16", "1:1", "4:3", "3:4", "3:2", "2:3"],
+        hint: "Output frame ratio. Default 16:9. Image-to-video defaults to the source image ratio unless you set this.",
       },
       {
         key: "resolution",
         label: "Resolution",
         type: "select",
-        default: "720p",
+        default: "480p",
         options: ["", "480p", "720p", "1080p"],
+        hint: "480p (default, faster) · 720p HD · 1080p only on grok-imagine-video-1.5 for image-to-video. Higher res = slower + more cost.",
       },
       {
-        key: "duration_seconds",
+        key: "duration",
         label: "Duration (s)",
         type: "number",
         default: 5,
         min: 1,
-        max: 60,
+        max: 15,
+        hint: "xAI Imagine allows 1–15 seconds per clip. Billed per second of output. Edits keep the source video length (max ~8.7s).",
       },
       {
-        key: "fps",
-        label: "FPS",
-        type: "number",
-        default: 24,
-        min: 1,
-        max: 60,
+        key: "image",
+        label: "Image URL (i2v)",
+        type: "text",
+        default: "",
+        placeholder: "https://… or data:image/…;base64,…",
+        // Required on grok-imagine-video-1.5 (text-to-video unsupported)
+        hint: "Image-to-video start frame (URL / data URL / file id). Required for grok-imagine-video-1.5 — that model does not support text-only. Do not combine with reference_images.",
       },
-      { key: "n", label: "n", type: "number", default: 1, min: 1, max: 4 },
-      { key: "seed", label: "Seed", type: "number", default: "", min: 0 },
+      {
+        key: "video",
+        label: "Video URL",
+        type: "text",
+        default: "",
+        placeholder: "required for edits / extensions",
+        hint: "Source video for Operation = edits or extensions (public URL / data URL / file id).",
+      },
+      {
+        key: "reference_images",
+        label: "Reference images",
+        type: "text",
+        default: "",
+        placeholder: "comma-separated URLs (base model only)",
+        hint: "Reference-to-video: style/subject guides without forcing first frame. Supported on grok-imagine-video only — not on 1.5. Comma or newline separated.",
+      },
       {
         key: "operation",
         label: "Operation",
         type: "select",
         default: "",
         options: ["", "generations", "edits", "extensions"],
+        hint: "generations = text/image-to-video · edits = change an existing video · extensions = continue from last frame. Leave empty for create.",
       },
       {
         key: "request_id",
@@ -272,6 +331,15 @@ const KIND_EXAMPLE_CONFIG = {
         type: "text",
         default: "",
         placeholder: "leave empty to create; set to poll status",
+        hint: "After create, API returns request_id. Paste it here (or enable Auto-poll) to poll GET until status=done.",
+      },
+      {
+        key: "auto_poll",
+        label: "Auto-poll",
+        type: "select",
+        default: "true",
+        options: ["true", "false"],
+        hint: "When true, after create the playground polls every ~4s for up to 10 minutes until done/failed/expired. Video URLs are temporary — download promptly.",
       },
     ],
   },
@@ -303,9 +371,8 @@ function EmbeddingExampleCard({ providerId, customAlias }) {
   const [dimensions, setDimensions] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [useTunnel, setUseTunnel] = useState(false);
-  const [localEndpoint, setLocalEndpoint] = useState(() =>
-    typeof window !== "undefined" ? window.location.origin : "",
-  );
+  // Empty on SSR + first client paint; set origin in useEffect (avoids hydration mismatch).
+  const [localEndpoint, setLocalEndpoint] = useState("");
   const [tunnelEndpoint, setTunnelEndpoint] = useState("");
   const [result, setResult] = useState(null);
   const [running, setRunning] = useState(false);
@@ -314,6 +381,7 @@ function EmbeddingExampleCard({ providerId, customAlias }) {
   const { copied: copiedRes, copy: copyRes } = useCopyToClipboard();
 
   useEffect(() => {
+    setLocalEndpoint(window.location.origin);
     const timer = setTimeout(() => {
       fetch("/api/keys")
         .then((r) => r.json())
@@ -627,6 +695,7 @@ function TtsExampleCard({ providerId }) {
   const [languageHint, setLanguageHint] = useState("");
 
   useEffect(() => {
+    setLocalEndpoint(window.location.origin);
     const timer = setTimeout(() => {
       fetch("/api/keys")
         .then((r) => r.json())
@@ -1299,6 +1368,13 @@ function GenericExampleCard({ providerId, kind }) {
   const selectedModelObj = kindModels.find((m) => m.id === selectedModel);
   const supportsEdit = !!selectedModelObj?.capabilities?.includes("edit");
   const supportsMask = !!selectedModelObj?.capabilities?.includes("mask");
+  // Catalog flag + id heuristic: 1.5 is image-to-video only
+  const videoRequiresImage =
+    kind === "video" &&
+    !!(
+      selectedModelObj?.requireImage ||
+      /grok-imagine-video-1\.5/i.test(String(selectedModel || ""))
+    );
 
   const [input, setInput] = useState(safeExConfig.defaultInput || "");
   const [refImage, setRefImage] = useState("");
@@ -1311,9 +1387,8 @@ function GenericExampleCard({ providerId, kind }) {
   );
   const [apiKey, setApiKey] = useState("");
   const [useTunnel, setUseTunnel] = useState(false);
-  const [localEndpoint, setLocalEndpoint] = useState(() =>
-    typeof window !== "undefined" ? window.location.origin : "",
-  );
+  // Empty on SSR + first client paint; set origin in useEffect (avoids hydration mismatch).
+  const [localEndpoint, setLocalEndpoint] = useState("");
   const [tunnelEndpoint, setTunnelEndpoint] = useState("");
   const [result, setResult] = useState(null);
   const [progress, setProgress] = useState(null); // { stage, bytesReceived }
@@ -1324,10 +1399,14 @@ function GenericExampleCard({ providerId, kind }) {
   const [error, setError] = useState("");
   const [connections, setConnections] = useState([]);
   const [pinnedConnectionId, setPinnedConnectionId] = useState("");
+  const [videoPollStatus, setVideoPollStatus] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
+  const videoAbortRef = useRef(null);
   const { copied: copiedCurl, copy: copyCurl } = useCopyToClipboard();
   const { copied: copiedRes, copy: copyRes } = useCopyToClipboard();
 
   useEffect(() => {
+    setLocalEndpoint(window.location.origin);
     const timer = setTimeout(() => {
       fetch("/api/keys")
         .then((r) => r.json())
@@ -1343,19 +1422,32 @@ function GenericExampleCard({ providerId, kind }) {
           if (d.publicUrl) setTunnelEndpoint(d.publicUrl);
         })
         .catch(() => {});
-      // Load active connections of this provider for pinning
-      fetch("/api/providers/client")
+      // Load connections for pinning — use /api/providers (full list).
+      // /api/providers/client is paginated (default 20) + usage-eligible only →
+      // misses most xai/grok-cli accounts when other providers fill page 1.
+      fetch("/api/providers", { cache: "no-store" })
         .then((r) => r.json())
         .then((d) => {
-          const conns = (d.connections || []).filter(
-            (c) => c.provider === providerId && c.isActive !== false,
-          );
+          const providerIds =
+            providerId === "xai"
+              ? new Set(["xai", "grok-cli"])
+              : new Set([providerId]);
+          const conns = (d.connections || [])
+            .filter((c) => providerIds.has(c.provider))
+            .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
           setConnections(conns);
         })
         .catch(() => {});
     }, 0);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      try {
+        videoAbortRef.current?.abort?.();
+      } catch {
+          /* ignore */
+      }
+    };
   }, [providerId]);
 
   // Merge custom models so Example dropdown matches ModelsCard (Add Model)
@@ -1444,12 +1536,41 @@ function GenericExampleCard({ providerId, kind }) {
   -d '${JSON.stringify(requestBody)}'${wantBinary ? " \\\n  --output image.png" : ""}`;
 
   const handleRun = async () => {
-    if (!input.trim() || !modelFull) return;
+    // Poll-only: request_id alone is enough (no prompt required)
+    const isVideoPollOnly =
+      kind === "video" && String(extraValues.request_id || "").trim();
+    if ((!input.trim() && !isVideoPollOnly) || !modelFull) return;
+
+    // grok-imagine-video-1.5: block text-only create before hitting API
+    const op = String(extraValues.operation || "generations").toLowerCase();
+    const isCreateOp = !op || op === "generations";
+    if (
+      videoRequiresImage &&
+      !isVideoPollOnly &&
+      isCreateOp &&
+      !String(extraValues.image || "").trim()
+    ) {
+      setError(
+        `${selectedModel} is image-to-video only — set Image URL (i2v). For text-to-video use grok-imagine-video.`,
+      );
+      return;
+    }
+
+    try {
+      videoAbortRef.current?.abort?.();
+    } catch {
+      /* ignore */
+    }
+    const abortCtrl = new AbortController();
+    videoAbortRef.current = abortCtrl;
+
     setRunning(true);
     setError("");
     setResult(null);
     setProgress(null);
     setPartialImage(null);
+    setVideoPollStatus("");
+    setVideoUrl("");
     if (binaryImageUrl) {
       try {
         URL.revokeObjectURL(binaryImageUrl);
@@ -1463,10 +1584,14 @@ function GenericExampleCard({ providerId, kind }) {
       if (pinnedConnectionId) headers["x-connection-id"] = pinnedConnectionId;
       if (useStreaming) headers["Accept"] = "text/event-stream";
       const body = { ...requestBody, model: modelFull };
+      // auto_poll is UI-only — never send to API
+      delete body.auto_poll;
+
       const res = await fetch(`/api${apiPathWithQuery}`, {
         method: kindConfig.endpoint.method,
         headers,
         body: JSON.stringify(body),
+        signal: abortCtrl.signal,
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -1526,12 +1651,73 @@ function GenericExampleCard({ providerId, kind }) {
         }
         if (finalData) setResult({ data: finalData, latencyMs });
       } else {
-        const data = await res.json();
-        const latencyMs = Date.now() - start;
-        setResult({ data, latencyMs });
+        let data = await res.json();
+        // Video async: auto-poll request_id until done/failed/expired/timeout
+        const wantAutoPoll =
+          kind === "video" &&
+          String(extraValues.auto_poll ?? "true") !== "false";
+        const requestId =
+          typeof data?.request_id === "string" ? data.request_id.trim() : "";
+        if (wantAutoPoll && requestId && !data?.video?.url) {
+          setVideoPollStatus("pending");
+          setResult({ data, latencyMs: Date.now() - start });
+          const POLL_MS = 4000;
+          const TIMEOUT_MS = 10 * 60 * 1000;
+          const pollStart = Date.now();
+          while (!abortCtrl.signal.aborted) {
+            if (Date.now() - pollStart > TIMEOUT_MS) {
+              setError("Video poll timed out (10 min). Use request_id to resume.");
+              break;
+            }
+            await new Promise((r) => setTimeout(r, POLL_MS));
+            if (abortCtrl.signal.aborted) break;
+            setVideoPollStatus("polling…");
+            const pollRes = await fetch(`/api${apiPath}`, {
+              method: kindConfig.endpoint.method,
+              headers,
+              body: JSON.stringify({ model: modelFull, request_id: requestId }),
+              signal: abortCtrl.signal,
+            });
+            const pollData = await pollRes.json().catch(() => ({}));
+            if (!pollRes.ok) {
+              setError(
+                pollData?.error?.message ||
+                  pollData?.error ||
+                  `HTTP ${pollRes.status}`,
+              );
+              data = pollData;
+              break;
+            }
+            data = pollData;
+            const st = String(pollData?.status || "").toLowerCase();
+            setVideoPollStatus(st || "pending");
+            setResult({ data: pollData, latencyMs: Date.now() - start });
+            if (st === "done" || st === "completed") {
+              const url = pollData?.video?.url || pollData?.url || "";
+              if (url) setVideoUrl(url);
+              break;
+            }
+            if (st === "failed" || st === "expired") {
+              setError(
+                pollData?.error?.message ||
+                  pollData?.error?.code ||
+                  `Video ${st}`,
+              );
+              break;
+            }
+          }
+        } else {
+          const url = data?.video?.url || data?.url || "";
+          if (kind === "video" && url) setVideoUrl(url);
+          setResult({ data, latencyMs: Date.now() - start });
+        }
       }
     } catch (e) {
-      setError(e.message || "Network error");
+      if (e?.name === "AbortError") {
+        setVideoPollStatus("cancelled");
+      } else {
+        setError(e.message || "Network error");
+      }
     } finally {
       setRunning(false);
     }
@@ -1621,22 +1807,27 @@ function GenericExampleCard({ providerId, kind }) {
           </span>
         </Row>
 
-        {/* Connection picker - only show when 2+ connections (or any with email) */}
+        {/* Connection picker */}
         {connections.length > 0 && (
-          <Row label="Connection">
+          <Row
+            label="Connection"
+            hint="Pin an account for this run (x-connection-id). Auto uses priority/round-robin. Prefer a console.x.ai API key for Imagine; Super Grok OAuth often returns Model not found."
+          >
             <select
               value={pinnedConnectionId}
               onChange={(e) => setPinnedConnectionId(e.target.value)}
               className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
             >
-              <option value="">Auto (by priority)</option>
+              <option value="">
+                Auto (by priority) · {connections.length} accounts
+              </option>
               {connections.map((c) => {
-                const plan = c.providerSpecificData?.chatgptPlanType;
-                const label = c.email || c.name || c.id.slice(0, 8);
+                const inactive = c.isActive === false;
                 return (
-                  <option key={c.id} value={c.id}>
-                    {label}
-                    {plan ? ` [${plan}]` : ""}
+                  <option key={c.id} value={c.id} disabled={inactive}>
+                    {inactive ? "[off] " : ""}
+                    {formatConnectionLabel(c)}
+                    {c.priority != null ? ` · #${c.priority}` : ""}
                   </option>
                 );
               })}
@@ -1757,6 +1948,8 @@ function GenericExampleCard({ providerId, kind }) {
             Custom models without params get the common image option set so Add Model still has controls. */}
         {(exConfig.extraFields || [])
           .filter((f) => {
+            // UI-only auto_poll always available for video
+            if (f.key === "auto_poll" && kind === "video") return true;
             if (kindModels.length === 0) return true;
             if (Array.isArray(selectedModelObj?.params)) {
               return selectedModelObj.params.includes(f.key);
@@ -1775,8 +1968,17 @@ function GenericExampleCard({ providerId, kind }) {
             }
             return false;
           })
-          .map((f) => (
-            <Row key={f.key} label={f.label}>
+          .map((f) => {
+            const label =
+              f.key === "image" && videoRequiresImage
+                ? "Image URL (required)"
+                : f.label;
+            const hint =
+              f.key === "image" && videoRequiresImage
+                ? "Required: grok-imagine-video-1.5 is image-to-video only. Text-to-video is not supported — switch to grok-imagine-video for prompt-only."
+                : f.hint;
+            return (
+            <Row key={f.key} label={label} hint={hint}>
               {f.type === "select" ? (
                 <select
                   value={extraValues[f.key] ?? ""}
@@ -1784,6 +1986,7 @@ function GenericExampleCard({ providerId, kind }) {
                     setExtraValues((s) => ({ ...s, [f.key]: e.target.value }))
                   }
                   className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
+                  title={hint || undefined}
                 >
                   {(f.options || []).map((opt) => (
                     <option key={opt} value={opt}>
@@ -1795,7 +1998,12 @@ function GenericExampleCard({ providerId, kind }) {
                 <input
                   type="text"
                   value={extraValues[f.key] ?? ""}
-                  placeholder={f.placeholder}
+                  placeholder={
+                    f.key === "image" && videoRequiresImage
+                      ? "required start frame URL"
+                      : f.placeholder
+                  }
+                  title={hint || undefined}
                   onChange={(e) =>
                     setExtraValues((s) => ({ ...s, [f.key]: e.target.value }))
                   }
@@ -1807,6 +2015,7 @@ function GenericExampleCard({ providerId, kind }) {
                   value={extraValues[f.key] ?? ""}
                   min={f.min}
                   max={f.max}
+                  title={hint || undefined}
                   onChange={(e) =>
                     setExtraValues((s) => ({
                       ...s,
@@ -1818,7 +2027,8 @@ function GenericExampleCard({ providerId, kind }) {
                 />
               )}
             </Row>
-          ))}
+            );
+          })}
 
         {/* Output Format toggle (image only) — last */}
         {kind === "image" && (
@@ -1852,7 +2062,26 @@ function GenericExampleCard({ providerId, kind }) {
               </button>
               <button
                 onClick={handleRun}
-                disabled={running || !input.trim() || !modelFull}
+                disabled={(() => {
+                  if (running || !modelFull) return true;
+                  const pollOnly =
+                    kind === "video" &&
+                    String(extraValues.request_id || "").trim();
+                  if (!input.trim() && !pollOnly) return true;
+                  // 1.5 i2v-only: require image on create
+                  if (videoRequiresImage && !pollOnly) {
+                    const op = String(
+                      extraValues.operation || "generations",
+                    ).toLowerCase();
+                    if (
+                      (!op || op === "generations") &&
+                      !String(extraValues.image || "").trim()
+                    ) {
+                      return true;
+                    }
+                  }
+                  return false;
+                })()}
                 className="flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-1 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span
@@ -1867,12 +2096,52 @@ function GenericExampleCard({ providerId, kind }) {
                 </span>
                 {running ? "Running..." : "Run"}
               </button>
+              {running && kind === "video" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    try {
+                      videoAbortRef.current?.abort?.();
+                    } catch {
+                      /* ignore */
+                    }
+                  }}
+                  className="flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-1 rounded-lg border border-border text-xs font-medium hover:bg-sidebar transition-colors"
+                >
+                  Cancel poll
+                </button>
+              )}
             </div>
           </div>
           <pre className="bg-sidebar rounded-lg px-3 py-2.5 text-xs font-mono text-text-main overflow-x-auto whitespace-pre-wrap break-all">
             {curlSnippet}
           </pre>
         </div>
+
+        {/* Video async poll status */}
+        {kind === "video" && (running || videoPollStatus) && (
+          <div className="flex flex-col gap-2 px-3 py-2 rounded-lg bg-sidebar border border-border sm:flex-row sm:items-center sm:gap-3">
+            <span
+              className="material-symbols-outlined text-[16px] text-primary"
+              style={
+                running ? { animation: "spin 1s linear infinite" } : undefined
+              }
+            >
+              {running ? "progress_activity" : "check_circle"}
+            </span>
+            <span className="text-xs text-text-muted">
+              Video status: {videoPollStatus || "starting"}
+              {providerId === "xai" && (
+                <>
+                  {" "}
+                  · Imagine Video needs a{" "}
+                  <strong className="text-text-main">console.x.ai API key</strong>
+                  . Super Grok OAuth usually returns Model not found.
+                </>
+              )}
+            </span>
+          </div>
+        )}
 
         {/* Streaming progress */}
         {(running || progress) && useStreaming && (
@@ -1970,6 +2239,27 @@ function GenericExampleCard({ providerId, kind }) {
               />
             </div>
           )}
+          {kind === "video" &&
+            (videoUrl || result?.data?.video?.url || result?.data?.url) && (
+              <div className="mt-2 flex flex-col gap-2">
+                <p className="text-xs text-text-muted">
+                  Temporary xAI URL — download promptly if you need a copy.
+                </p>
+                <a
+                  href={videoUrl || result?.data?.video?.url || result?.data?.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-primary hover:underline break-all"
+                >
+                  {videoUrl || result?.data?.video?.url || result?.data?.url}
+                </a>
+                <video
+                  controls
+                  src={videoUrl || result?.data?.video?.url || result?.data?.url}
+                  className="max-w-full rounded-lg border border-border"
+                />
+              </div>
+            )}
         </div>
       </div>
     </Card>
@@ -2000,9 +2290,8 @@ function SttExampleCard({ providerId }) {
   const [temperature, setTemperature] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [useTunnel, setUseTunnel] = useState(false);
-  const [localEndpoint, setLocalEndpoint] = useState(() =>
-    typeof window !== "undefined" ? window.location.origin : "",
-  );
+  // Empty on SSR + first client paint; set origin in useEffect (avoids hydration mismatch).
+  const [localEndpoint, setLocalEndpoint] = useState("");
   const [tunnelEndpoint, setTunnelEndpoint] = useState("");
   const [result, setResult] = useState(null);
   const [latency, setLatency] = useState(null);
@@ -2012,6 +2301,7 @@ function SttExampleCard({ providerId }) {
   const { copied: copiedRes, copy: copyRes } = useCopyToClipboard();
 
   useEffect(() => {
+    setLocalEndpoint(window.location.origin);
     const timer = setTimeout(() => {
       fetch("/api/keys")
         .then((r) => r.json())
@@ -2514,11 +2804,17 @@ export default function MediaProviderDetailPage() {
         </div>
       )}
 
-      {/* Connections */}
+      {/* Connections — xai also lists grok-cli OAuth (same as /providers/xai) */}
       {!isCustom && provider.noAuth ? (
         <NoAuthProxyCard providerId={id} />
       ) : (
-        <ConnectionsCard providerId={id} isOAuth={false} />
+        <ConnectionsCard
+          providerId={id}
+          isOAuth={!!provider.hasOAuth}
+          matchProviders={
+            id === "xai" ? ["xai", "grok-cli"] : undefined
+          }
+        />
       )}
 
       {/* Models - hidden for tts/webSearch/webFetch (provider IS the model); custom uses prefix as alias */}

@@ -885,6 +885,40 @@ export const PROVIDER_MODELS = {
         "output_format",
       ],
     },
+    {
+      id: "grok-imagine-video",
+      name: "Grok Imagine Video",
+      type: "video",
+      // text-to-video + optional image / reference / edit
+      modes: ["text-to-video", "image-to-video", "reference-to-video"],
+      params: [
+        "duration",
+        "aspect_ratio",
+        "resolution",
+        "image",
+        "video",
+        "reference_images",
+        "operation",
+        "request_id",
+      ],
+    },
+    {
+      id: "grok-imagine-video-1.5",
+      name: "Grok Imagine Video 1.5 (Image→Video)",
+      type: "video",
+      // xAI: text-to-video NOT supported — requires image (i2v). No reference_images.
+      modes: ["image-to-video"],
+      requireImage: true,
+      params: [
+        "duration",
+        "aspect_ratio",
+        "resolution",
+        "image",
+        "video",
+        "operation",
+        "request_id",
+      ],
+    },
   ],
   mistral: [
     { id: "mistral-large-latest", name: "Mistral Large 3" },
