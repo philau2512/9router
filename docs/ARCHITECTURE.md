@@ -180,7 +180,9 @@ sequenceDiagram
     Route->>Chat: handleChat(request)
     Chat->>Model: parse/resolve model or combo
 
-    alt Combo model
+    alt Combo model (with autoSwitch)
+        Chat->>Chat: detect required capabilities (vision, etc.)
+        Chat->>Chat: reorder combo models dynamically (autoSwitch=true)
         Chat->>Chat: iterate combo models (handleComboChat)
     end
 
@@ -188,20 +190,21 @@ sequenceDiagram
     Auth-->>Chat: active account + tokens/api key
 
     Chat->>Core: handleChatCore(body, modelInfo, credentials)
+    Core->>Core: resolve target transport config (multi-transport format)
     Core->>Core: detect source format
-    Core->>Core: translate request to target format
+    Core->>Core: translate request (captureThinking & applyThinking unified)
     Core->>Exec: execute(provider, transformedBody)
     Exec->>Prov: upstream API call
     Prov-->>Exec: SSE/JSON response
     Exec-->>Core: response + metadata
 
-    alt 401/403
-        Core->>Exec: refreshCredentials()
+    alt 401/403 (Token Expiry)
+        Core->>Exec: refreshCredentials() (falls back to oauth manager if needed)
         Exec-->>Core: updated tokens
         Core->>Exec: retry request
     end
 
-    Core->>Stream: translate/normalize stream to client format
+    Core->>Stream: translate/normalize stream to client format (re-inject reasoning/thinking)
     Stream-->>Client: SSE chunks / JSON response
 
     Stream->>Usage: extract usage + persist history/log
@@ -215,8 +218,11 @@ flowchart TD
     B -- Yes --> C[Load combo models sequence]
     B -- No --> D[Single model path]
 
-    C --> E[Try model N]
-    E --> F[Resolve provider/model]
+    C --> E[autoSwitch enabled?]
+    E -- Yes --> C1[detectRequiredCapabilities]
+    C1 --> C2[reorderByCapabilities]
+    C2 --> F[Try model N]
+    E -- No --> F
     D --> F
 
     F --> G[Select account credentials]
@@ -233,7 +239,7 @@ flowchart TD
     O --> P{Another account for provider?}
     P -- Yes --> G
     P -- No --> Q{In combo with next model?}
-    Q -- Yes --> E
+    Q -- Yes --> F
     Q -- No --> R[Return all unavailable]
 ```
 
@@ -270,6 +276,8 @@ sequenceDiagram
 ```
 
 Refresh during live traffic is executed inside `open-sse/handlers/chatCore.js` via executor `refreshCredentials()`.
+
+Usage tracking endpoints `/api/usage/[connectionId]` also trigger proactive token refreshes using `shouldRefreshCredentials` and `refreshProviderCredentials` (oauthCredentialManager) before calling upstream endpoints to prevent unauthenticated/expired token exceptions.
 
 ## Cloud Sync Lifecycle (Enable / Sync / Disable)
 
@@ -478,6 +486,13 @@ Target formats include:
 - Gemini/Gemini-CLI/Antigravity envelope
 - Kiro
 - Cursor
+
+- Thinking & Reasoning Budget Handling:
+  - Supports unified thinking extraction via `captureThinking` and application via `applyThinking` (supporting `reasoning_effort` and native provider parameters).
+  - Handles client-side model suffix naming conventions like `model(level)` (e.g. `claude-opus(high)`) by stripping suffixes early and mapping target parameters.
+
+- Multi-transport Resolution:
+  - Automatically resolves specific transport targets (base URLs, auth formats, API paths) using transport registries mapped under `open-sse/providers/registry/`.
 
 Translations are selected dynamically based on source payload shape and provider target format.
 
