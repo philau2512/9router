@@ -1,4 +1,5 @@
 import { PROVIDERS } from "../config/providers.js";
+import REGISTRY from "../providers/registry/index.js";
 import { buildClineHeaders } from "../../src/shared/utils/clineAuth.js";
 
 const OPENAI_COMPATIBLE_PREFIX = "openai-compatible-";
@@ -153,6 +154,16 @@ export function getProviderConfig(provider) {
     };
   }
   return PROVIDERS[provider] || PROVIDERS.openai;
+}
+
+// Multi-endpoint providers: pick transport matching client sourceFormat to skip
+// lossy translation. Reads registry entries (transports[]) not flat config alone.
+export function resolveTransport(provider, sourceFormat) {
+  if (!provider || !sourceFormat) return null;
+  const entry = REGISTRY.find((e) => e.id === provider);
+  const transports = entry?.transports;
+  if (!Array.isArray(transports) || !transports.length) return null;
+  return transports.find((t) => t.format === sourceFormat) || null;
 }
 
 // Get number of fallback URLs for provider (for retry logic)

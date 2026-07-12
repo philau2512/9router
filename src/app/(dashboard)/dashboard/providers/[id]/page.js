@@ -15,6 +15,7 @@ import {
   isOpenAICompatibleProvider,
 } from "@/shared/constants/providers";
 import { getModelsByProviderId } from "@/shared/constants/models";
+import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import BulkProxyAssignmentModal from "./components/BulkProxyAssignmentModal";
 import CompatibleProviderDetailsCard from "./components/CompatibleProviderDetailsCard";
@@ -66,6 +67,51 @@ export default function ProviderDetailPage() {
   const [showAgRiskModal, setShowAgRiskModal] = useState(false);
   const [thinkingMode, setThinkingMode] = useState("auto");
   const { copied, copy } = useCopyToClipboard();
+
+  // Resolve suffix "(level)" for a model when a thinking level is picked and the model supports it.
+  const resolveThinkingSuffix = (modelId) => {
+    if (!thinkingMode || thinkingMode === "auto") return null;
+    const levels = getThinkingLevels(providerId, modelId);
+    return levels && levels.includes(thinkingMode) ? thinkingMode : null;
+  };
+
+  // Union of selectable levels across provider models (for the header dropdown).
+  const providerThinkingLevels = (() => {
+    const set = new Set(["auto"]);
+    let any = false;
+    for (const m of getModelsByProviderId(providerId) || []) {
+      const lv = getThinkingLevels(providerId, m.id);
+      if (lv?.length) {
+        any = true;
+        for (const l of lv) set.add(l);
+      }
+    }
+    return any ? [...set] : null;
+  })();
+
+  const saveThinkingConfig = async (mode) => {
+    try {
+      const res = await fetch("/api/settings");
+      const settingsData = res.ok ? await res.json() : {};
+      const current = settingsData.providerThinking || {};
+      const updated = {
+        ...current,
+        [providerId]: { ...(current[providerId] || {}), mode },
+      };
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ providerThinking: updated }),
+      });
+    } catch (error) {
+      console.log("Error saving thinking config:", error);
+    }
+  };
+
+  const handleThinkingModeChange = (mode) => {
+    setThinkingMode(mode);
+    void saveThinkingConfig(mode);
+  };
 
   const AG_RISK_STORAGE_KEY = "ag_risk_confirmed";
 
@@ -632,6 +678,10 @@ export default function ProviderDetailPage() {
           });
         }}
         providerId={providerId}
+        thinkingMode={thinkingMode}
+        onThinkingModeChange={handleThinkingModeChange}
+        thinkingLevelOptions={providerThinkingLevels}
+        resolveThinkingSuffix={resolveThinkingSuffix}
       />
 
       <BulkProxyAssignmentModal

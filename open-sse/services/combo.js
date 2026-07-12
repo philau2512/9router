@@ -190,6 +190,7 @@ export function getComboModelsFromData(modelStr, combosData) {
  * @param {string} [options.comboName] - Name of the combo (for round-robin tracking)
  * @param {string} [options.comboStrategy] - Strategy: "fallback" or "round-robin"
  * @param {number|string} [options.comboStickyLimit=1] - Requests per combo model before switching
+ * @param {boolean} [options.autoSwitch=true] - Prefer models matching request modalities (vision/pdf)
  * @returns {Promise<Response>}
  */
 export async function handleComboChat({
@@ -200,14 +201,31 @@ export async function handleComboChat({
   comboName,
   comboStrategy,
   comboStickyLimit = 1,
+  autoSwitch = true,
 }) {
   // Apply rotation strategy if enabled
-  const rotatedModels = getRotatedModels(
+  let rotatedModels = getRotatedModels(
     models,
     comboName,
     comboStrategy,
     comboStickyLimit,
   );
+
+  // Capacity auto-switch: float models that can read current-turn modalities first.
+  // Stable reorder; never drops members (fallback chain intact). Search stays disabled.
+  if (autoSwitch) {
+    const required = detectRequiredCapabilities(body);
+    if (required.size > 0) {
+      const reordered = reorderByCapabilities(rotatedModels, required);
+      if (reordered[0] !== rotatedModels[0]) {
+        log?.info?.(
+          "COMBO",
+          `auto-switch for [${[...required].join(",")}] → ${reordered[0]}`,
+        );
+      }
+      rotatedModels = reordered;
+    }
+  }
 
   let lastError = null;
   let earliestRetryAfter = null;

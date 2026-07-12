@@ -2,15 +2,6 @@ import { Button, Card } from "@/shared/components";
 
 export default function ProviderModelsPanel({
   isCompatible,
-  providerStorageAlias,
-  providerDisplayAlias,
-  modelAliases,
-  copied,
-  copy,
-  handleSetAlias,
-  handleDeleteAlias,
-  connections,
-  isAnthropicCompatible,
   models,
   kiloFreeModels,
   disabledModelIds,
@@ -18,6 +9,9 @@ export default function ProviderModelsPanel({
   renderModelsSection,
   handleEnableAll,
   handleDisableAll,
+  thinkingMode = "auto",
+  onThinkingModeChange,
+  thinkingLevelOptions = null,
 }) {
   const allIds = [
     ...models,
@@ -31,30 +25,46 @@ export default function ProviderModelsPanel({
     <Card>
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-lg font-semibold">{"Available Models"}</h2>
-        {!isCompatible && (
-          <div className="flex gap-2">
-            {disabledModelIds.length > 0 && (
-              <Button
-                size="sm"
-                variant="secondary"
-                icon="restart_alt"
-                onClick={handleEnableAll}
-              >
-                Active All
-              </Button>
-            )}
-            {activeIds.length > 0 && (
-              <Button
-                size="sm"
-                variant="secondary"
-                icon="block"
-                onClick={() => handleDisableAll(activeIds)}
-              >
-                Disable All
-              </Button>
-            )}
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {!isCompatible && thinkingLevelOptions?.length > 0 && onThinkingModeChange && (
+            <select
+              value={thinkingMode || "auto"}
+              onChange={(e) => onThinkingModeChange(e.target.value)}
+              className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-text-main"
+              title="Default thinking level appended as model(level) when copying"
+            >
+              {thinkingLevelOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  {`Thinking: ${opt.charAt(0).toUpperCase() + opt.slice(1)}`}
+                </option>
+              ))}
+            </select>
+          )}
+          {!isCompatible && (
+            <>
+              {disabledModelIds.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon="restart_alt"
+                  onClick={handleEnableAll}
+                >
+                  Active All
+                </Button>
+              )}
+              {activeIds.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon="block"
+                  onClick={() => handleDisableAll(activeIds)}
+                >
+                  Disable All
+                </Button>
+              )}
+            </>
+          )}
+        </div>
       </div>
       {!!modelsTestError && (
         <p className="mb-3 break-words text-xs text-red-500">

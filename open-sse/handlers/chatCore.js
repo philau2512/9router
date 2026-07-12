@@ -1,4 +1,4 @@
-import { detectFormat, getTargetFormat } from "../services/provider.js";
+import { detectFormat, getTargetFormat, resolveTransport } from "../services/provider.js";
 import { translateRequest } from "../translator/index.js";
 import { FORMATS } from "../translator/formats.js";
 import { COLORS } from "../utils/stream.js";
@@ -41,6 +41,7 @@ import {
 } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { injectCaveman } from "../rtk/caveman.js";
+import { injectPonytail } from "../rtk/ponytail.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
 import {
   compressWithHeadroom,
@@ -48,7 +49,11 @@ import {
   formatHeadroomSizeLog,
   isHeadroomPhantomSavings,
 } from "../rtk/headroom.js";
-import { extractThinking } from "../translator/concerns/thinkingUnified.js";
+import {
+  extractThinking,
+  stripThinkingSuffix,
+} from "../translator/concerns/thinkingUnified.js";
+import { normalizeClaudePassthrough } from "../translator/formats/claude.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import {
   getAntigravitySessionKey,
@@ -103,6 +108,8 @@ export async function handleChatCore({
   headroomCompressUserMessages,
   cavemanEnabled,
   cavemanLevel,
+  ponytailEnabled,
+  ponytailLevel,
   midStreamResumeEnabled,
   sourceFormatOverride,
   providerThinking,
@@ -151,8 +158,15 @@ export async function handleChatCore({
 
   const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
   const modelTargetFormat = getModelTargetFormat(alias, model);
-  const targetFormat = modelTargetFormat || getTargetFormat(provider);
+  // Multi-endpoint providers: pick transport matching sourceFormat → less lossy translation
+  const runtimeTransport = resolveTransport(provider, sourceFormat);
+  const targetFormat =
+    modelTargetFormat || runtimeTransport?.format || getTargetFormat(provider);
+  if (runtimeTransport && credentials) {
+    credentials.runtimeTransport = runtimeTransport;
+  }
   const stripList = getModelStrip(alias, model);
+  const upstreamModel = getModelUpstreamId(alias, model) || model;
 
   // Inject provider-level thinking config override (only if client hasn't set)
   // on/off → extended type (body.thinking), none/low/medium/high → effort type (body.reasoning_effort)
@@ -277,12 +291,19 @@ export async function handleChatCore({
       "PASSTHROUGH",
       `${clientTool} → ${provider} | native lossless`,
     );
-    translatedBody = { ...body, model };
+    translatedBody = {
+      ...body,
+      model: stripThinkingSuffix(upstreamModel),
+    };
+    // Normalize newer Cowork/CC beta shapes the API rejects
+    if (clientTool === "claude") {
+      normalizeClaudePassthrough(translatedBody, translatedBody.model);
+    }
   } else {
     translatedBody = translateRequest(
       sourceFormat,
       targetFormat,
-      model,
+      upstreamModel,
       body,
       stream,
       credentials,
@@ -301,7 +322,7 @@ export async function handleChatCore({
     }
     toolNameMap = translatedBody._toolNameMap;
     delete translatedBody._toolNameMap;
-    translatedBody.model = model;
+    translatedBody.model = stripThinkingSuffix(upstreamModel);
   }
 
   // Unified ▶ request summary line — correlates all lifecycle logs by session tag.
@@ -354,7 +375,7 @@ export async function handleChatCore({
   const headroomStats = await compressWithHeadroom(translatedBody, {
     enabled: headroomEnabled,
     url: headroomUrl,
-    model,
+    model: upstreamModel,
     format: finalFormat,
     compressUserMessages: headroomCompressUserMessages,
     diagnostics: headroomDiagnostics,
@@ -424,6 +445,12 @@ export async function handleChatCore({
   if (cavemanEnabled && cavemanLevel) {
     injectCaveman(translatedBody, finalFormat, cavemanLevel);
     log?.debug?.("CAVEMAN", `${cavemanLevel} | ${finalFormat}`);
+  }
+
+  // Ponytail: inject deletion-biased coding style system prompt (token saver)
+  if (ponytailEnabled && ponytailLevel) {
+    injectPonytail(translatedBody, finalFormat, ponytailLevel);
+    log?.debug?.("PONYTAIL", `${ponytailLevel} | ${finalFormat}`);
   }
 
   const executor = getExecutor(provider);

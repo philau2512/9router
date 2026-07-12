@@ -412,6 +412,8 @@ async function handleSingleModelChat(
       rtkEnabled: !!chatSettings.rtkEnabled,
       cavemanEnabled: !!chatSettings.cavemanEnabled,
       cavemanLevel: chatSettings.cavemanLevel || "full",
+      ponytailEnabled: !!chatSettings.ponytailEnabled,
+      ponytailLevel: chatSettings.ponytailLevel || "full",
       midStreamResumeEnabled: chatSettings.midStreamResumeEnabled !== false,
       providerThinking,
       clientSignal: request?.signal,

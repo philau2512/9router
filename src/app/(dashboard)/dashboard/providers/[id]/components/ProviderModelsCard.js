@@ -28,6 +28,7 @@ function renderModelsSection({
   handleEnableModel,
   providerId,
   getCaps,
+  resolveThinkingSuffix,
 }) {
   if (isCompatible) {
     return (
@@ -90,6 +91,7 @@ function renderModelsSection({
           isCustom
           isFree={false}
           caps={getCaps(`${providerStorageAlias}/${model.id}`)}
+          thinkingSuffix={resolveThinkingSuffix?.(model.id)}
         />
       ))}
 
@@ -121,6 +123,7 @@ function renderModelsSection({
             isFree={model.isFree}
             onDisable={() => handleDisableModel(model.id)}
             caps={getCaps(fullModel)}
+            thinkingSuffix={resolveThinkingSuffix?.(model.id)}
           />
         );
       })}
@@ -223,6 +226,10 @@ export default function ProviderModelsCard({
   handleEnableAll,
   handleDisableAll,
   providerId,
+  thinkingMode = "auto",
+  onThinkingModeChange,
+  thinkingLevelOptions = null,
+  resolveThinkingSuffix,
 }) {
   const { getCaps } = useModelCaps();
 
@@ -242,6 +249,9 @@ export default function ProviderModelsCard({
       kiloFreeModels={kiloFreeModels}
       disabledModelIds={disabledModelIds}
       modelsTestError={modelsTestError}
+      thinkingMode={thinkingMode}
+      onThinkingModeChange={onThinkingModeChange}
+      thinkingLevelOptions={thinkingLevelOptions}
       renderModelsSection={() =>
         renderModelsSection({
           isCompatible,
@@ -268,6 +278,7 @@ export default function ProviderModelsCard({
           handleEnableModel,
           providerId,
           getCaps,
+          resolveThinkingSuffix,
         })
       }
       handleEnableAll={handleEnableAll}

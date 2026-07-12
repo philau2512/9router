@@ -113,3 +113,75 @@ describe("reorderByCapabilities", () => {
     expect(reorderByCapabilities(models, new Set(["vision"]))).toBe(models);
   });
 });
+
+describe("handleComboChat auto-switch wiring", () => {
+  it("prefers vision model first when request has image", async () => {
+    const { handleComboChat } = await import("../../open-sse/services/combo.js");
+    const tried = [];
+    const body = {
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "image_url", image_url: { url: "x" } }],
+        },
+      ],
+    };
+    const models = ["deepseek/deepseek-chat", "anthropic/claude-sonnet-4.6"];
+    await handleComboChat({
+      body,
+      models,
+      log: { info() {}, debug() {} },
+      autoSwitch: true,
+      handleSingleModel: async (_b, modelStr) => {
+        tried.push(modelStr);
+        return {
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          clone() {
+            return this;
+          },
+          async json() {
+            return {};
+          },
+        };
+      },
+    });
+    expect(tried[0]).toBe("anthropic/claude-sonnet-4.6");
+  });
+
+  it("autoSwitch=false keeps original order", async () => {
+    const { handleComboChat } = await import("../../open-sse/services/combo.js");
+    const tried = [];
+    const body = {
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "image_url", image_url: { url: "x" } }],
+        },
+      ],
+    };
+    const models = ["deepseek/deepseek-chat", "anthropic/claude-sonnet-4.6"];
+    await handleComboChat({
+      body,
+      models,
+      log: { info() {}, debug() {} },
+      autoSwitch: false,
+      handleSingleModel: async (_b, modelStr) => {
+        tried.push(modelStr);
+        return {
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          clone() {
+            return this;
+          },
+          async json() {
+            return {};
+          },
+        };
+      },
+    });
+    expect(tried[0]).toBe("deepseek/deepseek-chat");
+  });
+});

@@ -12,17 +12,33 @@ import {
 } from "../../config/providerModels.js";
 
 // Individual registry files take precedence over auto-generated entries.
-// Add new provider files here as they are created.
+// Multi-endpoint providers MUST be listed so `transports[]` is available to resolveTransport.
 import veniceRegistry from "./venice.js";
 import blackboxRegistry from "./blackbox.js";
 import perplexityAgentRegistry from "./perplexity-agent.js";
 import grokCLIRegistry from "./grok-cli.js";
+import deepseekRegistry from "./deepseek.js";
+import glmRegistry from "./glm.js";
+import kimiRegistry from "./kimi.js";
+import kimiCodingRegistry from "./kimi-coding.js";
+import minimaxRegistry from "./minimax.js";
+import minimaxCnRegistry from "./minimax-cn.js";
+import xiaomiMimoRegistry from "./xiaomi-mimo.js";
+import xiaomiTokenplanRegistry from "./xiaomi-tokenplan.js";
 
 const REGISTRY_OVERRIDES = new Map([
   ["venice", veniceRegistry],
   ["blackbox", blackboxRegistry],
   ["perplexity-agent", perplexityAgentRegistry],
   ["grok-cli", grokCLIRegistry],
+  ["deepseek", deepseekRegistry],
+  ["glm", glmRegistry],
+  ["kimi", kimiRegistry],
+  ["kimi-coding", kimiCodingRegistry],
+  ["minimax", minimaxRegistry],
+  ["minimax-cn", minimaxCnRegistry],
+  ["xiaomi-mimo", xiaomiMimoRegistry],
+  ["xiaomi-tokenplan", xiaomiTokenplanRegistry],
 ]);
 
 // Generate minimal registry entries from fork's flat provider config.

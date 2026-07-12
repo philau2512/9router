@@ -31,7 +31,11 @@ export default function ModelRow({
   isTesting,
   onDisable,
   caps,
+  thinkingSuffix,
 }) {
+  const displayModel = thinkingSuffix
+    ? `${fullModel}(${thinkingSuffix})`
+    : fullModel;
   const borderColor =
     testStatus === "ok"
       ? "border-green-500/40"
@@ -66,7 +70,7 @@ export default function ModelRow({
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <code className="max-w-[72vw] truncate rounded bg-sidebar px-1.5 py-0.5 font-mono text-xs text-text-muted sm:max-w-[360px]">
-            {fullModel}
+            {displayModel}
           </code>
           <span className="flex min-w-0 items-center gap-1 pl-1 text-[9px]">
             {model.name && (
@@ -111,7 +115,7 @@ export default function ModelRow({
         )}
         <div className="relative shrink-0 group/btn">
           <button
-            onClick={() => onCopy(fullModel, `model-${model.id}`)}
+            onClick={() => onCopy(displayModel, `model-${model.id}`)}
             className="rounded p-0.5 text-text-muted hover:bg-sidebar hover:text-primary"
           >
             <span className="material-symbols-outlined text-sm">
@@ -160,4 +164,5 @@ ModelRow.propTypes = {
   isTesting: PropTypes.bool,
   onDisable: PropTypes.func,
   caps: PropTypes.object,
+  thinkingSuffix: PropTypes.string,
 };
