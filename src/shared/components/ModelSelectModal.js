@@ -17,6 +17,11 @@ import {
   isAnthropicCompatibleProvider,
   getProviderAlias,
 } from "@/shared/constants/providers";
+import {
+  applyLiveCatalogToChips,
+  parseProviderModelsPayload,
+  pickFirstActiveConnectionByProvider,
+} from "@/shared/utils/liveModelsForSelectModal";
 
 // Provider order: OAuth first, then Free Tier, then API Key (matches dashboard/providers)
 const PROVIDER_ORDER = [
@@ -58,6 +63,9 @@ export default function ModelSelectModal({
   const [providerNodes, setProviderNodes] = useState([]);
   const [customModels, setCustomModels] = useState([]);
   const [disabledModels, setDisabledModels] = useState({});
+  // null = live not settled yet (show static); object after settle (fail-open empty {})
+  const [liveModelsByProviderId, setLiveModelsByProviderId] = useState(null);
+  const [liveModelsLoading, setLiveModelsLoading] = useState(false);
   // vision/reasoning badges (eye/brain) for each model chip
   const { getCaps } = useModelCaps();
 
@@ -112,6 +120,53 @@ export default function ModelSelectModal({
     }
   }, []);
 
+  // Live catalog per provider (first active connection wins). Fail-open → {}.
+  const fetchLiveModels = useCallback(
+    async (signal) => {
+      const byProvider = pickFirstActiveConnectionByProvider(activeProviders);
+      if (byProvider.size === 0) {
+        if (!signal?.aborted) {
+          setLiveModelsByProviderId({});
+          setLiveModelsLoading(false);
+        }
+        return;
+      }
+
+      setLiveModelsLoading(true);
+      try {
+        const entries = await Promise.all(
+          [...byProvider.entries()].map(async ([providerId, conn]) => {
+            try {
+              const res = await fetch(`/api/providers/${conn.id}/models`, {
+                cache: "no-store",
+                signal,
+              });
+              if (!res.ok) return [providerId, []];
+              const data = await res.json().catch(() => ({}));
+              return [providerId, parseProviderModelsPayload(data)];
+            } catch (err) {
+              if (err?.name === "AbortError") return [providerId, null];
+              return [providerId, []];
+            }
+          }),
+        );
+
+        if (signal?.aborted) return;
+
+        const next = {};
+        for (const [providerId, models] of entries) {
+          if (Array.isArray(models) && models.length > 0) {
+            next[providerId] = models;
+          }
+        }
+        setLiveModelsByProviderId(next);
+      } finally {
+        if (!signal?.aborted) setLiveModelsLoading(false);
+      }
+    },
+    [activeProviders],
+  );
+
   const fetchOpenData = useCallback(() => {
     void fetchCombos();
     void fetchProviderNodes();
@@ -120,14 +175,23 @@ export default function ModelSelectModal({
   }, [fetchCombos, fetchProviderNodes, fetchCustomModels, fetchDisabledModels]);
 
   useEffect(() => {
-    if (isOpen) {
-      const timer = setTimeout(() => {
-        fetchOpenData();
-      }, 0);
+    if (!isOpen) return undefined;
 
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen, fetchOpenData]);
+    const timer = setTimeout(() => {
+      fetchOpenData();
+    }, 0);
+
+    // Reset live state each open so static shows until fetch settles (no empty flash).
+    setLiveModelsByProviderId(null);
+    setLiveModelsLoading(false);
+    const ac = new AbortController();
+    void fetchLiveModels(ac.signal);
+
+    return () => {
+      clearTimeout(timer);
+      ac.abort();
+    };
+  }, [isOpen, fetchOpenData, fetchLiveModels]);
 
   const allProviders = useMemo(
     () => ({
@@ -270,6 +334,16 @@ export default function ModelSelectModal({
           combined = [...hardcodedModels, ...filteredAliases];
         }
 
+        // Live catalog (union for passthrough providers when fetch settled)
+        if (!kindFilter && liveModelsByProviderId) {
+          combined = applyLiveCatalogToChips({
+            providerId,
+            valuePrefix: alias,
+            staticChips: combined,
+            liveModels: liveModelsByProviderId[providerId] || null,
+          });
+        }
+
         if (combined.length > 0) {
           // Check for custom name from providerNodes (for compatible providers)
           const matchedNode = providerNodes.find(
@@ -329,7 +403,7 @@ export default function ModelSelectModal({
 
         // Always show compatible providers that are connected, even with no aliases.
         // When no aliases exist, show a placeholder so users know it's available.
-        const modelsToShow =
+        let modelsToShow =
           mergedModels.length > 0
             ? mergedModels
             : [
@@ -341,13 +415,26 @@ export default function ModelSelectModal({
                 },
               ];
 
+        // Live OpenAI/Anthropic-compatible catalog: union discovered model ids
+        if (liveModelsByProviderId) {
+          const liveMerged = applyLiveCatalogToChips({
+            providerId,
+            valuePrefix: nodePrefix,
+            staticChips: mergedModels,
+            liveModels: liveModelsByProviderId[providerId] || null,
+          });
+          if (liveMerged.length > 0) {
+            modelsToShow = liveMerged;
+          }
+        }
+
         groups[providerId] = {
           name: displayName,
           alias: nodePrefix,
           color: providerInfo.color,
           models: modelsToShow,
           isCustom: true,
-          hasModels: mergedModels.length > 0,
+          hasModels: modelsToShow.some((m) => !m.isPlaceholder),
         };
       } else {
         const hardcodedModels = getModelsByProviderId(providerId);
@@ -411,6 +498,19 @@ export default function ModelSelectModal({
           }),
         );
 
+        // Live catalog: kiro = live-only when live non-empty; others = union.
+        // While liveModelsByProviderId is null (in flight), keep static (no empty flash).
+        if (liveModelsByProviderId) {
+          allModels = filterByKind(
+            applyLiveCatalogToChips({
+              providerId,
+              valuePrefix: alias,
+              staticChips: allModels,
+              liveModels: liveModelsByProviderId[providerId] || null,
+            }),
+          );
+        }
+
         // Provider-as-model fallback: providers that support the kind but have no hardcoded models
         // can still be picked (value = providerAlias). Skips embedding (always needs model).
         if (
@@ -461,6 +561,7 @@ export default function ModelSelectModal({
     disabledModels,
     kindFilter,
     activeProviders,
+    liveModelsByProviderId,
   ]);
 
   // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
@@ -485,21 +586,68 @@ export default function ModelSelectModal({
     [addedModelValues],
   );
 
-  // Filter models by search query
+  // Normalize for search: "openrouter_gpt_4" / "gpt-4" → comparable tokens
+  const normalizeSearchText = useCallback((text) => {
+    return String(text || "")
+      .toLowerCase()
+      .replace(/[/_.:-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }, []);
+
+  const modelMatchesQuery = useCallback(
+    (model, query, normalizedQuery) => {
+      if (!query) return true;
+      const name = String(model?.name || "").toLowerCase();
+      const id = String(model?.id || "").toLowerCase();
+      const value = String(model?.value || "").toLowerCase();
+      // Exact substring on raw fields (covers live-fetched ids / full alias paths)
+      if (
+        name.includes(query) ||
+        id.includes(query) ||
+        value.includes(query)
+      ) {
+        return true;
+      }
+      // Soft match: ignore _ - / separators so "gpt 4" hits openrouter_gpt_4_o
+      const soft = normalizeSearchText(
+        [model?.name, model?.id, model?.value].filter(Boolean).join(" "),
+      );
+      return soft.includes(normalizedQuery);
+    },
+    [normalizeSearchText],
+  );
+
+  // Filter models by search query (static + live chips share the same fields)
   const filteredGroups = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
+    const normalizedQuery = normalizeSearchText(query);
 
     const filtered = {};
     Object.entries(groupedModels).forEach(([providerId, group]) => {
       let models = group.models;
       if (query) {
-        const providerNameMatches = group.name.toLowerCase().includes(query);
-        models = models.filter(
-          (m) =>
-            m.name.toLowerCase().includes(query) ||
-            m.id.toLowerCase().includes(query),
+        const providerNameMatches =
+          group.name.toLowerCase().includes(query) ||
+          normalizeSearchText(group.name).includes(normalizedQuery);
+        const aliasMatches =
+          String(group.alias || "")
+            .toLowerCase()
+            .includes(query) ||
+          normalizeSearchText(group.alias).includes(normalizedQuery);
+
+        const matched = models.filter((m) =>
+          modelMatchesQuery(m, query, normalizedQuery),
         );
-        if (models.length === 0 && !providerNameMatches) return;
+
+        if (matched.length > 0) {
+          models = matched;
+        } else if (providerNameMatches || aliasMatches) {
+          // Provider name hit → keep full list so users can browse large live catalogs
+          models = group.models;
+        } else {
+          return;
+        }
       }
       filtered[providerId] = {
         ...group,
@@ -508,7 +656,13 @@ export default function ModelSelectModal({
     });
 
     return filtered;
-  }, [groupedModels, searchQuery, sortModels]);
+  }, [
+    groupedModels,
+    searchQuery,
+    sortModels,
+    normalizeSearchText,
+    modelMatchesQuery,
+  ]);
 
   const handleSelect = (model) => {
     const value = model?.value || model?.name || model;
@@ -536,8 +690,8 @@ export default function ModelSelectModal({
       isOpen={isOpen}
       onClose={handleModalClose}
       title={title}
-      size="md"
-      className="p-4!"
+      size="full"
+      className="p-4! max-h-[92vh]"
       footer={null}
     >
       {/* Info bar */}
@@ -553,24 +707,41 @@ export default function ModelSelectModal({
         </span>
       </div>
 
-      {/* Search - compact */}
+      {/* Search — covers static + live-fetched name / id / full path */}
       <div className="mb-3">
         <div className="relative">
-          <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted text-[16px]">
+          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-muted text-[18px]">
             search
           </span>
           <input
             type="text"
-            placeholder="Search..."
+            placeholder="Search models, ids, or providers…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 bg-surface border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/50"
+            autoFocus
+            className="w-full pl-10 pr-3 py-2.5 bg-surface border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
           />
         </div>
+        {liveModelsLoading && (
+          <p className="mt-1.5 text-[11px] text-text-muted">
+            Refreshing provider models… search works on live results when ready.
+          </p>
+        )}
+        {!liveModelsLoading && searchQuery.trim() && (
+          <p className="mt-1.5 text-[11px] text-text-muted">
+            {
+              Object.values(filteredGroups).reduce(
+                (n, g) => n + (g.models?.length || 0),
+                0,
+              )
+            }{" "}
+            models match
+          </p>
+        )}
       </div>
 
-      {/* Models grouped by provider - compact */}
-      <div className="max-h-[400px] overflow-y-auto space-y-3">
+      {/* Models grouped by provider — taller viewport for large live catalogs */}
+      <div className="max-h-[min(62vh,640px)] overflow-y-auto space-y-4 pr-1 custom-scrollbar">
         {/* Combos section - always first */}
         {filteredCombos.length > 0 && (
           <div>
