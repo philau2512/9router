@@ -19,7 +19,7 @@ import {
   DEPLETED_QUOTA_THRESHOLD,
   REFRESH_INTERVAL_MS,
   AUTO_REFRESH_STORAGE_KEY,
-} from "./helpers";
+} from "../../components/local/helpers";
 
 export function useProviderLimits() {
   const { copied, copy } = useCopyToClipboard();

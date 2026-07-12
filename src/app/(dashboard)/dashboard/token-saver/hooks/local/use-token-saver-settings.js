@@ -3,7 +3,7 @@ import { getCurrentLocale, onLocaleChange } from "@/i18n/runtime";
 import {
   WENYAN_LOCALES,
   CAVEMAN_LEVELS,
-} from "../../endpoint/endpointConstants";
+} from "../../../endpoint/endpointConstants";
 
 export function useTokenSaverSettings(patchSetting, callbacks = {}) {
   const [rtkEnabled, setRtkEnabledState] = useState(true);
