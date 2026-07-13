@@ -28,13 +28,21 @@ export class KiroExecutor extends BaseExecutor {
       "Amz-Sdk-Invocation-Id": randomUUID(),
     };
 
+    // API-key auth: key is stored as accessToken and sent as bearer, plus
+    // `tokentype: API_KEY` so CodeWhisperer treats it as a long-lived key
+    // rather than an OIDC token. External IdP needs TokenType=EXTERNAL_IDP.
     const authMethod = credentials?.providerSpecificData?.authMethod;
+    const isApiKey = authMethod === "api_key";
+    const isExternalIdp = authMethod === "external_idp";
+    const apiKey =
+      credentials?.apiKey || (isApiKey ? credentials?.accessToken : null);
 
-    if (credentials.accessToken) {
+    if (isApiKey && apiKey) {
+      headers["Authorization"] = `Bearer ${apiKey}`;
+      headers["tokentype"] = "API_KEY";
+    } else if (credentials.accessToken) {
       headers["Authorization"] = `Bearer ${credentials.accessToken}`;
-      // Enterprise / Microsoft Entra (external_idp) tokens require TokenType header
-      // so CodeWhisperer binds the request to the correct profile.
-      if (authMethod === "external_idp") {
+      if (isExternalIdp) {
         headers["TokenType"] = "EXTERNAL_IDP";
       }
     }

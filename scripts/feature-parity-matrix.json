@@ -1,0 +1,519 @@
+{
+  "$schema_note": "Feature chain markers for port/regression parity. Checked by scripts/check-feature-parity.mjs against worktree (and optionally upstream).",
+  "version": 2,
+  "features": [
+    {
+      "id": "kiro-api-key-ui",
+      "title": "Connect Kiro modal — API Key method + form",
+      "why": "Port drop: UI option/form missing while backend existed",
+      "layers": ["ui"],
+      "markers": [
+        {
+          "file": "src/shared/components/KiroAuthModal.js",
+          "mustContain": [
+            "handleApiKeyImport",
+            "handleMethodSelect(\"api-key\")",
+            "selectedMethod === \"api-key\"",
+            "/api/oauth/kiro/api-key"
+          ]
+        },
+        {
+          "file": "src/shared/components/KiroOAuthWrapper.js",
+          "mustContain": ["method === \"api-key\"", "onSuccess"]
+        }
+      ]
+    },
+    {
+      "id": "kiro-idc-import-credentials",
+      "title": "Import Token forwards IDC clientId/clientSecret from auto-import",
+      "why": "Enterprise org tokens need client registration for OIDC refresh",
+      "layers": ["ui", "api"],
+      "markers": [
+        {
+          "file": "src/shared/components/KiroAuthModal.js",
+          "mustContain": [
+            "idcCredentials",
+            "setIdcCredentials",
+            "data.clientId",
+            "data.clientSecret",
+            "...(idcCredentials || {})"
+          ]
+        },
+        {
+          "file": "src/app/api/oauth/kiro/auto-import/route.js",
+          "mustContain": ["clientIdHash", "clientId", "clientSecret", "profileArn"]
+        },
+        {
+          "file": "src/app/api/oauth/kiro/import/route.js",
+          "mustContain": ["isIdc", "clientId", "clientSecret", "authMethod: \"idc\""]
+        }
+      ]
+    },
+    {
+      "id": "kiro-api-key-backend",
+      "title": "POST /api/oauth/kiro/api-key + validateApiKey",
+      "why": "Headless ksk_ keys must validate via ListAvailableProfiles and persist authType api_key",
+      "layers": ["api", "service"],
+      "markers": [
+        {
+          "file": "src/app/api/oauth/kiro/api-key/route.js",
+          "mustContain": [
+            "validateApiKey",
+            "authType: \"api_key\"",
+            "authMethod: \"api_key\""
+          ]
+        },
+        {
+          "file": "src/lib/oauth/services/kiro.js",
+          "mustContain": ["validateApiKey", "listAvailableProfiles", "authMethod: \"api_key\""]
+        }
+      ]
+    },
+    {
+      "id": "kiro-quota-api-key",
+      "title": "Quota Tracker lists and fetches Kiro api_key connections",
+      "why": "authType api_key filtered out of USAGE_APIKEY_PROVIDERS / usage route",
+      "layers": ["constants", "api", "service", "ui"],
+      "markers": [
+        {
+          "file": "src/shared/constants/providers/usage-constants.js",
+          "mustContain": ["USAGE_APIKEY_PROVIDERS", "\"kiro\""]
+        },
+        {
+          "file": "src/app/api/providers/client/route.js",
+          "mustContain": [
+            "authType === \"api_key\"",
+            "USAGE_APIKEY_PROVIDERS",
+            "profileArn"
+          ]
+        },
+        {
+          "file": "src/app/api/usage/[connectionId]/route.js",
+          "mustContain": [
+            "authType === \"api_key\"",
+            "USAGE_APIKEY_PROVIDERS"
+          ]
+        },
+        {
+          "file": "open-sse/services/usage/kiro.js",
+          "mustContain": [
+            "authMethod === \"api_key\"",
+            "tokentype",
+            "API_KEY"
+          ]
+        },
+        {
+          "file": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/components/local/helpers.js",
+          "mustContain": ["api_key: \"API Key\"", "kiroMethodLabel"]
+        }
+      ]
+    },
+    {
+      "id": "kiro-provider-card-count",
+      "title": "Providers free card counts oauth + api_key for Kiro",
+      "why": "Card total only counted oauth; headless keys invisible in badge",
+      "layers": ["ui"],
+      "markers": [
+        {
+          "file": "src/app/(dashboard)/dashboard/providers/page.js",
+          "mustContain": [
+            "freeAuthTypes",
+            "\"api_key\"",
+            "getProviderStats(key, freeAuthTypes)"
+          ]
+        },
+        {
+          "file": "src/app/(dashboard)/dashboard/providers/hooks/local/use-providers-state.js",
+          "mustContain": [
+            "Array.isArray(authType)",
+            "authTypes.includes(c.authType)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kiro-executor-api-key-headers",
+      "title": "Kiro chat executor sends tokentype API_KEY for headless keys",
+      "why": "Without tokentype, CodeWhisperer rejects api_key as OIDC (401/403)",
+      "layers": ["executor"],
+      "markers": [
+        {
+          "file": "open-sse/executors/kiro.js",
+          "mustContain": [
+            "authMethod === \"api_key\"",
+            "tokentype",
+            "API_KEY"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kiro-cli-proxy-import",
+      "title": "Import CLIProxyAPI JSON path + wrapper success",
+      "why": "Fork feature; wrapper must call onSuccess after import-cli-proxy",
+      "layers": ["ui", "api"],
+      "markers": [
+        {
+          "file": "src/shared/components/KiroAuthModal.js",
+          "mustContain": [
+            "import-cli-proxy",
+            "/api/oauth/kiro/import-cli-proxy",
+            "handleImportCliProxyJson"
+          ]
+        },
+        {
+          "file": "src/shared/components/KiroOAuthWrapper.js",
+          "mustContain": ["import-cli-proxy"]
+        },
+        {
+          "file": "src/app/api/oauth/kiro/import-cli-proxy/route.js",
+          "mustContain": ["external_idp", "CLIProxyAPI"]
+        }
+      ]
+    },
+
+    {
+      "id": "cursor-import-token",
+      "title": "Cursor Import Token UI + auto-import + import API",
+      "why": "Cursor headless auth is import-only; drop UI or routes breaks Connect Cursor",
+      "layers": ["ui", "api"],
+      "markers": [
+        {
+          "file": "src/shared/components/CursorAuthModal.js",
+          "mustContain": [
+            "handleImportToken",
+            "/api/oauth/cursor/auto-import",
+            "/api/oauth/cursor/import",
+            "accessToken",
+            "machineId"
+          ]
+        },
+        {
+          "file": "src/app/api/oauth/cursor/auto-import/route.js",
+          "mustContain": [
+            "found: true",
+            "accessToken",
+            "machineId",
+            "state.vscdb"
+          ]
+        },
+        {
+          "file": "src/app/api/oauth/cursor/import/route.js",
+          "mustContain": ["accessToken", "machineId", "cursor"]
+        }
+      ]
+    },
+    {
+      "id": "codex-import-access-token",
+      "title": "Codex import access_token (single) + bulk import UI/API",
+      "why": "Codex supports access_token auth without OAuth refresh; bulk import is high-value ops path",
+      "layers": ["ui", "api"],
+      "markers": [
+        {
+          "file": "src/app/api/oauth/codex/import-token/route.js",
+          "mustContain": [
+            "accessToken",
+            "authType: \"access_token\"",
+            "authMethod: \"access_token\""
+          ]
+        },
+        {
+          "file": "src/app/api/oauth/codex/bulk-import/route.js",
+          "mustContain": [
+            "bulk-import",
+            "accessToken",
+            "accounts"
+          ]
+        },
+        {
+          "file": "src/app/(dashboard)/dashboard/providers/[id]/BulkImportCodexModal.js",
+          "mustContain": [
+            "/api/oauth/codex/bulk-import",
+            "accessToken"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gitlab-pat-auth",
+      "title": "GitLab PAT connect modal + verify API",
+      "why": "Self-hosted GitLab often uses PAT not OAuth app; easy to drop in port",
+      "layers": ["ui", "api"],
+      "markers": [
+        {
+          "file": "src/shared/components/GitLabAuthModal.js",
+          "mustContain": [
+            "handlePATSubmit",
+            "/api/oauth/gitlab/pat",
+            "PAT"
+          ]
+        },
+        {
+          "file": "src/app/api/oauth/gitlab/pat/route.js",
+          "mustContain": [
+            "Private-Token",
+            "personal_access_token",
+            "provider: \"gitlab\""
+          ]
+        }
+      ]
+    },
+    {
+      "id": "iflow-cookie-auth",
+      "title": "iFlow BXAuth cookie import API",
+      "why": "Cookie auth path is non-standard; often lost when OAuth-only assumptions land",
+      "layers": ["api"],
+      "markers": [
+        {
+          "file": "src/app/api/oauth/iflow/cookie/route.js",
+          "mustContain": [
+            "BXAuth",
+            "authType: \"cookie\"",
+            "cookie"
+          ]
+        }
+      ]
+    },
+
+    {
+      "id": "usage-supported-oauth-providers",
+      "title": "Quota Tracker core OAuth providers remain usage-eligible",
+      "why": "USAGE_SUPPORTED_PROVIDERS drop hides entire provider cards on Quota Tracker",
+      "layers": ["constants", "api", "service"],
+      "markers": [
+        {
+          "file": "src/shared/constants/providers/usage-constants.js",
+          "mustContain": [
+            "USAGE_SUPPORTED_PROVIDERS",
+            "\"claude\"",
+            "\"codex\"",
+            "\"antigravity\"",
+            "\"github\"",
+            "\"gemini-cli\"",
+            "\"xai\""
+          ]
+        },
+        {
+          "file": "src/app/api/providers/client/route.js",
+          "mustContain": [
+            "USAGE_SUPPORTED_PROVIDERS",
+            "isUsageEligible"
+          ]
+        },
+        {
+          "file": "open-sse/services/usage.js",
+          "mustContain": [
+            "case \"claude\"",
+            "case \"codex\"",
+            "case \"antigravity\"",
+            "case \"github\"",
+            "case \"kiro\"",
+            "getUsageForProvider"
+          ]
+        },
+        {
+          "file": "open-sse/services/usage/claude.js",
+          "mustContain": ["export async function getClaudeUsage", "Authorization"]
+        },
+        {
+          "file": "open-sse/services/usage/codex.js",
+          "mustContain": ["export async function getCodexUsage", "Authorization"]
+        },
+        {
+          "file": "open-sse/services/usage/antigravity.js",
+          "mustContain": ["export async function getAntigravityUsage", "Authorization"]
+        },
+        {
+          "file": "open-sse/services/usage/github.js",
+          "mustContain": [
+            "export async function getGitHubUsage",
+            "copilot_internal/user"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "usage-apikey-whitelist",
+      "title": "API-key providers that surface on Quota Tracker stay whitelisted",
+      "why": "USAGE_APIKEY_PROVIDERS drop removes glm/minimax/vercel/kiro quota cards",
+      "layers": ["constants"],
+      "markers": [
+        {
+          "file": "src/shared/constants/providers/usage-constants.js",
+          "mustContain": [
+            "USAGE_APIKEY_PROVIDERS",
+            "\"glm\"",
+            "\"glm-cn\"",
+            "\"minimax\"",
+            "\"minimax-cn\"",
+            "\"vercel-ai-gateway\"",
+            "\"kiro\""
+          ]
+        }
+      ]
+    },
+
+    {
+      "id": "token-refresh-core-providers",
+      "title": "Token refresh exports for core OAuth providers",
+      "why": "Missing refresh* export breaks chat mid-session after access token expiry",
+      "layers": ["service"],
+      "markers": [
+        {
+          "file": "open-sse/services/tokenRefresh.js",
+          "mustContain": [
+            "refreshClaudeOAuthToken",
+            "refreshCodexToken",
+            "refreshKiroToken",
+            "refreshGoogleToken",
+            "refreshGitHubToken",
+            "refreshXaiToken"
+          ]
+        },
+        {
+          "file": "open-sse/services/tokenRefresh/providers.js",
+          "mustContain": [
+            "export async function refreshClaudeOAuthToken",
+            "export async function refreshCodexToken",
+            "export async function refreshKiroToken",
+            "export async function refreshXaiToken"
+          ]
+        }
+      ]
+    },
+
+    {
+      "id": "claude-kiro-direct-route",
+      "title": "Direct claude↔kiro translator route (skip OpenAI pivot)",
+      "why": "OpenAI two-hop loses thinking/tools; direct register is required for quality",
+      "layers": ["translator"],
+      "markers": [
+        {
+          "file": "open-sse/translator/index.js",
+          "mustContain": [
+            "export function register",
+            "./request/claude-to-kiro.js",
+            "./response/kiro-to-claude.js"
+          ]
+        },
+        {
+          "file": "open-sse/translator/request/claude-to-kiro.js",
+          "mustContain": [
+            "register(FORMATS.CLAUDE, FORMATS.KIRO"
+          ]
+        },
+        {
+          "file": "open-sse/translator/response/kiro-to-claude.js",
+          "mustContain": [
+            "register(FORMATS.KIRO, FORMATS.CLAUDE"
+          ]
+        }
+      ]
+    },
+
+    {
+      "id": "rtk-headroom-pxpipe-caveman-pipeline",
+      "title": "Pre-translate RTK / headroom / pxpipe / caveman hooks in chatCore",
+      "why": "Token-saver pipeline is fail-open and easy to drop on refactor",
+      "layers": ["rtk", "handler"],
+      "markers": [
+        {
+          "file": "open-sse/handlers/chatCore.js",
+          "mustContain": [
+            "compressMessages",
+            "compressWithHeadroom",
+            "compressWithPxpipe",
+            "injectCaveman"
+          ]
+        },
+        {
+          "file": "open-sse/rtk/index.js",
+          "mustContain": [
+            "export function compressMessages",
+            "is_error",
+            "safeApply"
+          ]
+        },
+        {
+          "file": "open-sse/rtk/applyFilter.js",
+          "mustContain": ["export function safeApply"]
+        },
+        {
+          "file": "open-sse/rtk/headroom.js",
+          "mustContain": ["export async function compressWithHeadroom"]
+        },
+        {
+          "file": "open-sse/rtk/pxpipe.js",
+          "mustContain": ["export async function compressWithPxpipe"]
+        },
+        {
+          "file": "open-sse/rtk/caveman.js",
+          "mustContain": ["export function injectCaveman"]
+        }
+      ]
+    },
+
+    {
+      "id": "specialized-executors-registry",
+      "title": "Specialized executors remain registered (kiro/codex/cursor)",
+      "why": "Falling back to DefaultExecutor breaks binary/protobuf providers",
+      "layers": ["executor"],
+      "markers": [
+        {
+          "file": "open-sse/executors/index.js",
+          "mustContain": [
+            "export function getExecutor",
+            "kiro: new KiroExecutor()",
+            "codex: new CodexExecutor()",
+            "cursor: new CursorExecutor()",
+            "DefaultExecutor"
+          ]
+        }
+      ]
+    },
+
+    {
+      "id": "custom-server-ip-hardening",
+      "title": "custom-server strips client X-Forwarded-For / uses socket IP",
+      "why": "Trusting client XFF enables rate-limit/IP spoofing",
+      "layers": ["security"],
+      "markers": [
+        {
+          "file": "custom-server.js",
+          "mustContain": [
+            "remoteAddress",
+            "x-forwarded-for",
+            "delete req.headers[\"x-forwarded-for\"]"
+          ]
+        }
+      ]
+    },
+
+    {
+      "id": "oauth-modal-device-code-core",
+      "title": "Generic OAuthModal device-code + authorize/poll paths",
+      "why": "Builder ID / multi-provider device flow depends on shared OAuthModal",
+      "layers": ["ui", "api"],
+      "markers": [
+        {
+          "file": "src/shared/components/OAuthModal.js",
+          "mustContain": [
+            "/device-code",
+            "/authorize",
+            "/poll",
+            "exchange"
+          ]
+        },
+        {
+          "file": "src/app/api/oauth/[provider]/[action]/route.js",
+          "mustContain": [
+            "device-code",
+            "authorize",
+            "poll",
+            "exchange"
+          ]
+        }
+      ]
+    }
+  ]
+}
