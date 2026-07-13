@@ -50,6 +50,7 @@ const SAFE_PSD_FIELDS = [
   "lastName",
   "authMethod",
   "authKind",
+  "profileArn",
 ];
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -77,10 +78,17 @@ function sanitize(c) {
 }
 
 function isUsageEligible(connection) {
+  // oauth always; apikey/api_key only when provider is on the usage-apikey whitelist
+  // (kiro headless keys use authType "api_key").
+  const isOAuth = connection.authType === "oauth";
+  const isApikeyAuth =
+    connection.authType === "apikey" || connection.authType === "api_key";
+  const isApikeyEligible =
+    isApikeyAuth && USAGE_APIKEY_PROVIDERS.includes(connection.provider);
+
   return (
     USAGE_SUPPORTED_PROVIDERS.includes(connection.provider) &&
-    (connection.authType === "oauth" ||
-      USAGE_APIKEY_PROVIDERS.includes(connection.provider))
+    (isOAuth || isApikeyEligible)
   );
 }
 

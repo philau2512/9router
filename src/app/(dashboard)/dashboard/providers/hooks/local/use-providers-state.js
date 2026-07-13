@@ -38,8 +38,10 @@ export function useProvidersState() {
     name.toLowerCase().includes(searchQuery.trim().toLowerCase());
 
   const getProviderStats = (providerId, authType) => {
+    // authType may be a single string or an array (kiro counts oauth + api_key)
+    const authTypes = Array.isArray(authType) ? authType : [authType];
     const providerConnections = connections.filter(
-      (c) => c.provider === providerId && c.authType === authType,
+      (c) => c.provider === providerId && authTypes.includes(c.authType),
     );
 
     const getEffectiveStatus = (conn) => {
@@ -121,17 +123,15 @@ export function useProvidersState() {
     fetchData();
   }, []);
 
-  // Toggle all connections for a provider on/off
+  // Toggle all connections for a provider on/off.
+  // authType may be a single string or an array (kiro: oauth + api_key/apikey).
   const handleToggleProvider = async (providerId, authType, newActive) => {
-    const providerConns = connections.filter(
-      (c) => c.provider === providerId && c.authType === authType,
-    );
+    const authTypes = Array.isArray(authType) ? authType : [authType];
+    const matches = (c) =>
+      c.provider === providerId && authTypes.includes(c.authType);
+    const providerConns = connections.filter(matches);
     setConnections((prev) =>
-      prev.map((c) =>
-        c.provider === providerId && c.authType === authType
-          ? { ...c, isActive: newActive }
-          : c,
-      ),
+      prev.map((c) => (matches(c) ? { ...c, isActive: newActive } : c)),
     );
     await Promise.allSettled(
       providerConns.map((c) =>

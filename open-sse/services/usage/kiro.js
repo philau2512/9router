@@ -51,13 +51,22 @@ export async function getKiroUsage(
   providerSpecificData,
   proxyOptions = null,
 ) {
-  // Default profileArn fallback
+  // Default profileArn fallback (OAuth / builder-id only — never for api_key)
   const DEFAULT_PROFILE_ARN =
     "arn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX";
-  const profileArn = providerSpecificData?.profileArn || DEFAULT_PROFILE_ARN;
   const authMethod = providerSpecificData?.authMethod || "builder-id";
   const isExternalIdp = authMethod === "external_idp";
   const externalIdpHeaders = isExternalIdp ? { TokenType: "EXTERNAL_IDP" } : {};
+
+  // API-key Kiro connections authenticate the quota API the same way the chat
+  // executor does: bearer + `tokentype: API_KEY`. Without it GetUsageLimits is
+  // rejected (401/403). Never inject the shared placeholder profileArn for
+  // api-key — CodeWhisperer 403s an ARN not owned by the key's account.
+  const isApiKey = authMethod === "api_key";
+  const apiKeyHeaders = isApiKey ? { tokentype: "API_KEY" } : {};
+  const profileArn = isApiKey
+    ? providerSpecificData?.profileArn || ""
+    : providerSpecificData?.profileArn || DEFAULT_PROFILE_ARN;
 
   const getUsageParams = new URLSearchParams({
     isEmailRequired: "true",
@@ -80,6 +89,7 @@ export async function getKiroUsage(
               "x-amz-user-agent": "aws-sdk-js/1.0.0 KiroIDE",
               "user-agent": "aws-sdk-js/1.0.0 KiroIDE",
               ...externalIdpHeaders,
+              ...apiKeyHeaders,
             },
           },
           proxyOptions,
@@ -98,10 +108,11 @@ export async function getKiroUsage(
               "x-amz-target": "AmazonCodeWhispererService.GetUsageLimits",
               Accept: "application/json",
               ...externalIdpHeaders,
+              ...apiKeyHeaders,
             },
             body: JSON.stringify({
               origin: "AI_EDITOR",
-              profileArn,
+              ...(profileArn ? { profileArn } : {}),
               resourceType: "AGENTIC_REQUEST",
             }),
           },
@@ -113,7 +124,7 @@ export async function getKiroUsage(
       run: async () => {
         const params = new URLSearchParams({
           origin: "AI_EDITOR",
-          profileArn,
+          ...(profileArn ? { profileArn } : {}),
           resourceType: "AGENTIC_REQUEST",
         });
         return proxyAwareFetch(
@@ -124,6 +135,7 @@ export async function getKiroUsage(
               Authorization: `Bearer ${accessToken}`,
               Accept: "application/json",
               ...externalIdpHeaders,
+              ...apiKeyHeaders,
             },
           },
           proxyOptions,
