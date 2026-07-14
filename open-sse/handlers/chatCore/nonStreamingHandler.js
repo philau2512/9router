@@ -16,6 +16,7 @@ import {
 } from "./requestDetail.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
+import { restoreToolNamesInOpenAIResponse } from "../../translator/helpers/toolCallHelper.js";
 
 /**
  * Translate non-streaming response body from provider format → OpenAI format.
@@ -251,6 +252,11 @@ export async function handleNonStreamingResponse({
 
   // Decloak tool_use names once on raw Claude body, before any translation (INPUT side)
   responseBody = decloakToolNames(responseBody, toolNameMap);
+  // Kiro sanitizes invalid tool names on the way up and returns them sanitized.
+  // decloakToolNames only walks the Claude content[] shape, so it is a no-op for
+  // the OpenAI-shaped Kiro body — restore the tool_calls[].function.name here so
+  // the non-streaming path matches the streaming restore (fail-open on misses).
+  responseBody = restoreToolNamesInOpenAIResponse(responseBody, toolNameMap);
 
   const usage = extractUsageFromResponse(responseBody);
   appendLog({ tokens: usage, status: "200 OK" });

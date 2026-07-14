@@ -24,16 +24,18 @@
  */
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
-import { v4 as uuidv4 } from "uuid";
+import { v4 as uuidv4, v5 as uuidv5 } from "uuid";
 import {
   resolveKiroModel,
   resolveKiroThinkingBudget,
   buildThinkingSystemPrefix,
   KIRO_AGENTIC_SYSTEM_PROMPT,
   resolveKiroRequestProfileArn,
+  KIRO_CONVERSATION_NAMESPACE,
 } from "../../config/kiroConstants.js";
 import { DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { ROLE, CLAUDE_BLOCK } from "../schema/index.js";
+import { sanitizeKiroPayloadToolNames } from "../helpers/toolCallHelper.js";
 
 /** Stringify a tool_use input as a readable line. */
 function toolUseToText(name, input) {
@@ -417,6 +419,53 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
 
   let finalContent = currentMessage?.userInputMessage?.content || "";
 
+  // Deterministic conversationId seed — MUST be captured from the RAW user
+  // content BEFORE any dynamic prefix (timestamp / thinking / agentic) is
+  // prepended below. Seeding from `finalContent` after the prefix would fold
+  // the per-request `[Context: Current time is <ISO>]` marker into the hash and
+  // make the id change every request — defeating the Builder ID prompt-cache
+  // reuse this is meant to enable, exactly in the common fresh-single-turn case.
+  const rawCurrentUserContent = currentMessage?.userInputMessage?.content || "";
+  const firstRealUserTurn = history.find(
+    (h) => h?.userInputMessage?.content && !h.__synthetic,
+  );
+  // Kept as a last-resort source for forward-compat; `_preCompressionBody` is
+  // not currently assigned anywhere in the repo, so it is effectively inert.
+  const preCompressionBody = credentials?._preCompressionBody;
+  const preCompressionFirstUser = Array.isArray(preCompressionBody?.messages)
+    ? preCompressionBody.messages.find((m) => m.role === "user")
+    : null;
+  const preCompressionSeed = preCompressionFirstUser
+    ? typeof preCompressionFirstUser.content === "string"
+      ? preCompressionFirstUser.content
+      : Array.isArray(preCompressionFirstUser.content)
+        ? preCompressionFirstUser.content
+            .filter((b) => b.type === "text")
+            .map((b) => b.text || "")
+            .join(" ")
+        : ""
+    : "";
+  // Seed priority: the FIRST real user turn wins so the id stays stable as
+  // history grows across a multi-turn session (each Claude Code turn resends the
+  // full history + a new currentMessage). A fresh single-turn (empty history)
+  // falls through to the raw current content, captured pre-prefix so no
+  // timestamp leaks into the hash.
+  //
+  // This is the same first-user-turn strategy the OpenAI route uses, but NOT
+  // identical: the OpenAI route (openai-to-kiro.js) still falls through to the
+  // post-prefix finalContent for a fresh single-turn, so its id is NOT
+  // timestamp-stable there — a pre-existing bug. This route deliberately never
+  // uses finalContent, making its single-turn id strictly more stable.
+  const conversationSeed =
+    firstRealUserTurn?.userInputMessage?.content ||
+    rawCurrentUserContent ||
+    preCompressionSeed ||
+    "";
+  const conversationId = uuidv5(
+    conversationSeed.substring(0, 4000),
+    KIRO_CONVERSATION_NAMESPACE,
+  );
+
   // System prompt → prepend to the user content.
   if (body.system) {
     let systemText = "";
@@ -440,7 +489,7 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
   const payload = {
     conversationState: {
       chatTriggerType: "MANUAL",
-      conversationId: uuidv4(),
+      conversationId,
       currentMessage: {
         userInputMessage: {
           content: finalContent,
@@ -474,6 +523,15 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
     value: upstreamModel,
     enumerable: false,
   });
+
+  // Sanitize tool names that Kiro upstream would reject (MCP triples, >64 chars,
+  // odd charset) and attach the restore map so the response side maps names back
+  // to what the client sent. Only invalid names change; a valid-only tool set
+  // leaves the map empty and the payload byte-identical.
+  const toolNameMap = sanitizeKiroPayloadToolNames(payload);
+  if (toolNameMap.size > 0) {
+    payload._toolNameMap = toolNameMap;
+  }
 
   return payload;
 }

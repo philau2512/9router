@@ -1,3 +1,12 @@
+# Unreleased
+
+## Fixes
+- **Kiro**: derive a deterministic conversationId on the Claude route (uuidv5 over the raw first-user-turn content, matching the OpenAI route) so repeat requests reuse the AWS Builder ID conversation context instead of opening a fresh one each turn and burning free-tier quota. The seed is captured before the dynamic timestamp/thinking prefix so a fresh single-turn request stays stable.
+
+## Improvements
+- **Kiro**: send realistic client headers on streaming requests (`aws-sdk-js/1.0.34 … KiroIDE-<ver>` User-Agent, `x-amzn-kiro-agent-mode: vibe`) to reduce the risk of an upstream flagging free-tier accounts. Also sends `x-amzn-codewhisperer-optout: true` — a behavior change that opts telemetry/training data out. Auth branches (api_key/external_idp/idc/builder-id) and profileArn are unchanged.
+- **Kiro**: sanitize tool names that upstream would reject (MCP `mcp__server__tool` triples, names >64 chars, or with characters outside `[a-zA-Z0-9_-]`) before sending, and restore the client's original names in the streamed response. Already-valid names pass through byte-identical.
+
 # v0.5.30 (2026-07-10)
 
 ## Features

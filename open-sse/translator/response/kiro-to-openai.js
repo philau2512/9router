@@ -124,7 +124,10 @@ export function convertKiroToOpenAI(chunk, state) {
   if (eventType === "toolUseEvent" || data.toolUseEvent) {
     const toolUse = data.toolUseEvent || data;
     const toolCallId = toolUse.toolUseId || `call_${Date.now()}`;
-    const toolName = toolUse.name || "";
+    const rawToolName = toolUse.name || "";
+    // Restore the client's original tool name if it was sanitized on the way
+    // up (fail-open: names not in the map pass through unchanged).
+    const toolName = state.toolNameMap?.get(rawToolName) || rawToolName;
     const toolInput = toolUse.input || {};
 
     const openaiChunk = {
