@@ -14,6 +14,8 @@ export default function AddOpenAICompatibleModal({ isOpen, onClose, onCreated })
     prefix: "",
     apiType: "chat",
     baseUrl: "https://api.openai.com/v1",
+    connectionTimeoutMs: "",
+    stallTimeoutMs: "",
   });
   const [submitting, setSubmitting] = useState(false);
   const [checkKey, setCheckKey] = useState("");
@@ -44,6 +46,14 @@ export default function AddOpenAICompatibleModal({ isOpen, onClose, onCreated })
           apiType: formData.apiType,
           baseUrl: formData.baseUrl,
           type: "openai-compatible",
+          connectionTimeoutMs:
+            formData.connectionTimeoutMs === ""
+              ? null
+              : Number(formData.connectionTimeoutMs),
+          stallTimeoutMs:
+            formData.stallTimeoutMs === ""
+              ? null
+              : Number(formData.stallTimeoutMs),
         }),
       });
       const data = await res.json();
@@ -54,6 +64,8 @@ export default function AddOpenAICompatibleModal({ isOpen, onClose, onCreated })
           prefix: "",
           apiType: "chat",
           baseUrl: "https://api.openai.com/v1",
+          connectionTimeoutMs: "",
+          stallTimeoutMs: "",
         });
         setCheckKey("");
         setValidationResult(null);
@@ -145,6 +157,26 @@ export default function AddOpenAICompatibleModal({ isOpen, onClose, onCreated })
           }
           placeholder="https://api.openai.com/v1"
           hint="Use the base URL (ending in /v1) for your OpenAI-compatible API."
+        />
+        <Input
+          label="Connection timeout (ms)"
+          type="number"
+          value={formData.connectionTimeoutMs}
+          onChange={(e) =>
+            setFormData({ ...formData, connectionTimeoutMs: e.target.value })
+          }
+          placeholder="Default 60000 (max 120000)"
+          hint="Optional. Raw milliseconds until upstream headers must arrive. Raise for slow reasoning models. Leave empty for default."
+        />
+        <Input
+          label="Stall timeout (ms)"
+          type="number"
+          value={formData.stallTimeoutMs}
+          onChange={(e) =>
+            setFormData({ ...formData, stallTimeoutMs: e.target.value })
+          }
+          placeholder="Default 300000 (max 600000)"
+          hint="Optional. Raw milliseconds of stream silence before abort. Raise for slow reasoning models. Leave empty for default."
         />
         <Input
           label="API Key (for Check)"

@@ -27,6 +27,30 @@ export function normalizeProviderId(provider) {
   return providerByName?.id || trimmed;
 }
 
+// Clamp caps for custom compatible-provider timeout knobs (ms raw, no convert).
+// connect max = 120s (matches qoder built-in), stall max = 10 min.
+export const CONNECTION_TIMEOUT_MAX_MS = 120000;
+export const STALL_TIMEOUT_MAX_MS = 600000;
+
+/**
+ * Resolve a timeout field from a request body into a persist-ready value.
+ * Three-state contract (agreed with product):
+ *   undefined → caller keeps existing value (field absent from body / old client)
+ *   null      → caller clears the field (empty UI input → back to runtime default)
+ *   number    → clamped to [1, maxMs] and set
+ * Garbage (NaN, <=0, non-number) is treated as clear (null) — never persist dirty values.
+ * @param {*} raw
+ * @param {number} maxMs
+ * @returns {number|null|undefined}
+ */
+export function resolveTimeoutField(raw, maxMs) {
+  if (raw === undefined) return undefined; // client did not send → keep
+  if (raw === null || raw === "") return null; // empty input → clear
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null; // garbage → clear
+  return Math.min(n, maxMs); // clamp to cap
+}
+
 export function normalizeProviderSpecificData(
   provider,
   body = {},

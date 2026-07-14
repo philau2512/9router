@@ -170,6 +170,59 @@ describe("compatible provider connections API", () => {
     });
   });
 
+  it("seeds connectionTimeoutMs/stallTimeoutMs from node into providerSpecificData", async () => {
+    const ctx = await setupTestContext({
+      id: "openai-compatible-timeout-test",
+      type: "openai-compatible",
+      name: "Timeout Seed Node",
+      prefix: "tmo",
+      apiType: "chat",
+      baseUrl: "https://timeout-seed.test/v1",
+      connectionTimeoutMs: 90000,
+      stallTimeoutMs: 420000,
+    });
+    cleanup = ctx.cleanup;
+
+    const response = await ctx.POST(makeRequest(ctx.node.id));
+    const body = await response.json();
+    const storedConnections = await ctx.getProviderConnections({
+      provider: ctx.node.id,
+    });
+
+    expect(response.status).toBe(201);
+    expect(body.connection.providerSpecificData).toMatchObject({
+      connectionTimeoutMs: 90000,
+      stallTimeoutMs: 420000,
+    });
+    expect(storedConnections[0].providerSpecificData).toMatchObject({
+      connectionTimeoutMs: 90000,
+      stallTimeoutMs: 420000,
+    });
+  });
+
+  it("omits timeout keys from providerSpecificData when the node has none", async () => {
+    const ctx = await setupTestContext({
+      id: "openai-compatible-no-timeout-test",
+      type: "openai-compatible",
+      name: "No Timeout Node",
+      prefix: "ntm",
+      apiType: "chat",
+      baseUrl: "https://no-timeout.test/v1",
+    });
+    cleanup = ctx.cleanup;
+
+    const response = await ctx.POST(makeRequest(ctx.node.id));
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.connection.providerSpecificData).not.toHaveProperty(
+      "connectionTimeoutMs",
+    );
+    expect(body.connection.providerSpecificData).not.toHaveProperty(
+      "stallTimeoutMs",
+    );
+  });
+
   it("allows multiple connections on the same compatible node", async () => {
     const ctx = await setupTestContext({
       id: "openai-compatible-multiple-test",

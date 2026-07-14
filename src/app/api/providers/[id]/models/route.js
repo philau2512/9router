@@ -14,6 +14,7 @@ import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveCodexModels } from "open-sse/services/codexModels.js";
 import { resolveAntigravityModels } from "open-sse/services/antigravityModels.js";
+import { fetchWithTimeout } from "@/app/api/provider-nodes/validate/route";
 
 const GEMINI_CLI_MODELS_URL =
   "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
@@ -443,7 +444,7 @@ export async function GET(request, { params }) {
         );
       }
       const url = `${baseUrl.replace(/\/$/, "")}/models`;
-      const response = await fetch(url, {
+      const response = await fetchWithTimeout(url, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -464,7 +465,7 @@ export async function GET(request, { params }) {
       }
 
       const data = await response.json();
-      const models = data.data || data.models || [];
+      const models = parseOpenAIStyleModels(data);
 
       return NextResponse.json({
         provider: connection.provider,
@@ -488,7 +489,7 @@ export async function GET(request, { params }) {
       }
 
       const url = `${baseUrl}/models`;
-      const response = await fetch(url, {
+      const response = await fetchWithTimeout(url, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -511,7 +512,7 @@ export async function GET(request, { params }) {
       }
 
       const data = await response.json();
-      const models = data.data || data.models || [];
+      const models = parseOpenAIStyleModels(data);
 
       return NextResponse.json({
         provider: connection.provider,
