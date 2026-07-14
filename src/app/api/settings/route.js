@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSettings, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
+import { setDebugEnabled } from "@/sse/utils/logger";
 import bcrypt from "bcryptjs";
 
 export const dynamic = "force-dynamic";
@@ -93,6 +94,11 @@ export async function PATCH(request) {
     }
 
     const settings = await updateSettings(body);
+
+    // Apply debug-log toggle immediately (no restart required)
+    if (Object.prototype.hasOwnProperty.call(body, "debugLogEnabled")) {
+      setDebugEnabled(!!body.debugLogEnabled);
+    }
 
     // Apply outbound proxy settings immediately (no restart required)
     if (

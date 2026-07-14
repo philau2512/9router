@@ -47,6 +47,7 @@ const DEFAULT_SETTINGS = {
   maxRetryAttempts: 3,
   retryDelayMs: 2000,
   midStreamResumeEnabled: true,
+  debugLogEnabled: false,
 };
 
 async function readRaw() {

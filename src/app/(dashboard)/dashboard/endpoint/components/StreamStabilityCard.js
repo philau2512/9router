@@ -8,10 +8,12 @@ export function StreamStabilityCard({
   maxRetryAttempts,
   retryDelayMs,
   midStreamResumeEnabled,
+  debugLogEnabled,
   onAutoRetryOverloadedChange,
   onMaxRetryAttemptsChange,
   onRetryDelayMsChange,
   onMidStreamResumeEnabledChange,
+  onDebugLogEnabledChange,
 }) {
   return (
     <Card id="stream-stability">
@@ -86,6 +88,20 @@ export function StreamStabilityCard({
           }
         />
       </div>
+
+      <div className="flex items-center justify-between pt-4 border-t border-border gap-4">
+        <div className="min-w-0 flex-1">
+          <p className="font-medium">Debug Logging</p>
+          <p className="text-sm text-text-muted">
+            Bật log chi tiết (DEBUG level) để chẩn đoán stream/tool. Áp dụng
+            ngay, không cần restart. Ảnh hưởng hiệu năng — chỉ bật khi cần debug.
+          </p>
+        </div>
+        <Toggle
+          checked={debugLogEnabled}
+          onChange={() => onDebugLogEnabledChange(!debugLogEnabled)}
+        />
+      </div>
     </Card>
   );
 }
@@ -95,8 +111,10 @@ StreamStabilityCard.propTypes = {
   maxRetryAttempts: PropTypes.number.isRequired,
   retryDelayMs: PropTypes.number.isRequired,
   midStreamResumeEnabled: PropTypes.bool.isRequired,
+  debugLogEnabled: PropTypes.bool.isRequired,
   onAutoRetryOverloadedChange: PropTypes.func.isRequired,
   onMaxRetryAttemptsChange: PropTypes.func.isRequired,
   onRetryDelayMsChange: PropTypes.func.isRequired,
   onMidStreamResumeEnabledChange: PropTypes.func.isRequired,
+  onDebugLogEnabledChange: PropTypes.func.isRequired,
 };

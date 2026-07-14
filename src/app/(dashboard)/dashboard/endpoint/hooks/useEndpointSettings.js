@@ -15,6 +15,7 @@ export function useEndpointSettings() {
   const [maxRetryAttempts, setMaxRetryAttempts] = useState(3);
   const [retryDelayMs, setRetryDelayMs] = useState(2000);
   const [midStreamResumeEnabled, setMidStreamResumeEnabled] = useState(true);
+  const [debugLogEnabled, setDebugLogEnabled] = useState(false);
 
   const applySettings = async () => {
     const { ok, data } = await fetchSettings();
@@ -30,6 +31,7 @@ export function useEndpointSettings() {
     setMaxRetryAttempts(data.maxRetryAttempts ?? 3);
     setRetryDelayMs(data.retryDelayMs ?? 2000);
     setMidStreamResumeEnabled(data.midStreamResumeEnabled !== false);
+    setDebugLogEnabled(!!data.debugLogEnabled);
   };
 
   const handleTunnelDashboardAccess = async (value) => {
@@ -97,6 +99,15 @@ export function useEndpointSettings() {
     }
   };
 
+  const handleDebugLogEnabled = async (value) => {
+    try {
+      const { ok } = await patchSettings({ debugLogEnabled: value });
+      if (ok) setDebugLogEnabled(value);
+    } catch (error) {
+      console.log("Error updating debugLogEnabled:", error);
+    }
+  };
+
   const patchSetting = async (patch) => {
     try {
       await patchSettings(patch);
@@ -127,6 +138,7 @@ export function useEndpointSettings() {
     maxRetryAttempts,
     retryDelayMs,
     midStreamResumeEnabled,
+    debugLogEnabled,
     applySettings,
     handleTunnelDashboardAccess,
     handleRequireApiKey,
@@ -135,6 +147,7 @@ export function useEndpointSettings() {
     handleMaxRetryAttempts,
     handleRetryDelayMs,
     handleMidStreamResumeEnabled,
+    handleDebugLogEnabled,
     handleCavemanEnabled,
     handleCavemanLevel,
   };

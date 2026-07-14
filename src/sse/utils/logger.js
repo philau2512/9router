@@ -16,7 +16,23 @@ const levelName = (
 )
   .toUpperCase()
   .trim();
-const LEVEL = LOG_LEVELS[levelName] ?? LOG_LEVELS.INFO;
+// Level resolved from env at load time — the baseline to restore when the
+// runtime debug toggle is turned off.
+const ENV_LEVEL = LOG_LEVELS[levelName] ?? LOG_LEVELS.INFO;
+// Mutable so the Settings "Debug Logging" toggle can raise/lower verbosity at
+// runtime without a restart. Each gate reads this live (see setDebugEnabled).
+let currentLevel = ENV_LEVEL;
+
+// Runtime toggle for the Settings debug-log switch. true → force DEBUG level;
+// false → restore whatever the environment configured at boot.
+export function setDebugEnabled(enabled) {
+  currentLevel = enabled ? LOG_LEVELS.DEBUG : ENV_LEVEL;
+}
+
+// Expose the resolved level for callers that need to branch on verbosity.
+export function isDebugLevel() {
+  return currentLevel <= LOG_LEVELS.DEBUG;
+}
 
 export const logContextStore = new AsyncLocalStorage();
 
@@ -55,7 +71,7 @@ function formatData(data) {
 }
 
 export function debug(tag, message, data) {
-  if (LEVEL <= LOG_LEVELS.DEBUG) {
+  if (currentLevel <= LOG_LEVELS.DEBUG) {
     const dataStr = data ? ` ${formatData(data)}` : "";
     const prefix = getContextPrefix();
     console.log(
@@ -65,7 +81,7 @@ export function debug(tag, message, data) {
 }
 
 export function info(tag, message, data) {
-  if (LEVEL <= LOG_LEVELS.INFO) {
+  if (currentLevel <= LOG_LEVELS.INFO) {
     const dataStr = data ? ` ${formatData(data)}` : "";
     const prefix = getContextPrefix();
     console.log(
@@ -75,7 +91,7 @@ export function info(tag, message, data) {
 }
 
 export function warn(tag, message, data) {
-  if (LEVEL <= LOG_LEVELS.WARN) {
+  if (currentLevel <= LOG_LEVELS.WARN) {
     const dataStr = data ? ` ${formatData(data)}` : "";
     const prefix = getContextPrefix();
     console.log(
@@ -85,7 +101,7 @@ export function warn(tag, message, data) {
 }
 
 export function error(tag, message, data) {
-  if (LEVEL <= LOG_LEVELS.ERROR) {
+  if (currentLevel <= LOG_LEVELS.ERROR) {
     const dataStr = data ? ` ${formatData(data)}` : "";
     const prefix = getContextPrefix();
     console.log(
@@ -121,7 +137,7 @@ export function stream(event, data) {
 }
 
 export function ttft(message, data) {
-  if (LEVEL <= LOG_LEVELS.INFO) {
+  if (currentLevel <= LOG_LEVELS.INFO) {
     const dataStr = data ? ` ${formatData(data)}` : "";
     const prefix = getContextPrefix();
     console.log(
@@ -157,7 +173,7 @@ export function tagForSession(seed) {
 
 // Emit a structured INFO log line tagged with a session dot.
 export function line(tag, symbol, message) {
-  if (LEVEL > LOG_LEVELS.INFO) return;
+  if (currentLevel > LOG_LEVELS.INFO) return;
   console.log(`[${formatTime()}] ${tag} ${symbol} ${message}`);
 }
 
