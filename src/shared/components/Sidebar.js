@@ -35,6 +35,11 @@ const navItems = [
   },
   { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
   { href: "/dashboard/mitm", label: "MITM", icon: "security" },
+  {
+    href: "/dashboard/cursor-local",
+    label: "Cursor Local",
+    icon: "laptop_mac",
+  },
   { href: "/dashboard/pxpipe", label: "PxPipe", icon: "compress" },
   { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },
 ];

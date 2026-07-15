@@ -210,6 +210,26 @@ async function extractTokensViaCLI(dbPath) {
  */
 export async function GET() {
   try {
+    // Mutex: cursor-local owns fake Ultra session — do not import real tokens over it
+    try {
+      const { assertNotRunningForOAuth } = await import(
+        "@/cursor-local/lifecycle/mutex"
+      );
+      assertNotRunningForOAuth();
+    } catch (mutexErr) {
+      if (mutexErr?.code === "CURSOR_LOCAL_MUTEX") {
+        return NextResponse.json(
+          {
+            found: false,
+            error: mutexErr.message,
+            code: "CURSOR_LOCAL_MUTEX",
+          },
+          { status: 409 },
+        );
+      }
+      // import failure of mutex module should not block auto-import
+    }
+
     const platform = process.platform;
     if (platform !== "darwin" && platform !== "win32" && platform !== "linux") {
       return NextResponse.json(

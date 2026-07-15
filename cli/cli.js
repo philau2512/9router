@@ -476,6 +476,48 @@ function waitForExit(pid, timeoutMs) {
   return false;
 }
 
+// Kill cursor-local child by pid.json (DATA_DIR/cursor-local/pid.json)
+function killCursorLocalByPidFile() {
+  try {
+    const pidFile = path.join(getAppDataDir(), "cursor-local", "pid.json");
+    if (!fs.existsSync(pidFile)) return;
+    let meta;
+    try {
+      meta = JSON.parse(fs.readFileSync(pidFile, "utf8"));
+    } catch {
+      return;
+    }
+    const pid = parseInt(meta?.pid, 10);
+    if (!pid) return;
+    if (process.platform === "win32") {
+      try {
+        execSync(`taskkill /T /PID ${pid}`, {
+          stdio: "ignore",
+          windowsHide: true,
+          timeout: 2000,
+        });
+      } catch {}
+      try {
+        execSync(`taskkill /F /T /PID ${pid}`, {
+          stdio: "ignore",
+          windowsHide: true,
+          timeout: 3000,
+        });
+      } catch {}
+    } else {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {}
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {}
+    }
+    try {
+      fs.unlinkSync(pidFile);
+    } catch {}
+  } catch {}
+}
+
 // Kill MIT server by PID file (runs privileged, needs special handling)
 // Sends SIGTERM first so MIT can clean up host entries before dying.
 function killProxyByPidFile() {
@@ -833,6 +875,10 @@ async function startServer(latestVersionPromise) {
       } catch (e) {}
       // Kill MIT server (privileged process) via PID file
       killProxyByPidFile();
+      // Kill cursor-local child if running
+      try {
+        killCursorLocalByPidFile();
+      } catch (e) {}
       // Kill cloudflared/tailscale via PID file (only this app's tunnel)
       killTunnelByPidFile();
       // Kill server process directly

@@ -1,0 +1,9 @@
+{
+  "note": "Hand-built from aiserver_v1 AvailableModelsResponse field numbers",
+  "fields": {
+    "model_names": 1,
+    "models": 2,
+    "composer_model_config": 4
+  },
+  "generatedAt": "2026-07-15T10:29:10.180Z"
+}

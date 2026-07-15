@@ -1059,6 +1059,24 @@ async function enableToolDNS(tool, sudoPassword) {
   if (!status.running)
     throw new Error("MITM server is not running. Start the server first.");
 
+  // Mutex: cursor-local owns Cursor traffic via settings.json proxy —
+  // shared MITM Cursor DNS would double-hijack api2.cursor.sh.
+  if (tool === "cursor") {
+    try {
+      const {
+        isCursorLocalRunningFromPid,
+      } = require("../cursor-local/lifecycle/mutex");
+      if (isCursorLocalRunningFromPid()) {
+        throw new Error(
+          "Cursor Local is running — disable it before enabling Cursor DNS on shared MITM",
+        );
+      }
+    } catch (e) {
+      if (e.message && e.message.includes("Cursor Local is running")) throw e;
+      // module missing — ignore
+    }
+  }
+
   const password =
     sudoPassword || getCachedPassword() || (await loadEncryptedPassword());
   await addDNSEntry(tool, password);
