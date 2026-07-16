@@ -335,6 +335,76 @@ describe("DB SQLite layer — public API parity", () => {
     expect((await sqliteDb.getModelAliases()).marker).toBe("before");
   });
 
+  it("full SQLite snapshot preserves analytics blobs and restores safely", async () => {
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const adapter = await getAdapter();
+    const detailData = JSON.stringify({ response: { content: "x".repeat(128 * 1024) } });
+    adapter.run(
+      `INSERT OR REPLACE INTO requestDetails(id, timestamp, provider, model, connectionId, status, latency_json, tokens_json, data) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        "snapshot-detail",
+        new Date().toISOString(),
+        "openai",
+        "gpt-test",
+        "snapshot-connection",
+        "ok",
+        JSON.stringify({ total: 42 }),
+        JSON.stringify({ prompt_tokens: 7 }),
+        detailData,
+      ],
+    );
+    await sqliteDb.setModelAlias("snapshot-marker", "before");
+
+    const snapshot = await sqliteDb.exportFullDbSnapshot();
+    try {
+      expect(fs.readFileSync(snapshot.filePath).subarray(0, 16).toString()).toBe(
+        "SQLite format 3 ",
+      );
+
+      adapter.run(`DELETE FROM requestDetails WHERE id = ?`, ["snapshot-detail"]);
+      await sqliteDb.setModelAlias("snapshot-marker", "after");
+      await sqliteDb.importFullDbSnapshot(snapshot.filePath);
+
+      const restored = adapter.get(`SELECT * FROM requestDetails WHERE id = ?`, [
+        "snapshot-detail",
+      ]);
+      expect(restored.data).toBe(detailData);
+      expect(restored.latency_json).toBe(JSON.stringify({ total: 42 }));
+      expect(restored.tokens_json).toBe(JSON.stringify({ prompt_tokens: 7 }));
+      expect((await sqliteDb.getModelAliases())["snapshot-marker"]).toBe("before");
+    } finally {
+      fs.rmSync(snapshot.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("creates unique directories for simultaneous SQLite snapshot exports", async () => {
+    const [first, second] = await Promise.all([
+      sqliteDb.exportFullDbSnapshot(),
+      sqliteDb.exportFullDbSnapshot(),
+    ]);
+    try {
+      expect(first.dir).not.toBe(second.dir);
+      expect(fs.existsSync(first.filePath)).toBe(true);
+      expect(fs.existsSync(second.filePath)).toBe(true);
+    } finally {
+      fs.rmSync(first.dir, { recursive: true, force: true });
+      fs.rmSync(second.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an invalid SQLite snapshot without changing the live database", async () => {
+    await sqliteDb.setModelAlias("invalid-snapshot-marker", "unchanged");
+    const invalidSnapshot = path.join(tempDir, "invalid.sqlite");
+    fs.writeFileSync(invalidSnapshot, "not a SQLite database");
+
+    await expect(sqliteDb.importFullDbSnapshot(invalidSnapshot)).rejects.toThrow(
+      "not a SQLite database",
+    );
+    expect((await sqliteDb.getModelAliases())["invalid-snapshot-marker"]).toBe(
+      "unchanged",
+    );
+  });
+
   it("pricing: user pricing merged with constants", async () => {
     await sqliteDb.updatePricing({
       openai: { "gpt-test": { input: 1, output: 2 } },

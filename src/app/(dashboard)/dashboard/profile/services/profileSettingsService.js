@@ -40,15 +40,14 @@ export async function testOidcSettings(payload) {
   return { ok: response.ok, data };
 }
 
+export function getDatabaseBackupUrl({ includeUsageAnalytics }) {
+  return includeUsageAnalytics
+    ? "/api/settings/database?includeUsageAnalytics=true"
+    : "/api/settings/database";
+}
+
 export async function exportDatabaseBackup({ includeUsageAnalytics }) {
-  const params = new URLSearchParams();
-  if (includeUsageAnalytics) {
-    params.set("includeUsageAnalytics", "true");
-  }
-  const query = params.toString();
-  const response = await fetch(
-    `/api/settings/database${query ? `?${query}` : ""}`,
-  );
+  const response = await fetch(getDatabaseBackupUrl({ includeUsageAnalytics }));
   const data = await readJson(response);
   return { ok: response.ok, data };
 }
@@ -58,6 +57,16 @@ export async function importDatabaseBackup(payload) {
     method: "POST",
     headers: JSON_HEADERS,
     body: JSON.stringify(payload),
+  });
+  const data = await readJson(response);
+  return { ok: response.ok, data };
+}
+
+export async function importSqliteDatabaseBackup(file) {
+  const response = await fetch("/api/settings/database", {
+    method: "POST",
+    headers: { "Content-Type": "application/vnd.sqlite3" },
+    body: file,
   });
   const data = await readJson(response);
   return { ok: response.ok, data };

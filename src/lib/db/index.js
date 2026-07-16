@@ -1,6 +1,10 @@
 // Public API barrel — all DB functions
 import { getAdapter } from "./driver.js";
 import { stringifyJson, parseJson } from "./helpers/jsonCol.js";
+import {
+  createFullDbSnapshot,
+  restoreFullDbSnapshot,
+} from "./backup.js";
 
 // Settings
 export {
@@ -204,6 +208,23 @@ export async function exportDb({ includeUsageAnalytics = false } = {}) {
   return out;
 }
 
+export async function exportFullDbSnapshot() {
+  return createFullDbSnapshot(await getAdapter());
+}
+
+export async function getFullDbSnapshotUploadLimit() {
+  const adapter = await getAdapter();
+  const { SQLJS_SNAPSHOT_UPLOAD_LIMIT_BYTES, NATIVE_SNAPSHOT_UPLOAD_LIMIT_BYTES } =
+    await import("./backup.js");
+  return adapter.driver === "sql.js"
+    ? SQLJS_SNAPSHOT_UPLOAD_LIMIT_BYTES
+    : NATIVE_SNAPSHOT_UPLOAD_LIMIT_BYTES;
+}
+
+export async function importFullDbSnapshot(filePath) {
+  restoreFullDbSnapshot(await getAdapter(), filePath);
+}
+
 export async function importDb(
   payload,
   { restoreUsageAnalytics = false } = {},
@@ -390,7 +411,6 @@ export async function importDb(
     }
   });
 
-  return await exportDb({ includeUsageAnalytics: restoreUsageAnalytics });
 }
 
 // Eager init helper (optional)

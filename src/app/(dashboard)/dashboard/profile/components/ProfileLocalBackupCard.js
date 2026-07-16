@@ -55,8 +55,8 @@ export function ProfileLocalBackupCard({
                 Include Usage & Analytics
               </p>
               <p className="text-xs sm:text-sm text-text-muted">
-                Add token, cost, request history, and request details to the
-                downloaded backup.
+                Download a full SQLite snapshot with token, cost, request
+                history, and request details.
               </p>
             </div>
             <Toggle
@@ -71,8 +71,8 @@ export function ProfileLocalBackupCard({
                 Restore Usage & Analytics
               </p>
               <p className="text-xs sm:text-sm text-text-muted">
-                When importing a backup that contains analytics, replace the
-                current usage history with the backup data.
+                JSON backups can optionally restore analytics. SQLite
+                snapshots always restore the complete database.
               </p>
             </div>
             <Toggle
@@ -103,7 +103,7 @@ export function ProfileLocalBackupCard({
             <input
               ref={importFileRef}
               type="file"
-              accept="application/json,.json"
+              accept="application/json,.json,application/vnd.sqlite3,.sqlite"
               className="hidden"
               onChange={handleImportDatabase}
             />
