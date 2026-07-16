@@ -74,7 +74,9 @@ export function geminiToOpenAIResponse(chunk, state) {
           const toolCallIndex = state.functionIndex++;
 
           const toolCall = {
-            id: `${fcName}-${Date.now()}-${toolCallIndex}`,
+            id:
+              part.functionCall.id ||
+              `gemini_call_${toolCallIndex}_${String(fcName || "unknown").replace(/[^a-zA-Z0-9_-]/g, "_")}`,
             index: toolCallIndex,
             type: "function",
             function: {
@@ -135,7 +137,9 @@ export function geminiToOpenAIResponse(chunk, state) {
         const toolCallIndex = state.functionIndex++;
 
         const toolCall = {
-          id: `${fcName}-${Date.now()}-${toolCallIndex}`,
+          id:
+            part.functionCall.id ||
+            `gemini_call_${toolCallIndex}_${String(fcName || "unknown").replace(/[^a-zA-Z0-9_-]/g, "_")}`,
           index: toolCallIndex,
           type: "function",
           function: {

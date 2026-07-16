@@ -3,11 +3,13 @@
  */
 
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
+import { CLIENT_METADATA, parseResetTime } from "./utils.js";
+import { normalizeCloudCodeProjectId } from "./shared.js";
 import {
-  ANTIGRAVITY_CONFIG,
-  CLIENT_METADATA,
-  parseResetTime,
-} from "./utils.js";
+  ANTIGRAVITY_USAGE_ENDPOINTS,
+  ANTIGRAVITY_USAGE_MODEL_IDS,
+} from "../../providers/antigravity-provider-metadata.js";
+import { ANTIGRAVITY_IDE_USER_AGENT } from "../../providers/shared.js";
 
 /**
  * Get Antigravity subscription info
@@ -20,12 +22,12 @@ async function getAntigravitySubscriptionInfo(
   const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
   try {
     const response = await proxyAwareFetch(
-      ANTIGRAVITY_CONFIG.loadProjectApiUrl,
+      ANTIGRAVITY_USAGE_ENDPOINTS.loadProjectApiUrl,
       {
         method: "POST",
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          "User-Agent": ANTIGRAVITY_CONFIG.userAgent,
+          "User-Agent": ANTIGRAVITY_IDE_USER_AGENT,
           "Content-Type": "application/json",
           "x-request-source": "local", // MITM bypass
         },
@@ -68,7 +70,9 @@ export async function getAntigravityUsage(
       accessToken,
       proxyOptions,
     );
-    const projectId = subscriptionInfo?.cloudaicompanionProject || null;
+    const projectId = normalizeCloudCodeProjectId(
+      subscriptionInfo?.cloudaicompanionProject,
+    );
 
     // Fetch quota data with timeout
     const controller = new AbortController();
@@ -77,12 +81,12 @@ export async function getAntigravityUsage(
     let response;
     try {
       response = await proxyAwareFetch(
-        ANTIGRAVITY_CONFIG.quotaApiUrl,
+        ANTIGRAVITY_USAGE_ENDPOINTS.quotaApiUrl,
         {
           method: "POST",
           headers: {
             Authorization: `Bearer ${accessToken}`,
-            "User-Agent": ANTIGRAVITY_CONFIG.userAgent,
+            "User-Agent": ANTIGRAVITY_IDE_USER_AGENT,
             "Content-Type": "application/json",
             "X-Client-Name": "antigravity",
             "X-Client-Version": "1.107.0",
@@ -123,28 +127,14 @@ export async function getAntigravityUsage(
 
     // Parse model quotas (inspired by vscode-antigravity-cockpit)
     if (data.models) {
-      // Filter only recommended/important models (must match PROVIDER_MODELS ag ids)
-      const importantModels = [
-        "gemini-3-flash-agent",
-        "gemini-3.5-flash-low",
-        "gemini-pro-agent",
-        "gemini-3.1-pro-low",
-        "claude-sonnet-4-6",
-        "claude-opus-4-6-thinking",
-        "gpt-oss-120b-medium",
-        "gemini-3-flash",
-        // Image generation models
-        "gemini-3.1-flash-image",
-      ];
-
       for (const [modelKey, info] of Object.entries(data.models)) {
         // Skip models without quota info
         if (!info.quotaInfo) {
           continue;
         }
 
-        // Skip internal models and non-important models
-        if (info.isInternal || !importantModels.includes(modelKey)) {
+        // Skip internal models and models outside the static Antigravity catalog.
+        if (info.isInternal || !ANTIGRAVITY_USAGE_MODEL_IDS.has(modelKey)) {
           continue;
         }
 

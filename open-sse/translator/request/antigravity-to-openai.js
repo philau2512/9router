@@ -52,10 +52,17 @@ export function antigravityToOpenAIRequest(model, body, stream) {
     }
   }
 
+  // Pair ID-less tool responses with earlier same-name calls in this request only.
+  const unmatchedToolCallIds = new Map();
+
   // Convert contents to messages
   if (req.contents && Array.isArray(req.contents)) {
-    for (const content of req.contents) {
-      const converted = convertContent(content);
+    for (const [contentIndex, content] of req.contents.entries()) {
+      const converted = convertContent(
+        content,
+        contentIndex,
+        unmatchedToolCallIds,
+      );
       if (converted) {
         if (Array.isArray(converted)) {
           result.messages.push(...converted);
@@ -120,9 +127,31 @@ function normalizeSchemaTypes(schema) {
   return result;
 }
 
+function fallbackToolCallId(contentIndex, partIndex, name) {
+  const normalizedName = String(name || "unknown").replace(/[^a-zA-Z0-9_-]/g, "_");
+  return `ag_call_${contentIndex}_${partIndex}_${normalizedName}`;
+}
+
+function dequeueMatchingToolCallId(unmatchedToolCallIds, name) {
+  const ids = unmatchedToolCallIds.get(name);
+  if (!ids?.length) return null;
+  const id = ids.shift();
+  if (ids.length === 0) unmatchedToolCallIds.delete(name);
+  return id;
+}
+
+function removeMatchingToolCallId(unmatchedToolCallIds, name, id) {
+  const ids = unmatchedToolCallIds.get(name);
+  if (!ids?.length) return;
+  const index = ids.indexOf(id);
+  if (index === -1) return;
+  ids.splice(index, 1);
+  if (ids.length === 0) unmatchedToolCallIds.delete(name);
+}
+
 // Convert Antigravity content to OpenAI message
 // Handles: text, thought, thoughtSignature, functionCall, functionResponse, inlineData
-function convertContent(content) {
+function convertContent(content, contentIndex, unmatchedToolCallIds) {
   const role =
     content.role === "model"
       ? "assistant"
@@ -139,7 +168,7 @@ function convertContent(content) {
   const toolResults = [];
   let reasoningContent = "";
 
-  for (const part of content.parts) {
+  for (const [partIndex, part] of content.parts.entries()) {
     // Thinking content (thought: true)
     if (part.thought === true && part.text) {
       reasoningContent += part.text;
@@ -169,13 +198,17 @@ function convertContent(content) {
 
     // Function call
     if (part.functionCall) {
+      const name = part.functionCall.name;
+      const id =
+        part.functionCall.id || fallbackToolCallId(contentIndex, partIndex, name);
+      const ids = unmatchedToolCallIds.get(name) || [];
+      ids.push(id);
+      unmatchedToolCallIds.set(name, ids);
       toolCalls.push({
-        id:
-          part.functionCall.id ||
-          `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        id,
         type: "function",
         function: {
-          name: part.functionCall.name,
+          name,
           arguments: JSON.stringify(part.functionCall.args || {}),
         },
       });
@@ -183,9 +216,16 @@ function convertContent(content) {
 
     // Function response → collect all, each becomes a separate tool message
     if (part.functionResponse) {
+      const name = part.functionResponse.name;
+      const nativeId = part.functionResponse.id;
+      if (nativeId) {
+        removeMatchingToolCallId(unmatchedToolCallIds, name, nativeId);
+      }
+      const id =
+        nativeId || dequeueMatchingToolCallId(unmatchedToolCallIds, name) || name;
       toolResults.push({
         role: "tool",
-        tool_call_id: part.functionResponse.id || part.functionResponse.name,
+        tool_call_id: id,
         content: JSON.stringify(
           part.functionResponse.response?.result ||
             part.functionResponse.response ||

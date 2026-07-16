@@ -1,4 +1,5 @@
 import { platform, arch } from "os";
+import { ANTIGRAVITY_BASE_URLS } from "../providers/antigravity-provider-metadata.js";
 
 // === OS/Arch helpers ===
 function mapStainlessOs() {
@@ -119,10 +120,7 @@ export const PROVIDERS = {
     stallTimeoutMs: 120000,
   },
   antigravity: {
-    baseUrls: [
-      "https://daily-cloudcode-pa.googleapis.com",
-      "https://daily-cloudcode-pa.sandbox.googleapis.com",
-    ],
+    baseUrls: ANTIGRAVITY_BASE_URLS,
     format: "antigravity",
     headers: { "User-Agent": `antigravity/1.107.0 ${platform()}/${arch()}` },
     clientId:

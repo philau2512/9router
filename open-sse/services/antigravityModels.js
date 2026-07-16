@@ -13,23 +13,11 @@
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { getPlatformUserAgent } from "../config/appConstants.js";
 import { fetchWithFallback, credentialCacheKey } from "./dynamicModels.js";
-
-const FETCH_MODELS_PATH = "/v1internal:fetchAvailableModels";
-const BASE_URLS = [
-  "https://cloudcode-pa.googleapis.com",
-  "https://daily-cloudcode-pa.googleapis.com",
-  "https://daily-cloudcode-pa.sandbox.googleapis.com",
-];
-
-// Internal/experimental ids to skip (match CLIProxyAPI's skip list).
-const SKIP_IDS = new Set([
-  "chat_20706",
-  "chat_23310",
-  "tab_flash_lite_preview",
-  "tab_jump_flash_lite_preview",
-  "gemini-2.5-flash-thinking",
-  "gemini-2.5-pro",
-]);
+import {
+  ANTIGRAVITY_BASE_URLS,
+  ANTIGRAVITY_DYNAMIC_MODEL_SKIP_IDS,
+  ANTIGRAVITY_OPERATIONS,
+} from "../providers/antigravity-provider-metadata.js";
 
 /** @type {Map<string, { expiresAt: number, value: { models: object[] } }>} */
 const catalogCache = new Map();
@@ -65,10 +53,10 @@ export async function resolveAntigravityModels(credentials, options = {}) {
     log: options.log,
     label: "AG_MODELS",
     fetcher: async (signal) => {
-      for (const base of BASE_URLS) {
+      for (const base of ANTIGRAVITY_BASE_URLS) {
         try {
           const res = await proxyAwareFetch(
-            base + FETCH_MODELS_PATH,
+            base + ANTIGRAVITY_OPERATIONS.fetchAvailableModels,
             { method: "POST", headers, body: payload, signal },
             options.proxyOptions || null,
           );
@@ -79,7 +67,7 @@ export async function resolveAntigravityModels(credentials, options = {}) {
           const models = [];
           for (const [rawId, modelData] of Object.entries(modelsMap)) {
             const id = String(rawId).trim();
-            if (!id || SKIP_IDS.has(id)) continue;
+            if (!id || ANTIGRAVITY_DYNAMIC_MODEL_SKIP_IDS.has(id)) continue;
             const name = (modelData?.displayName || id).toString();
             models.push({ id, name });
           }

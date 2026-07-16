@@ -25,6 +25,7 @@ import minimaxRegistry from "./minimax.js";
 import minimaxCnRegistry from "./minimax-cn.js";
 import xiaomiMimoRegistry from "./xiaomi-mimo.js";
 import xiaomiTokenplanRegistry from "./xiaomi-tokenplan.js";
+import antigravityRegistry from "./antigravity.js";
 
 const REGISTRY_OVERRIDES = new Map([
   ["venice", veniceRegistry],
@@ -39,6 +40,7 @@ const REGISTRY_OVERRIDES = new Map([
   ["minimax-cn", minimaxCnRegistry],
   ["xiaomi-mimo", xiaomiMimoRegistry],
   ["xiaomi-tokenplan", xiaomiTokenplanRegistry],
+  ["antigravity", antigravityRegistry],
 ]);
 
 // Generate minimal registry entries from fork's flat provider config.
