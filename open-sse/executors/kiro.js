@@ -784,15 +784,33 @@ export class KiroExecutor extends BaseExecutor {
       },
 
       flush(controller) {
-        // If upstream disconnects before sending messageStopEvent, it's a premature close.
-        // Throw an error so streamHandler's transparent mid-stream resume can kick in.
+        // Tool-bearing Kiro streams may end after the tool event without a
+        // messageStopEvent. They are complete tool turns, not resumable errors.
         if (!state.finishEmitted) {
-          controller.error(
-            new Error(
-              "Upstream connection closed unexpectedly without messageStopEvent",
-            ),
-          );
-          return;
+          if (!state.hasToolCalls) {
+            controller.error(
+              new Error(
+                "Upstream connection closed unexpectedly without messageStopEvent",
+              ),
+            );
+            return;
+          }
+          state.finishEmitted = true;
+          const finishChunk = {
+            id: responseId,
+            object: "chat.completion.chunk",
+            created,
+            model,
+            choices: [
+              {
+                index: 0,
+                delta: {},
+                finish_reason: "tool_calls",
+              },
+            ],
+          };
+          if (state.usage) finishChunk.usage = state.usage;
+          controller.enqueue(_frame(finishChunk));
         }
 
         // Send final done message

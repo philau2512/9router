@@ -154,7 +154,11 @@ export default function ProviderDetailPage() {
   const isFreeNoAuth = !!FREE_PROVIDERS[providerId]?.noAuth;
   const hasDualAuthModes = !isCompatible && isOAuth && supportsApiKeyAuth;
   const oauthConnectionLabel =
-    providerId === "xai" ? "Grok Build OAuth" : "OAuth";
+    providerId === "xai"
+      ? "Grok Build OAuth"
+      : providerId === "grok-cli"
+        ? "Grok CLI Device Login"
+        : "OAuth";
   const apiKeyConnectionLabel =
     providerId === "xai" ? "xAI API Key" : "API Key";
   const staticModels = getModelsByProviderId(providerId);

@@ -25,6 +25,7 @@ import minimaxRegistry from "./minimax.js";
 import minimaxCnRegistry from "./minimax-cn.js";
 import xiaomiMimoRegistry from "./xiaomi-mimo.js";
 import xiaomiTokenplanRegistry from "./xiaomi-tokenplan.js";
+import xaiRegistry from "./xai.js";
 import antigravityRegistry from "./antigravity.js";
 
 const REGISTRY_OVERRIDES = new Map([
@@ -40,6 +41,7 @@ const REGISTRY_OVERRIDES = new Map([
   ["minimax-cn", minimaxCnRegistry],
   ["xiaomi-mimo", xiaomiMimoRegistry],
   ["xiaomi-tokenplan", xiaomiTokenplanRegistry],
+  ["xai", xaiRegistry],
   ["antigravity", antigravityRegistry],
 ]);
 

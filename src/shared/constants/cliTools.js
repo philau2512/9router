@@ -218,14 +218,29 @@ export const CLI_TOOLS = {
     description: "OpenAI Codex CLI",
     configType: "custom",
   },
-  // Grok Build (Grok CLI) — device-code OAuth, cli-chat-proxy.grok.com. See upstream a11937cdd.
-  "grok-cli": {
-    id: "grok-cli",
-    name: "Grok Build (Grok CLI)",
+  "grok-build": {
+    id: "grok-build",
+    name: "Grok Build",
     image: "/providers/grok-cli.png",
     color: "#1DA1F2",
-    description: "xAI Grok Build CLI via device-code OAuth",
+    description: "xAI Grok Build TUI coding agent",
     configType: "custom",
+    docsUrl: "https://x.ai/cli",
+    defaultCommand: "grok",
+    notes: [
+      {
+        type: "info",
+        text: "Grok Build uses ~/.grok/config.toml. 9Router writes a [model.9router] custom model and sets it as the default.",
+      },
+      {
+        type: "info",
+        text: "After Apply, run grok (or /model 9router) to use the routed model. Switch back anytime with /model grok-build.",
+      },
+      {
+        type: "warning",
+        text: "Config path: Linux/macOS ~/.grok/config.toml • Windows %USERPROFILE%\\.grok\\config.toml",
+      },
+    ],
   },
   opencode: {
     id: "opencode",

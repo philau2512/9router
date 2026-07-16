@@ -102,6 +102,20 @@ export const OAUTH_PROVIDERS = {
     authModes: ["oauth", "apikey"],
     hasOAuth: true,
   },
+  "grok-cli": {
+    id: "grok-cli",
+    alias: "gcli",
+    name: "Grok CLI (Grok Build)",
+    icon: "auto_awesome",
+    color: "#1DA1F2",
+    textIcon: "GC",
+    website: "https://x.ai",
+    notice: {
+      text: "Sign in with your xAI / Grok account via device code. Uses Grok Build subscription credits.",
+      signupUrl: "https://grok.com/supergrok",
+    },
+    thinkingConfig: THINKING_CONFIG.effort,
+  },
   // "kimi-coding": { id: "kimi-coding", alias: "kmc", name: "Kimi Coding", icon: "psychology", color: "#1E40AF", textIcon: "KC" },
   kilocode: {
     id: "kilocode",

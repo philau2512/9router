@@ -17,7 +17,7 @@ import {
   parseUpstreamError,
   formatProviderError,
 } from "../utils/error.js";
-import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import { HTTP_STATUS, TOKEN_SAVER_HEADER } from "../config/runtimeConfig.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
 import {
   trackPendingRequest,
@@ -370,10 +370,14 @@ export async function handleChatCore({
   // Covers both passthrough (source shape) and translated (target shape) flows
   const finalFormat = passthrough ? sourceFormat : targetFormat;
 
+  // Per-request opt-out: client can bypass all token savers via header.
+  const tokenSaverEnabled =
+    clientRawRequest?.headers?.[TOKEN_SAVER_HEADER]?.toLowerCase() !== "off";
+
   // Headroom: compress messages via external proxy when configured (fail-open)
   const headroomDiagnostics = {};
   const headroomStats = await compressWithHeadroom(translatedBody, {
-    enabled: headroomEnabled,
+    enabled: tokenSaverEnabled && headroomEnabled,
     url: headroomUrl,
     model: upstreamModel,
     format: finalFormat,
@@ -393,7 +397,7 @@ export async function handleChatCore({
         `reported token delta, but outbound JSON shrank <5%; provider may bill near-original payload | ${headroomSizeLine}`,
       );
     }
-  } else if (headroomEnabled) {
+  } else if (tokenSaverEnabled && headroomEnabled) {
     log?.warn?.(
       "HEADROOM",
       `skipped: ${headroomDiagnostics.reason || "compression unavailable"}${headroomDiagnostics.endpoint ? ` (${headroomDiagnostics.endpoint})` : ""}`,
@@ -409,14 +413,14 @@ export async function handleChatCore({
   }
 
   // RTK: compress tool_result content
-  const rtkStats = compressMessages(translatedBody, rtkEnabled);
+  const rtkStats = compressMessages(translatedBody, tokenSaverEnabled && rtkEnabled);
   const rtkLine = formatRtkLog(rtkStats);
   if (rtkLine) console.log(rtkLine);
 
   // PxPipe: multimodal prompt compression (upstream dcf1927f2).
   // Runs after RTK, before dispatch. Additive — placeholder until P10 is fully wired.
   let pxpipeSummary = null;
-  if (pxpipeEnabled) {
+  if (tokenSaverEnabled && pxpipeEnabled) {
     try {
       const pxpipeResult = await compressWithPxpipe(translatedBody, {
         enabled: true,
@@ -442,13 +446,13 @@ export async function handleChatCore({
   // PxPipe summary wired into sharedCtx so requestDetail builders can include compression stats.
 
   // Caveman: inject terse-style system prompt
-  if (cavemanEnabled && cavemanLevel) {
+  if (tokenSaverEnabled && cavemanEnabled && cavemanLevel) {
     injectCaveman(translatedBody, finalFormat, cavemanLevel);
     log?.debug?.("CAVEMAN", `${cavemanLevel} | ${finalFormat}`);
   }
 
   // Ponytail: inject deletion-biased coding style system prompt (token saver)
-  if (ponytailEnabled && ponytailLevel) {
+  if (tokenSaverEnabled && ponytailEnabled && ponytailLevel) {
     injectPonytail(translatedBody, finalFormat, ponytailLevel);
     log?.debug?.("PONYTAIL", `${ponytailLevel} | ${finalFormat}`);
   }

@@ -39,6 +39,8 @@ const executors = {
   "opencode-go": new OpenCodeGoExecutor(),
   "grok-web": new GrokWebExecutor(),
   "grok-cli": new GrokCliExecutor(),
+  gcli: new GrokCliExecutor(),
+  gb: new GrokCliExecutor(),
   "perplexity-web": new PerplexityWebExecutor(),
   "ollama-local": new OllamaLocalExecutor(),
   commandcode: new CommandCodeExecutor(),

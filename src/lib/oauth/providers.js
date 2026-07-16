@@ -449,6 +449,9 @@ const PROVIDERS = {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || null,
         expiresIn: tokens.expires_in,
+        ...(tokens.expires_in
+          ? { expiresAt: new Date(Date.now() + tokens.expires_in * 1000).toISOString() }
+          : {}),
         scope: tokens.scope,
         email: email || undefined,
         name: displayName || email || undefined,

@@ -67,6 +67,10 @@ export const PROVIDER_ALIASES = Object.freeze({
   vxp: "vertex-partner",
   "vertex-partner": "vertex-partner",
   // Web cookie providers
+  gcli: "grok-cli",
+  gb: "grok-cli",
+  "grok-cli": "grok-cli",
+  "grok-build": "grok-cli",
   gw: "grok-web",
   "grok-web": "grok-web",
   pw: "perplexity-web",
@@ -141,6 +145,10 @@ export const PROVIDER_ALIASES = Object.freeze({
   bb: "blackbox",
   blackbox: "blackbox",
 });
+
+const BUILTIN_MODEL_ALIASES = {
+  "grok-build": "gcli/grok-build",
+};
 
 /**
  * Resolve provider alias to provider ID
@@ -229,7 +237,9 @@ export async function getModelInfoCore(modelStr, aliasesOrGetter) {
       : aliasesOrGetter;
 
   // Resolve alias
-  const resolved = resolveModelAliasFromMap(parsed.model, aliases);
+  const resolved =
+    resolveModelAliasFromMap(parsed.model, aliases) ||
+    resolveModelAliasFromMap(parsed.model, BUILTIN_MODEL_ALIASES);
   if (resolved) {
     return resolved;
   }
