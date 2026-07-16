@@ -5,8 +5,9 @@
   "type": "module",
   "description": "Unit tests for 9router embeddings endpoint",
   "scripts": {
-    "test": "NODE_PATH=/tmp/node_modules /tmp/node_modules/.bin/vitest run --reporter=verbose",
-    "test:watch": "NODE_PATH=/tmp/node_modules /tmp/node_modules/.bin/vitest --reporter=verbose"
+    "test": "node ./node_modules/vitest/vitest.mjs run --config ./vitest.config.js --reporter=verbose",
+    "test:watch": "node ./node_modules/vitest/vitest.mjs --config ./vitest.config.js --reporter=verbose",
+    "test:baseline": "node ./__baseline__/run-regression.mjs"
   },
   "devDependencies": {
     "vitest": "^4.0.0"

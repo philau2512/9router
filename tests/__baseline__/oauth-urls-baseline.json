@@ -1,0 +1,86 @@
+{
+  "oauthEndpoints": {
+    "anthropic": {
+      "auth": "https://api.anthropic.com/v1/oauth/authorize",
+      "token": "https://api.anthropic.com/v1/oauth/token"
+    },
+    "github": {
+      "auth": "https://github.com/login/oauth/authorize",
+      "deviceCode": "https://github.com/login/device/code",
+      "token": "https://github.com/login/oauth/access_token"
+    },
+    "google": {
+      "auth": "https://accounts.google.com/o/oauth2/auth",
+      "token": "https://oauth2.googleapis.com/token"
+    },
+    "iflow": {
+      "auth": "https://iflow.cn/oauth",
+      "token": "https://iflow.cn/oauth/token"
+    },
+    "openai": {
+      "auth": "https://auth.openai.com/oauth/authorize",
+      "token": "https://auth.openai.com/oauth/token"
+    },
+    "qwen": {
+      "auth": "https://qwen.ai/api/v1/oauth2/device/code",
+      "token": "https://qwen.ai/api/v1/oauth2/token"
+    }
+  },
+  "providerEndpoints": {
+    "antigravity": {
+      "clientId": "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
+    },
+    "claude": {
+      "clientId": "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
+      "tokenUrl": "https://api.anthropic.com/v1/oauth/token"
+    },
+    "cline": {
+      "refreshUrl": "https://api.cline.bot/api/v1/auth/refresh",
+      "tokenUrl": "https://api.cline.bot/api/v1/auth/token"
+    },
+    "clinepass": {
+      "refreshUrl": "https://api.cline.bot/api/v1/auth/refresh",
+      "tokenUrl": "https://api.cline.bot/api/v1/auth/token"
+    },
+    "codebuddy-cn": {
+      "refreshUrl": "https://copilot.tencent.com/v2/plugin/auth/token/refresh"
+    },
+    "codex": {
+      "clientId": "app_EMoamEEZ73f0CkXaXp7hrann",
+      "tokenUrl": "https://auth.openai.com/oauth/token"
+    },
+    "gemini": {
+      "clientId": "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com"
+    },
+    "gemini-cli": {
+      "clientId": "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com"
+    },
+    "github": {
+      "clientId": "Iv1.b507a08c87ecfe98"
+    },
+    "iflow": {
+      "authUrl": "https://iflow.cn/oauth",
+      "clientId": "10009311001",
+      "tokenUrl": "https://iflow.cn/oauth/token"
+    },
+    "kimi-coding": {
+      "clientId": "17e5f671-d194-4dfb-9706-5516cb48c098",
+      "refreshUrl": "https://auth.kimi.com/api/oauth/token",
+      "tokenUrl": "https://auth.kimi.com/api/oauth/token"
+    },
+    "kiro": {
+      "authUrl": "https://prod.us-east-1.auth.desktop.kiro.dev",
+      "tokenUrl": "https://prod.us-east-1.auth.desktop.kiro.dev/refreshToken"
+    },
+    "qwen": {
+      "authUrl": "https://chat.qwen.ai/api/v1/oauth2/device/code",
+      "clientId": "f0304373b74a44d2b584a3fb70ca9e56",
+      "tokenUrl": "https://chat.qwen.ai/api/v1/oauth2/token"
+    },
+    "xai": {
+      "clientId": "b1a00492-073a-47ea-816f-4c329264a828",
+      "refreshUrl": "https://auth.x.ai/oauth2/token",
+      "tokenUrl": "https://auth.x.ai/oauth2/token"
+    }
+  }
+}
