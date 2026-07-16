@@ -183,7 +183,7 @@ export default function ProviderConnectionsToolbar({
                   value={providerStickyLimit}
                   onChange={(e) => handleStickyLimitChange(e.target.value)}
                   placeholder="1"
-                  className="w-10 rounded-md border border-border bg-background px-1 py-0.5 text-center text-xs focus:border-primary focus:outline-none"
+                  className="w-16 rounded-md border border-border bg-background px-1 py-0.5 text-center text-xs focus:border-primary focus:outline-none"
                 />
               </div>
             )}
