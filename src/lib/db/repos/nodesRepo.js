@@ -68,6 +68,12 @@ export async function createProviderNode(data) {
     createdAt: now,
     updatedAt: now,
   };
+  // Optional custom timeout knobs — only persist when caller passed them
+  // (undefined = not set; null/number are meaningful and round-trip via JSON `data`).
+  if (data.connectionTimeoutMs !== undefined)
+    node.connectionTimeoutMs = data.connectionTimeoutMs;
+  if (data.stallTimeoutMs !== undefined)
+    node.stallTimeoutMs = data.stallTimeoutMs;
   upsert(db, node);
   return node;
 }

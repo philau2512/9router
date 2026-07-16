@@ -22,12 +22,7 @@
 import { createHash, randomUUID } from "crypto";
 import { refreshKiroToken } from "./tokenRefresh.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-
-const KIRO_RUNTIME_SDK_VERSION = "1.0.0";
-const KIRO_AGENT_OS = "windows";
-const KIRO_AGENT_OS_VERSION = "10.0.26200";
-const KIRO_NODE_VERSION = "22.21.1";
-const KIRO_VERSION = "0.10.32";
+import { buildKiroClientUserAgent } from "../config/kiroConstants.js";
 
 const DEFAULT_REGION = "us-east-1";
 const FETCH_TIMEOUT_MS = 30_000;
@@ -65,25 +60,15 @@ function regionFromProfileArn(profileArn) {
  * same account always presents the same machineId.
  */
 function buildKiroFingerprintHeaders(credentials) {
-  const seed =
-    credentials?.providerSpecificData?.clientId ||
-    credentials?.refreshToken ||
-    credentials?.providerSpecificData?.profileArn ||
-    credentials?.accessToken ||
-    "kiro-anonymous";
-  const machineId = createHash("sha256").update(String(seed)).digest("hex");
-
-  const userAgent =
-    `aws-sdk-js/${KIRO_RUNTIME_SDK_VERSION} ua/2.1 ` +
-    `os/${KIRO_AGENT_OS}#${KIRO_AGENT_OS_VERSION} ` +
-    `lang/js md/nodejs#${KIRO_NODE_VERSION} ` +
-    `api/codewhispererruntime#${KIRO_RUNTIME_SDK_VERSION} m/N,E ` +
-    `KiroIDE-${KIRO_VERSION}-${machineId}`;
-  const amzUserAgent = `aws-sdk-js/${KIRO_RUNTIME_SDK_VERSION} KiroIDE-${KIRO_VERSION}-${machineId}`;
+  // Reuse the single source of truth for client identity (kiroConstants.js) so
+  // the model-listing UA and the chat/streaming UA carry the IDENTICAL KiroIDE
+  // build + machineId for a given account. The `runtime` surface only swaps the
+  // aws-sdk sub-client version and `api/codewhispererruntime` segment.
+  const ua = buildKiroClientUserAgent({ credentials, surface: "runtime" });
 
   return {
-    "User-Agent": userAgent,
-    "x-amz-user-agent": amzUserAgent,
+    "User-Agent": ua.streaming,
+    "x-amz-user-agent": ua.short,
     "x-amzn-kiro-agent-mode": "vibe",
     "x-amzn-codewhisperer-optout": "true",
     "amz-sdk-request": "attempt=1; max=1",

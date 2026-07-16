@@ -1,5 +1,6 @@
 import { getSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
+import { setDebugEnabled } from "@/sse/utils/logger";
 
 let initialized = false;
 
@@ -9,6 +10,10 @@ export async function ensureOutboundProxyInitialized() {
   try {
     const settings = await getSettings();
     applyOutboundProxyEnv(settings);
+    // Sync the runtime debug-log level from persisted settings at boot so the
+    // Settings "Debug Logging" toggle survives restarts (env still wins if the
+    // toggle was never turned on).
+    if (settings.debugLogEnabled) setDebugEnabled(true);
     initialized = true;
   } catch (error) {
     console.error("[ServerInit] Error initializing outbound proxy:", error);

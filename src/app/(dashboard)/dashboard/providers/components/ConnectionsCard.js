@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import PropTypes from "prop-types";
 import {
   Card,
@@ -163,12 +163,18 @@ function ConnectionRow({
     return "default";
   };
 
-  const displayName = isOAuth
-    ? connection.name ||
-      connection.email ||
-      connection.displayName ||
-      "OAuth Account"
-    : connection.name;
+  const displayName =
+    connection.name ||
+    connection.email ||
+    connection.displayName ||
+    (isOAuth ? "OAuth Account" : "API Key");
+
+  const emailLine =
+    connection.email &&
+    displayName &&
+    connection.email.toLowerCase() !== String(displayName).toLowerCase()
+      ? connection.email
+      : null;
 
   const handleSelectProxy = async (poolId) => {
     setUpdatingProxy(true);
@@ -209,7 +215,22 @@ function ConnectionRow({
           {isOAuth ? "lock" : "key"}
         </span>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{displayName}</p>
+          <p className="text-sm font-medium truncate" title={displayName}>
+            {displayName}
+          </p>
+          {emailLine && (
+            <p
+              className="text-xs text-text-muted truncate mt-0.5"
+              title={emailLine}
+            >
+              {emailLine}
+            </p>
+          )}
+          {connection.provider === "grok-cli" && (
+            <p className="text-[11px] text-text-muted mt-0.5">
+              grok-cli · Super Grok OAuth (chat credits; Imagine usually needs API key)
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-2 mt-1">
             <Badge variant={getStatusVariant()} size="sm" dot>
               {connection.isActive === false
@@ -518,7 +539,12 @@ AddApiKeyModal.propTypes = {
 
 // ── ConnectionsCard ────────────────────────────────────────────
 // Self-contained card: fetches, displays and manages all connections for a provider.
-export default function ConnectionsCard({ providerId, isOAuth }) {
+// matchProviders: optional extra provider ids (e.g. xai page also shows grok-cli OAuth).
+export default function ConnectionsCard({
+  providerId,
+  isOAuth,
+  matchProviders = null,
+}) {
   const [connections, setConnections] = useState([]);
   const [proxyPools, setProxyPools] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -530,6 +556,15 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
   const [confirmState, setConfirmState] = useState(null);
   const [clearingErrors, setClearingErrors] = useState(false);
   const notify = useNotificationStore((s) => s.addNotification);
+
+  const matchSet = useMemo(() => {
+    if (Array.isArray(matchProviders) && matchProviders.length > 0) {
+      return new Set(matchProviders);
+    }
+    // Default parity with /dashboard/providers/xai detail page
+    if (providerId === "xai") return new Set(["xai", "grok-cli"]);
+    return new Set([providerId]);
+  }, [providerId, matchProviders]);
 
   const fetch_ = useCallback(async () => {
     try {
@@ -543,7 +578,7 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
       if (connRes.ok)
         setConnections(
-          (connData.connections || []).filter((c) => c.provider === providerId),
+          (connData.connections || []).filter((c) => matchSet.has(c.provider)),
         );
       if (proxyRes.ok) setProxyPools(proxyData.proxyPools || []);
       const override =
@@ -559,7 +594,7 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
     } finally {
       setLoading(false);
     }
-  }, [providerId]);
+  }, [providerId, matchSet]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -842,7 +877,11 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
                   key={conn.id}
                   connection={conn}
                   proxyPools={proxyPools}
-                  isOAuth={isOAuth}
+                  isOAuth={
+                    conn.authType === "oauth" ||
+                    conn.provider === "grok-cli" ||
+                    (isOAuth && conn.authType !== "apikey")
+                  }
                   isFirst={idx === 0}
                   isLast={idx === connections.length - 1}
                   onMoveUp={() => handleSwapPriority(idx, idx - 1)}
@@ -903,4 +942,5 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
 ConnectionsCard.propTypes = {
   providerId: PropTypes.string.isRequired,
   isOAuth: PropTypes.bool,
+  matchProviders: PropTypes.arrayOf(PropTypes.string),
 };

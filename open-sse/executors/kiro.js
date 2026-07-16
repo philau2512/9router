@@ -2,7 +2,10 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { randomUUID } from "crypto";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
-import { resolveKiroRequestProfileArn } from "../config/kiroConstants.js";
+import {
+  resolveKiroRequestProfileArn,
+  buildKiroClientUserAgent,
+} from "../config/kiroConstants.js";
 import { fetchKiroProfileArn } from "../../src/lib/oauth/kiro-provider-helpers.js";
 
 // Phase 2 hot-path: module-scope decoder/encoder reused across every frame and
@@ -22,19 +25,38 @@ export class KiroExecutor extends BaseExecutor {
   }
 
   buildHeaders(credentials, stream = true) {
+    // Client fidelity (Group A Phase 2): emulate a realistic Kiro IDE client so
+    // a free-tier account is less likely to be flagged. The machineId is derived
+    // (stable sha256 of a durable credential id) so this streaming call and the
+    // model-listing call from the SAME account carry the IDENTICAL machineId —
+    // never random (a per-request suffix would itself look anomalous).
+    const ua = buildKiroClientUserAgent({ credentials, surface: "streaming" });
     const headers = {
       ...this.config.headers,
+      "User-Agent": ua.streaming,
+      "X-Amz-User-Agent": ua.short,
+      "x-amzn-kiro-agent-mode": "vibe",
+      // Opt out of CodeWhisperer telemetry/training data collection.
+      "x-amzn-codewhisperer-optout": "true",
       "Amz-Sdk-Request": "attempt=1; max=3",
       "Amz-Sdk-Invocation-Id": randomUUID(),
     };
 
+    // API-key auth: key is stored as accessToken and sent as bearer, plus
+    // `tokentype: API_KEY` so CodeWhisperer treats it as a long-lived key
+    // rather than an OIDC token. External IdP needs TokenType=EXTERNAL_IDP.
     const authMethod = credentials?.providerSpecificData?.authMethod;
+    const isApiKey = authMethod === "api_key";
+    const isExternalIdp = authMethod === "external_idp";
+    const apiKey =
+      credentials?.apiKey || (isApiKey ? credentials?.accessToken : null);
 
-    if (credentials.accessToken) {
+    if (isApiKey && apiKey) {
+      headers["Authorization"] = `Bearer ${apiKey}`;
+      headers["tokentype"] = "API_KEY";
+    } else if (credentials.accessToken) {
       headers["Authorization"] = `Bearer ${credentials.accessToken}`;
-      // Enterprise / Microsoft Entra (external_idp) tokens require TokenType header
-      // so CodeWhisperer binds the request to the correct profile.
-      if (authMethod === "external_idp") {
+      if (isExternalIdp) {
         headers["TokenType"] = "EXTERNAL_IDP";
       }
     }

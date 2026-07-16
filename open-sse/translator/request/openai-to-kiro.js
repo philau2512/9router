@@ -5,12 +5,14 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { v4 as uuidv4, v5 as uuidv5 } from "uuid";
+import { sanitizeKiroPayloadToolNames } from "../helpers/toolCallHelper.js";
 import {
   resolveKiroModel,
   resolveKiroThinkingBudget,
   buildThinkingSystemPrefix,
   KIRO_AGENTIC_SYSTEM_PROMPT,
   resolveKiroRequestProfileArn,
+  KIRO_CONVERSATION_NAMESPACE,
 } from "../../config/kiroConstants.js";
 
 /** Render a single tool call as a readable text line. */
@@ -701,7 +703,6 @@ export function buildKiroPayload(model, body, stream, credentials) {
   // first chats would all hash to the same uuidv5(empty) and reuse the same
   // upstream Kiro/AWS conversation context, leaking prior state across
   // sessions. See conversionMessages() above for the `__synthetic` marker.
-  const NAMESPACE_KIRO = "34f7193f-561d-4050-bc84-9547d953d6bf";
 
   // Priority 1: Extract first user message from pre-compression body (passed by chatCore before
   // compressContext runs). This keeps conversationId stable even when compression alters content.
@@ -734,7 +735,7 @@ export function buildKiroPayload(model, body, stream, credentials) {
   // Use uuidv5 with the hash of the system prompt / first message to maintain AWS Builder ID context cache
   payload.conversationState.conversationId = uuidv5(
     (firstContent || "").substring(0, 4000),
-    NAMESPACE_KIRO,
+    KIRO_CONVERSATION_NAMESPACE,
   );
 
   if (profileArn) {
@@ -754,6 +755,15 @@ export function buildKiroPayload(model, body, stream, credentials) {
     value: upstreamModel,
     enumerable: false,
   });
+
+  // Sanitize tool names Kiro upstream would reject (MCP triples, >64 chars, odd
+  // charset) and attach the restore map so the response side maps names back to
+  // what the client sent. Only invalid names change; valid-only tool sets leave
+  // the map empty and the payload byte-identical.
+  const toolNameMap = sanitizeKiroPayloadToolNames(payload);
+  if (toolNameMap.size > 0) {
+    payload._toolNameMap = toolNameMap;
+  }
 
   return payload;
 }

@@ -167,12 +167,17 @@ export class BaseExecutor {
       return true;
     };
 
-    // Calculate connection timeout (custom from credentials or universal default of 15s)
+    // Resolve connection timeout once, before the loop, with a single source of
+    // truth so no inner-scope variable can shadow it. Priority:
+    //   credentials.providerSpecificData.connectionTimeoutMs (>0)
+    //   → this.config.timeoutMs (built-in, e.g. qoder 120s)
+    //   → FETCH_CONNECT_TIMEOUT_MS (universal 60s default)
     const providerSpecific = credentials?.providerSpecificData || {};
-    let timeoutMs = providerSpecific.connectionTimeoutMs;
-    if (typeof timeoutMs !== "number" || isNaN(timeoutMs) || timeoutMs <= 0) {
-      timeoutMs = 15000; // Universal default of 15 seconds
-    }
+    const csTimeout = Number(providerSpecific.connectionTimeoutMs);
+    const connectTimeoutMs =
+      Number.isFinite(csTimeout) && csTimeout > 0
+        ? csTimeout
+        : this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
 
     for (let urlIndex = 0; urlIndex < fallbackCount; urlIndex++) {
       const url = this.buildUrl(model, stream, urlIndex, credentials);
@@ -188,10 +193,9 @@ export class BaseExecutor {
 
       // Abort if upstream doesn't return response headers within connection timeout
       const connectCtrl = new AbortController();
-      const timeoutMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
       const connectTimer = setTimeout(
         () => connectCtrl.abort(new Error("fetch connect timeout")),
-        timeoutMs,
+        connectTimeoutMs,
       );
       const mergedSignal = signal
         ? AbortSignal.any([signal, connectCtrl.signal])
@@ -202,7 +206,7 @@ export class BaseExecutor {
         const fetchT0 = Date.now();
         dbg(
           "FETCH",
-          `${this.provider.toUpperCase()} → ${url} | body=${bodyStr.length}B | connectTimeout=${timeoutMs}ms`,
+          `${this.provider.toUpperCase()} → ${url} | body=${bodyStr.length}B | connectTimeout=${connectTimeoutMs}ms`,
         );
         const response = await proxyAwareFetch(
           url,
@@ -341,7 +345,7 @@ export class BaseExecutor {
           isConnectTimeout;
         if (isTimeout) {
           const timeoutError = new Error(
-            `Connection to provider ${this.provider} timed out after ${timeoutMs}ms`,
+            `Connection to provider ${this.provider} timed out after ${connectTimeoutMs}ms`,
           );
           timeoutError.name = "TimeoutError";
           timeoutError.status = 504;

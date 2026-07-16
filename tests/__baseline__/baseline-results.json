@@ -1,0 +1,4670 @@
+{
+  "testResults": [
+    {
+      "name": "tests/translator/bugs-antigravity.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Antigravity → OpenAI does not re-emit flushed OpenAI tool calls in a later completion",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity → OpenAI emits accumulated OpenAI tool-call IDs in Antigravity response",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity → OpenAI flushes multiple fragmented OpenAI calls with late IDs and does not replay them",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity → OpenAI functionCall without id keeps a stable matchable id",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity → OpenAI functionResponse + functionCall in same content keeps both",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity → OpenAI keeps unmatched and response-before-call tool results on the documented name fallback",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity → OpenAI matches repeated missing IDs by same-name encounter order",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity → OpenAI pairs mixed native and generated same-name calls without corrupting FIFO",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity → OpenAI preserves native tool IDs in both request directions",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity → OpenAI signature-only part does not produce empty text",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity → OpenAI uses unique deterministic response IDs across normal and thought-signature calls",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/translator/bugs-claudeCode-context.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Claude Code CLI context → OpenAI assistant thinking block survives Claude→Claude passthrough",
+          "status": "passed"
+        },
+        {
+          "fullName": "Claude Code CLI context → OpenAI redacted_thinking block is not silently dropped",
+          "status": "passed"
+        },
+        {
+          "fullName": "Claude Code CLI context → OpenAI system array keeps all text parts",
+          "status": "passed"
+        },
+        {
+          "fullName": "Claude Code CLI context → OpenAI tool_result image block is preserved",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/translator/bugs-codexCli-responses.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Codex CLI Responses → OpenAI assistant has no empty tool_calls array when all names are empty",
+          "status": "passed"
+        },
+        {
+          "fullName": "Codex CLI Responses → OpenAI function_call arguments end up as a string",
+          "status": "passed"
+        },
+        {
+          "fullName": "Codex CLI Responses → OpenAI input_image with file_id is not used as a raw url",
+          "status": "passed"
+        },
+        {
+          "fullName": "OpenAI → Codex Responses (reverse) call_id longer than 64 chars is clamped",
+          "status": "passed"
+        },
+        {
+          "fullName": "OpenAI → Codex Responses (reverse) preserves developer role as Responses instructions",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/translator/bugs-gemini-cursor-commandcode.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "OpenAI → CommandCode image content is preserved",
+          "status": "passed"
+        },
+        {
+          "fullName": "OpenAI → CommandCode malformed tool arguments are not silently emptied",
+          "status": "passed"
+        },
+        {
+          "fullName": "OpenAI → Cursor image content is preserved",
+          "status": "passed"
+        },
+        {
+          "fullName": "OpenAI → Cursor respects client max_tokens",
+          "status": "passed"
+        },
+        {
+          "fullName": "OpenAI → Gemini multiple system messages are all kept",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/translator/bugs-kiro.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "OpenAI → Kiro malformed tool arguments do not throw the whole request",
+          "status": "passed"
+        },
+        {
+          "fullName": "OpenAI → Kiro remote image url is preserved as an image, not text",
+          "status": "passed"
+        },
+        {
+          "fullName": "OpenAI → Kiro respects client max_tokens",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/translator/bugs-openai-bridge.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "bug: Claude → OpenAI bridge data loss image with source.type=url is preserved (NOT dropped)",
+          "status": "passed"
+        },
+        {
+          "fullName": "bug: Claude → OpenAI bridge data loss system array non-text parts are not silently dropped",
+          "status": "passed"
+        },
+        {
+          "fullName": "bug: Claude → OpenAI bridge data loss thinking block survives round-trip Claude→OpenAI→Claude",
+          "status": "passed"
+        },
+        {
+          "fullName": "bug: Claude → OpenAI bridge data loss tool_result is_error flag is preserved",
+          "status": "passed"
+        },
+        {
+          "fullName": "bug: Claude → OpenAI bridge data loss tool_result with image block is not turned into raw JSON / dropped",
+          "status": "passed"
+        },
+        {
+          "fullName": "bug: empty content message handling assistant message with only tool_calls is not dropped",
+          "status": "passed"
+        },
+        {
+          "fullName": "bug: tool_call id stability across bridge sanitized tool id stays matched between call and result",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/translator/bugs-toClaude-context.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "OpenAI → Claude context mapping assistant reasoning_content becomes a thinking block",
+          "status": "passed"
+        },
+        {
+          "fullName": "OpenAI → Claude context mapping does not inject Claude Code system prompt for compatible providers",
+          "status": "passed"
+        },
+        {
+          "fullName": "OpenAI → Claude context mapping input_audio content is preserved",
+          "status": "passed"
+        },
+        {
+          "fullName": "OpenAI → Claude context mapping remote http image_url is preserved",
+          "status": "passed"
+        },
+        {
+          "fullName": "OpenAI → Claude context mapping tool_choice=none is not turned into auto",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/translator/claude-kiro-direct.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Claude → Kiro (direct route) guard 1: with no tools, a dangling tool_result is flattened to text (no structured ref)",
+          "status": "passed"
+        },
+        {
+          "fullName": "Claude → Kiro (direct route) guard 2: with tools, an orphaned tool_result is folded into user text",
+          "status": "passed"
+        },
+        {
+          "fullName": "Claude → Kiro (direct route) injects thinking_mode tag when model implies thinking",
+          "status": "passed"
+        },
+        {
+          "fullName": "Claude → Kiro (direct route) maps output_config.effort high to Kiro max_thinking_length 24576",
+          "status": "passed"
+        },
+        {
+          "fullName": "Claude → Kiro (direct route) produces a Kiro conversationState payload",
+          "status": "passed"
+        },
+        {
+          "fullName": "Kiro → Claude (direct route, OpenAI-shaped chunks from executor) finish chunk emits message_delta + message_stop with stop_reason",
+          "status": "passed"
+        },
+        {
+          "fullName": "Kiro → Claude (direct route, OpenAI-shaped chunks from executor) first text chunk emits message_start + content_block_start + text_delta",
+          "status": "passed"
+        },
+        {
+          "fullName": "Kiro → Claude (direct route, OpenAI-shaped chunks from executor) reasoning_content maps to a thinking block",
+          "status": "passed"
+        },
+        {
+          "fullName": "Kiro → Claude (direct route, OpenAI-shaped chunks from executor) tool_calls map to a tool_use block with buffered input_json_delta",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/translator/coverage-all-models.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "coverage: every model translates without throwing 'ag': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'agentrouter': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'ai21': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'aimlapi': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'alicode-intl': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'alicode': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'anthropic': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'assemblyai': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'baseten': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'bazaarlink': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'black-forest-labs': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'blackbox': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'byteplus': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'bytez': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'cc': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'cerebras': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'cl': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'cloudflare-ai': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'cohere': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'comfyui': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'commandcode': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'completions': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'cp': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'cu': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'cx': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'deepgram': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'deepinfra': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'deepseek': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'edge-tts': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'elevenlabs-tts-models': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'enally': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'fal-ai': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'featherless': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'fireworks': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'freetheai': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'gc': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'gemini-tts-models': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'gemini-tts-voices': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'gemini': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'gh': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'glhf': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'glm-cn': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'glm': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'google-tts': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'grok-cli': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'grok-web': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'groq': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'huggingface': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'hyperbolic': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'if': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'inference-net': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'kc': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'kimi': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'kluster': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'kmc': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'kr': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'lepton': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'llm7': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'local-device': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'longcat': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'minimax-cn': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'minimax': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'mistral': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'mmf': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'modal': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'morph': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'nanobanana': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'nebius': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'nlpcloud': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'nous-research': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'novita': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'nscale': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'nvidia': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'oc': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'ollama': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'openai-tts-models': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'openai-tts-voices': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'openai': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'opencode-go': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'openrouter-tts-models': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'openrouter-tts-voices': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'openrouter': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'perplexity-agent': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'perplexity-web': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'perplexity': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'predibase': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'publicai': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'puter': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'qd': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'qw': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'recraft': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'reka': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'runwayml': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'sambanova': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'scaleway': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'sdwebui': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'siliconflow': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'stability-ai': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'together': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'uncloseai': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'venice': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'vertex-partner': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'vertex': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'volcengine-ark': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'voyage-ai': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'xai': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'xiaomi-mimo': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: every model translates without throwing 'xiaomi-tokenplan': all models OpenAI→target",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: image-strip models drop image content 'kr'/'deepseek-3.2' strips image when strip=[image]",
+          "status": "passed"
+        },
+        {
+          "fullName": "coverage: image-strip models drop image content 'kr'/'qwen3-coder-next' strips image when strip=[image]",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/translator/format-roundtrip.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "roundtrip: Claude source preserves core fields → OpenAI system → system role",
+          "status": "passed"
+        },
+        {
+          "fullName": "roundtrip: Claude source preserves core fields → OpenAI tool arguments are valid JSON string",
+          "status": "passed"
+        },
+        {
+          "fullName": "roundtrip: Claude source preserves core fields → OpenAI tool_result → tool message with matching id",
+          "status": "passed"
+        },
+        {
+          "fullName": "roundtrip: Claude source preserves core fields → OpenAI tool_use → assistant.tool_calls with matching id",
+          "status": "passed"
+        },
+        {
+          "fullName": "roundtrip: OpenAI tools → Claude → keeps tool name tool name survives openai→claude",
+          "status": "passed"
+        },
+        {
+          "fullName": "roundtrip: parallel tool calls keep distinct ids each tool_call has a matching tool result",
+          "status": "passed"
+        },
+        {
+          "fullName": "roundtrip: parallel tool calls keep distinct ids two tool_calls, two distinct ids",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/translator/golden-translator-concerns.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "GOLDEN passthrough: same format = no translation request openai→openai keeps messages (filterToOpenAIFormat normalize)",
+          "status": "passed"
+        },
+        {
+          "fullName": "GOLDEN passthrough: same format = no translation response openai→openai returns chunk unchanged",
+          "status": "passed"
+        },
+        {
+          "fullName": "GOLDEN response stream: CommandCode → OpenAI text + reasoning + tool + finish-step usage",
+          "status": "passed"
+        },
+        {
+          "fullName": "GOLDEN response stream: Kiro → OpenAI (finish after tool) toolUse then stop — lock current finish_reason behavior",
+          "status": "passed"
+        },
+        {
+          "fullName": "GOLDEN response stream: Ollama → OpenAI (finish after tool) tool_calls then done_reason=stop — lock current finish_reason",
+          "status": "passed"
+        },
+        {
+          "fullName": "GOLDEN usage math: Claude prompt = input + cache (lock) prompt_tokens sums input + cache_read + cache_creation",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/antigravity-cache.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Antigravity cache behavior (real API) codex-style sessionId vs random sessionId on unique prompt",
+          "status": "skipped"
+        },
+        {
+          "fullName": "Antigravity cache behavior (real API) cross-account → cache SHARED (content-based global cache)",
+          "status": "skipped"
+        },
+        {
+          "fullName": "Antigravity cache behavior (real API) different sessionId (same account) → cache still hits (session-independent)",
+          "status": "skipped"
+        },
+        {
+          "fullName": "Antigravity cache behavior (real API) has at least one active AG connection with refreshToken",
+          "status": "skipped"
+        },
+        {
+          "fullName": "Antigravity cache behavior (real API) same sessionId → cache hit on repeated call",
+          "status": "skipped"
+        },
+        {
+          "fullName": "Antigravity cache behavior (real API) unique prompt (never seen) → explore when cache starts hitting",
+          "status": "skipped"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/antigravity-executor.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "AntigravityExecutor builds production-first URLs and forces image generation to non-streaming",
+          "status": "passed"
+        },
+        {
+          "fullName": "AntigravityExecutor falls through production network failure and long-retry quota response",
+          "status": "passed"
+        },
+        {
+          "fullName": "AntigravityExecutor parses retry headers, duration text, and gRPC quota reset details",
+          "status": "passed"
+        },
+        {
+          "fullName": "AntigravityExecutor throws after every fallback URL fails",
+          "status": "passed"
+        },
+        {
+          "fullName": "AntigravityExecutor transforms image and chat requests without changing URL metadata",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/antigravity-mitm.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Antigravity MITM model handling does not exclude real agent models from re-routing",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity MITM model handling excludes tab-autocomplete model 'tab_flash_lite_preview' from re-routing",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity MITM model handling excludes tab-autocomplete model 'tab_jump_flash_lite_preview' from re-routing",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity MITM model handling flags the out-of-box agent/Default model mandatory",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity MITM model handling leaves models not proven auto-sent optional",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/antigravity-models.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Antigravity live model catalog caches by credential and supports force refresh and explicit clearing",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity live model catalog does not share cached catalogs across connections",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity live model catalog fails open without an access token",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity live model catalog falls through production failures to a later endpoint",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity live model catalog treats invalid or empty catalog responses as fallback candidates",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity live model catalog uses canonical production URL, project_id precedence, and filters catalog entries",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/antigravity-provider-metadata.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Antigravity provider metadata derives registry models and usage endpoints from canonical metadata",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity provider metadata keeps active registry and public image-model contracts intact",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity provider metadata keeps every static model eligible for quota, including image generation",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity provider metadata keeps executor and registry fallback order aligned",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity provider metadata keeps model IDs unique and live-catalog exclusions separate from quota models",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/antigravity-usage.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Antigravity usage continues quota lookup without a project when subscription lookup fails",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity usage fails open for quota HTTP 401",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity usage fails open for quota HTTP 403",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity usage normalizes project objects returned by loadCodeAssist",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity usage omits invalid project object IDs from quota payloads",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity usage returns a safe message for quota HTTP and network failures",
+          "status": "passed"
+        },
+        {
+          "fullName": "Antigravity usage uses canonical endpoints and maps only supported quota models including image",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/auth-deactivate.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Kiro Account Deactivation on Suspension markAccountUnavailable should deactivate Kiro account permanently if error contains suspension/lock message",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/buildOutputFilter.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "PR #1175 - buildOutput compression behavior compresses cargo build output",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - buildOutput compression behavior compresses npm install with deprecations",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - buildOutput compression behavior keeps cargo errors verbatim",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - buildOutput compression behavior keeps maven BUILD FAILED as error",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - buildOutput filter detection detects cargo build output (no longer misdetected as git-status)",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - buildOutput filter detection detects npm install output",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - false positive risks generic 'Compiling templates' (non-build context) triggers buildOutput",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - false positive risks generic app log with 'ERROR:' triggers buildOutput (potential false positive)",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - false positive risks plain text with no patterns falls through (no false positive)",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - porcelain regex fix edge cases cargo Compiling lines NOT detected as git-status (porcelain false positive fix)",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - porcelain regex fix edge cases git status --porcelain with staged (status code first char) still detects",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - porcelain regex fix edge cases git status --porcelain workdir-only (space first char) STILL detects as gitStatus (minimal fix preserved old regex)",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - porcelain regex fix edge cases long-form git status with 'On branch' always detects",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - safety: no data corruption empty input returns input",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - safety: no data corruption input with no recognized patterns returns input (fallback)",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - safety: no data corruption input with only errors preserves all errors",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - safety: no data corruption limits warnings to 5 + summary line",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/buildOutputFilterAdversarial.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "PR #1175 - adversarial: user code containing build strings file content with 'BUILD SUCCESS' on its own line triggers buildOutput",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - adversarial: user code containing build strings real cargo error spanning multiple lines preserves context",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - adversarial: user code containing build strings user JS code with console.log('npm warn ...') triggers buildOutput",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - corruption safety input with ONLY a single ERROR: line",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - corruption safety input with only Downloading lines",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - corruption safety input with only progress lines (no errors/warnings/summary) returns input fallback",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - corruption safety more than 3 deprecations: keep first 3 verbatim + count rest",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - corruption safety safeApply wraps buildOutput against panics",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - corruption safety unicode/emoji in deprecation warning preserved (minimal fix keeps first 3 verbatim)",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - DETECT_WINDOW boundary build pattern at very start: detected",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - DETECT_WINDOW boundary build pattern beyond DETECT_WINDOW chars: NOT detected",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - integration with compressMessages compressed output never grows input (safety guard)",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - integration with compressMessages input below MIN_COMPRESS_SIZE → NOT compressed",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - integration with compressMessages npm install output above MIN_COMPRESS_SIZE → compressed",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - integration with compressMessages tool_result with is_error:true is NOT compressed (preserve error traces)",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - line endings & whitespace Compiling without leading spaces",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - line endings & whitespace CRLF line endings still detect",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - line endings & whitespace Tab-prefixed Compiling (real cargo output uses leading spaces, not tab)",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - pathological 10000 Compiling lines don't crash",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - pathological input with only newlines",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - pathological null/undefined safety via safeApply",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - pathological very long single line (no newlines) with build pattern",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - porcelain regression deeper 100% workdir-only porcelain → STILL detects gitStatus (minimal fix preserved old regex)",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - porcelain regression deeper manual gitStatus() call on workdir-only porcelain still parses correctly",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - porcelain regression deeper mixed staged + workdir + untracked porcelain → detected (has status code first char)",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - priority with overlapping patterns git-diff wins over buildOutput when both present",
+          "status": "passed"
+        },
+        {
+          "fullName": "PR #1175 - priority with overlapping patterns git-status (long form) wins over buildOutput",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/caveman-prompts.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "caveman prompts defines prompts for every exported level",
+          "status": "passed"
+        },
+        {
+          "fullName": "caveman prompts includes Wenyan levels with shared preservation rules",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/classify429.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "classify429 classifies a long reset window as rateLimited (no same-auth retry)",
+          "status": "passed"
+        },
+        {
+          "fullName": "classify429 classifies a short reset window as softRateLimit",
+          "status": "passed"
+        },
+        {
+          "fullName": "classify429 classifies an unknown 429 as rateLimited",
+          "status": "passed"
+        },
+        {
+          "fullName": "classify429 classifies RESOURCE_EXHAUSTED as quotaExhausted",
+          "status": "passed"
+        },
+        {
+          "fullName": "classify429 classifies xAI free-usage-exhausted as quotaExhausted",
+          "status": "passed"
+        },
+        {
+          "fullName": "decideSoftRetry never retries non-429",
+          "status": "passed"
+        },
+        {
+          "fullName": "decideSoftRetry never retries quota-exhausted",
+          "status": "passed"
+        },
+        {
+          "fullName": "decideSoftRetry retries same auth for soft rate limit, capping the wait",
+          "status": "passed"
+        },
+        {
+          "fullName": "decideSoftRetry stops retrying after MAX_SOFT_RETRY",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseDurationText parses h/m/s compound durations",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseDurationText parses ms tokens",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseDurationText parses plain seconds",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseDurationText returns null when no duration token",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseRetryAfter falls back to message duration text",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseRetryAfter prefers absolute resetsAtMs",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseRetryAfter reads body quotaResetDelay (ms)",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseRetryAfter reads Retry-After header in seconds",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/claude-cloaking.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "cloakClaudeTools does not suffix a forced choice that targets a non-client (decoy/built-in) tool",
+          "status": "passed"
+        },
+        {
+          "fullName": "cloakClaudeTools leaves non-forced tool_choice untouched",
+          "status": "passed"
+        },
+        {
+          "fullName": "cloakClaudeTools renames tool_use names in message history",
+          "status": "passed"
+        },
+        {
+          "fullName": "cloakClaudeTools returns the body unchanged when there are no tools",
+          "status": "passed"
+        },
+        {
+          "fullName": "cloakClaudeTools suffixes a forced tool_choice to match the renamed tool",
+          "status": "passed"
+        },
+        {
+          "fullName": "cloakClaudeTools suffixes client tool names and maps them back",
+          "status": "passed"
+        },
+        {
+          "fullName": "cloakClaudeTools suffixes only the chosen tool when several are present",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/claude-header-forwarding.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "claudeHeaderCache caches headers when user-agent contains 'claude-cli'",
+          "status": "passed"
+        },
+        {
+          "fullName": "claudeHeaderCache caches headers when user-agent contains 'claude-code'",
+          "status": "passed"
+        },
+        {
+          "fullName": "claudeHeaderCache caches headers when x-app is 'cli' (regardless of user-agent)",
+          "status": "passed"
+        },
+        {
+          "fullName": "claudeHeaderCache does NOT cache headers for non-Claude clients",
+          "status": "passed"
+        },
+        {
+          "fullName": "claudeHeaderCache ignores calls with null or non-object headers",
+          "status": "passed"
+        },
+        {
+          "fullName": "claudeHeaderCache only stores keys that are actually present in the headers object",
+          "status": "passed"
+        },
+        {
+          "fullName": "claudeHeaderCache refreshes cache on each matching request",
+          "status": "passed"
+        },
+        {
+          "fullName": "claudeHeaderCache returns null before any headers are cached (cold start)",
+          "status": "passed"
+        },
+        {
+          "fullName": "DefaultExecutor.buildHeaders() — anthropic-compatible stripping does NOT strip headers when baseUrl is api.anthropic.com",
+          "status": "passed"
+        },
+        {
+          "fullName": "DefaultExecutor.buildHeaders() — anthropic-compatible stripping does NOT strip headers when baseUrl is empty (defaults to Anthropic)",
+          "status": "passed"
+        },
+        {
+          "fullName": "DefaultExecutor.buildHeaders() — anthropic-compatible stripping keeps other beta flags intact after stripping",
+          "status": "passed"
+        },
+        {
+          "fullName": "DefaultExecutor.buildHeaders() — anthropic-compatible stripping removes claude-code-20250219 from anthropic-beta for non-Anthropic host",
+          "status": "passed"
+        },
+        {
+          "fullName": "DefaultExecutor.buildHeaders() — anthropic-compatible stripping strips x-app and anthropic-dangerous-direct-browser-access for non-Anthropic host",
+          "status": "passed"
+        },
+        {
+          "fullName": "DefaultExecutor.buildHeaders() — claude provider cold start (no cache) does not throw when cache returns null",
+          "status": "passed"
+        },
+        {
+          "fullName": "DefaultExecutor.buildHeaders() — claude provider cold start (no cache) falls back to static provider headers when cache is empty",
+          "status": "passed"
+        },
+        {
+          "fullName": "DefaultExecutor.buildHeaders() — claude provider includes Accept: text/event-stream when stream=true",
+          "status": "passed"
+        },
+        {
+          "fullName": "DefaultExecutor.buildHeaders() — claude provider omits Accept: text/event-stream when stream=false",
+          "status": "passed"
+        },
+        {
+          "fullName": "DefaultExecutor.buildHeaders() — claude provider overlays live cached headers over static provider defaults",
+          "status": "passed"
+        },
+        {
+          "fullName": "DefaultExecutor.buildHeaders() — claude provider removes conflicting Title-Case static keys when cached lowercase keys exist",
+          "status": "passed"
+        },
+        {
+          "fullName": "DefaultExecutor.buildHeaders() — claude provider sets Bearer Authorization when only accessToken is provided",
+          "status": "passed"
+        },
+        {
+          "fullName": "DefaultExecutor.buildHeaders() — claude provider sets x-api-key auth when apiKey is provided",
+          "status": "passed"
+        },
+        {
+          "fullName": "proxyAwareFetch — api.anthropic.com routing does NOT route non-Anthropic hosts through gotScraping",
+          "status": "passed"
+        },
+        {
+          "fullName": "proxyAwareFetch — api.anthropic.com routing falls back gracefully when got-scraping throws on non-streaming path",
+          "status": "passed"
+        },
+        {
+          "fullName": "proxyAwareFetch — api.anthropic.com routing routes api.anthropic.com to gotScraping (non-streaming) and returns ok response",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/claude-thinking-translation.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "claudeToOpenAIRequest thinking mapping should keep reasoning_effort intact if already present in body",
+          "status": "passed"
+        },
+        {
+          "fullName": "claudeToOpenAIRequest thinking mapping should map output_config.effort='high' to OpenAI reasoning_effort and thinking budget",
+          "status": "passed"
+        },
+        {
+          "fullName": "claudeToOpenAIRequest thinking mapping should map output_config.effort='none' to disabled thinking",
+          "status": "passed"
+        },
+        {
+          "fullName": "claudeToOpenAIRequest thinking mapping should map thinking.type='enabled' and budget_tokens to OpenAI reasoning_effort and thinking budget",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/codebuddy-reasoning-optin.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "CodeBuddyExecutor reasoning params are opt-in (#2071) does NOT force reasoning when the client did not request it",
+          "status": "passed"
+        },
+        {
+          "fullName": "CodeBuddyExecutor reasoning params are opt-in (#2071) mirrors reasoning_summary:auto when the client explicitly requested reasoning",
+          "status": "passed"
+        },
+        {
+          "fullName": "CodeBuddyExecutor reasoning params are opt-in (#2071) omits reasoning_effort for none/off and adds no reasoning_summary",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/codex-image-fetch.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "CodexExecutor image handling execute() prefetches images before sending to upstream",
+          "status": "passed"
+        },
+        {
+          "fullName": "CodexExecutor image handling falls back to original URL when remote fetch fails",
+          "status": "passed"
+        },
+        {
+          "fullName": "CodexExecutor image handling fetches 1MB remote image and inlines it as base64 data URI",
+          "status": "passed"
+        },
+        {
+          "fullName": "CodexExecutor image handling passes through existing data URIs without calling fetch",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/codex-refresh-token.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Codex Refresh Token CodexExecutor credential lifecycle should de-duplicate concurrent refreshes for the same Codex connection",
+          "status": "passed"
+        },
+        {
+          "fullName": "Codex Refresh Token CodexExecutor credential lifecycle should refresh Codex credentials and preserve omitted id_token",
+          "status": "passed"
+        },
+        {
+          "fullName": "Codex Refresh Token CodexExecutor credential lifecycle should refresh Codex when lastRefreshAt is older than the upstream stale window",
+          "status": "passed"
+        },
+        {
+          "fullName": "Codex Refresh Token getRefreshLeadMs (early refresh config) codex lead should be greater than default buffer",
+          "status": "passed"
+        },
+        {
+          "fullName": "Codex Refresh Token getRefreshLeadMs (early refresh config) should fallback to default buffer for unknown providers",
+          "status": "passed"
+        },
+        {
+          "fullName": "Codex Refresh Token getRefreshLeadMs (early refresh config) should return provider-specific lead time for OAuth providers",
+          "status": "passed"
+        },
+        {
+          "fullName": "Codex Refresh Token refreshCodexToken should keep old refresh_token when server does not return new one",
+          "status": "passed"
+        },
+        {
+          "fullName": "Codex Refresh Token refreshCodexToken should return new refresh_token when server provides one (token rotation)",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/combo-autoswitch.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "detectRequiredCapabilities antigravity request.contents image -> vision",
+          "status": "passed"
+        },
+        {
+          "fullName": "detectRequiredCapabilities gemini inlineData image -> vision",
+          "status": "passed"
+        },
+        {
+          "fullName": "detectRequiredCapabilities openai file -> pdf",
+          "status": "passed"
+        },
+        {
+          "fullName": "detectRequiredCapabilities openai image_url -> vision",
+          "status": "passed"
+        },
+        {
+          "fullName": "detectRequiredCapabilities responses input_image -> vision",
+          "status": "passed"
+        },
+        {
+          "fullName": "detectRequiredCapabilities text-only -> empty",
+          "status": "passed"
+        },
+        {
+          "fullName": "detectRequiredCapabilities web_search tool -> search stays disabled (upstream parity)",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleComboChat auto-switch wiring autoSwitch=false keeps original order",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleComboChat auto-switch wiring prefers vision model first when request has image",
+          "status": "passed"
+        },
+        {
+          "fullName": "reorderByCapabilities floats vision-capable model to front, keeps fallback",
+          "status": "passed"
+        },
+        {
+          "fullName": "reorderByCapabilities keeps order when no model matches",
+          "status": "passed"
+        },
+        {
+          "fullName": "reorderByCapabilities no required -> unchanged",
+          "status": "passed"
+        },
+        {
+          "fullName": "reorderByCapabilities single model -> unchanged",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/combo-fusion.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "fusion combo answers directly with a single-model panel (nothing to fuse)",
+          "status": "passed"
+        },
+        {
+          "fullName": "fusion combo defaults the judge to the first panel model when none is set",
+          "status": "passed"
+        },
+        {
+          "fullName": "fusion combo fans out to the panel then routes a synthesis turn to the judge",
+          "status": "passed"
+        },
+        {
+          "fullName": "fusion combo flattens previous tool history and assistant tool_calls into prose for panel calls",
+          "status": "passed"
+        },
+        {
+          "fullName": "fusion combo proceeds on quorum without waiting for a straggler (grace window)",
+          "status": "passed"
+        },
+        {
+          "fullName": "fusion combo returns 503 when the whole panel fails",
+          "status": "passed"
+        },
+        {
+          "fullName": "fusion combo returns the lone survivor directly when only one panel model succeeds",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/combo-routing.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "combo round-robin routing does not rotate fallback combos",
+          "status": "passed"
+        },
+        {
+          "fullName": "combo round-robin routing keeps existing one-request round-robin behavior by default",
+          "status": "passed"
+        },
+        {
+          "fullName": "combo round-robin routing sticks to each combo model for the configured number of requests",
+          "status": "passed"
+        },
+        {
+          "fullName": "combo round-robin routing tracks sticky rotation independently per combo",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/commandcode-to-openai.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "commandcode-to-openai — error event stringifies object errors so client sees readable message",
+          "status": "passed"
+        },
+        {
+          "fullName": "commandcode-to-openai — final tool-call event does NOT re-emit tool_calls when tool-input-* deltas already fired",
+          "status": "passed"
+        },
+        {
+          "fullName": "commandcode-to-openai — final tool-call event emits a consolidated tool_calls when only the final tool-call event arrives",
+          "status": "passed"
+        },
+        {
+          "fullName": "commandcode-to-openai — finish emits a final chunk with finish_reason=tool_calls when finishReason is tool-calls",
+          "status": "passed"
+        },
+        {
+          "fullName": "commandcode-to-openai — finish includes usage on the final chunk when totalUsage provided",
+          "status": "passed"
+        },
+        {
+          "fullName": "commandcode-to-openai — reasoning-delta maps reasoning-delta to reasoning_content delta",
+          "status": "passed"
+        },
+        {
+          "fullName": "commandcode-to-openai — text-delta emits assistant role on first delta then content-only",
+          "status": "passed"
+        },
+        {
+          "fullName": "commandcode-to-openai — tool-input-* with id field (live schema) ignores tool-input-delta when id is unknown (no prior start)",
+          "status": "passed"
+        },
+        {
+          "fullName": "commandcode-to-openai — tool-input-* with id field (live schema) registers tool index using event.id (NOT toolCallId)",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/compatible-provider-connections.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "compatible provider connections API allows multiple connections on the same compatible node",
+          "status": "passed"
+        },
+        {
+          "fullName": "compatible provider connections API creates one API-key connection for an Anthropic-compatible node",
+          "status": "passed"
+        },
+        {
+          "fullName": "compatible provider connections API creates one API-key connection for an OpenAI-compatible node",
+          "status": "passed"
+        },
+        {
+          "fullName": "compatible provider connections API omits timeout keys from providerSpecificData when the node has none",
+          "status": "passed"
+        },
+        {
+          "fullName": "compatible provider connections API seeds connectionTimeoutMs/stallTimeoutMs from node into providerSpecificData",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/connection-pooling.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Connection Pooling (undici Agent) evicts oldest agents when pool exceeds directAgentsMaxSize limit",
+          "status": "passed"
+        },
+        {
+          "fullName": "Connection Pooling (undici Agent) uses pooled agent and sets timing mode to pooled for direct requests",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/count-tokens.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "estimateAnthropicInputTokens counts nested structured Anthropic blocks",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/cursor-composer-thinking.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "CursorExecutor Composer thinking-field responses does not treat thinking as visible output for non-Composer models",
+          "status": "passed"
+        },
+        {
+          "fullName": "CursorExecutor Composer thinking-field responses streams only visible content after </think> for Composer responses",
+          "status": "passed"
+        },
+        {
+          "fullName": "CursorExecutor Composer thinking-field responses uses visible content after </think> for non-streaming Composer responses",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/dashboard-guard.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "dashboard guard helpers extracts bearer API keys before x-api-key",
+          "status": "passed"
+        },
+        {
+          "fullName": "dashboard guard local-only access allows local-only route on loopback when requireLogin=false",
+          "status": "passed"
+        },
+        {
+          "fullName": "dashboard guard local-only access allows local-only route with valid CLI token",
+          "status": "passed"
+        },
+        {
+          "fullName": "dashboard guard local-only access rejects local-only route from non-loopback host without CLI token",
+          "status": "passed"
+        },
+        {
+          "fullName": "dashboard guard local-only access rejects local-only route from tunnel host even when requireLogin=false",
+          "status": "passed"
+        },
+        {
+          "fullName": "dashboard guard local-only access rejects local-only route on loopback when requireLogin=true and no JWT",
+          "status": "passed"
+        },
+        {
+          "fullName": "dashboard guard local-only access rejects local-only route when Origin is non-loopback (CSRF block)",
+          "status": "passed"
+        },
+        {
+          "fullName": "dashboard guard public LLM API access allows loopback public LLM API without API key",
+          "status": "passed"
+        },
+        {
+          "fullName": "dashboard guard public LLM API access allows loopback rewritten public LLM API without API key",
+          "status": "passed"
+        },
+        {
+          "fullName": "dashboard guard public LLM API access allows remote public LLM API with valid bearer API key",
+          "status": "passed"
+        },
+        {
+          "fullName": "dashboard guard public LLM API access allows remote public LLM API with valid x-api-key",
+          "status": "passed"
+        },
+        {
+          "fullName": "dashboard guard public LLM API access allows remote rewritten beta public LLM API with valid API key",
+          "status": "passed"
+        },
+        {
+          "fullName": "dashboard guard public LLM API access rejects remote beta public LLM API without API key",
+          "status": "passed"
+        },
+        {
+          "fullName": "dashboard guard public LLM API access rejects remote rewritten beta public LLM API without API key",
+          "status": "passed"
+        },
+        {
+          "fullName": "dashboard guard public LLM API access rejects remote rewritten public LLM API without API key",
+          "status": "passed"
+        },
+        {
+          "fullName": "dashboard guard version shutdown access allows shutdown with valid CLI token",
+          "status": "passed"
+        },
+        {
+          "fullName": "dashboard guard version shutdown access keeps ordinary always-protected dashboard auth behavior unchanged",
+          "status": "passed"
+        },
+        {
+          "fullName": "dashboard guard version shutdown access rejects shutdown when only remote browser JWT is valid",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/db-concurrent.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "DB Concurrency — atomic safety 100 parallel saveRequestUsage → no count loss",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB Concurrency — atomic safety 200 parallel saveRequestDetail → all flushed",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB Concurrency — atomic safety addCustomModel race: parallel duplicate adds → only 1 inserted",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB Concurrency — atomic safety daily summary aggregates correctly under parallel writes",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB Concurrency — atomic safety mixed concurrent: usage + details + connections + aliases",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB Concurrency — atomic safety OAuth refresh race: parallel updateProviderConnection on same id",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB Concurrency — atomic safety updatePricing race: parallel adds different models → all merged",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB Concurrency — atomic safety updateSettings parallel → no merge loss",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/db-driver-chain.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Driver fallback chain default → picks better-sqlite3 when available",
+          "status": "passed"
+        },
+        {
+          "fullName": "Driver fallback chain falls back to node:sqlite when better-sqlite3 unavailable",
+          "status": "passed"
+        },
+        {
+          "fullName": "Driver fallback chain falls back to sql.js when both native drivers unavailable",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/db-migration-chain.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Schema migrations auto-sync re-creates missing index when DB lacks it",
+          "status": "passed"
+        },
+        {
+          "fullName": "Schema migrations existing DB at older schemaVersion → re-applies pending migrations on restart",
+          "status": "passed"
+        },
+        {
+          "fullName": "Schema migrations fresh DB → applies migrations & stamps schemaVersion",
+          "status": "passed"
+        },
+        {
+          "fullName": "Schema migrations fresh DB + legacy db.json → imports data automatically",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/db-sqlite-vs-lowdb.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "DB SQLite layer — public API parity apiKeys: create/get/validate/delete",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB SQLite layer — public API parity combos: CRUD",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB SQLite layer — public API parity customModels: add/list/delete with dedupe",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB SQLite layer — public API parity disabledModels: add/remove per provider",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB SQLite layer — public API parity exportDb / importDb roundtrip",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB SQLite layer — public API parity getChartData: 24h buckets",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB SQLite layer — public API parity getChartData: 7d buckets",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB SQLite layer — public API parity isCloudEnabled reflects settings",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB SQLite layer — public API parity mitmAlias: get/set per tool",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB SQLite layer — public API parity modelAliases: KV ops",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB SQLite layer — public API parity pricing: user pricing merged with constants",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB SQLite layer — public API parity providerConnections: CRUD + reorder by priority",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB SQLite layer — public API parity providerConnections: optional fields persisted via JSON column",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB SQLite layer — public API parity providerNodes: CRUD",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB SQLite layer — public API parity proxyPools: CRUD with sort by updatedAt desc",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB SQLite layer — public API parity requestDetails: save → query with paging",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB SQLite layer — public API parity settings: get → defaults; update → merge",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB SQLite layer — public API parity usage: pending tracking in-memory",
+          "status": "passed"
+        },
+        {
+          "fullName": "DB SQLite layer — public API parity usage: saveRequestUsage + getUsageHistory + getUsageStats",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/dns-cache-swr.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "DNS Cache SWR (Stale-While-Revalidate) does not trigger multiple background refreshes concurrently (race protection)",
+          "status": "passed"
+        },
+        {
+          "fullName": "DNS Cache SWR (Stale-While-Revalidate) performs synchronous resolve on cache miss and caches the result",
+          "status": "passed"
+        },
+        {
+          "fullName": "DNS Cache SWR (Stale-While-Revalidate) retains old IP if background refresh fails",
+          "status": "passed"
+        },
+        {
+          "fullName": "DNS Cache SWR (Stale-While-Revalidate) returns cached IP instantly on cache hit without re-resolving",
+          "status": "passed"
+        },
+        {
+          "fullName": "DNS Cache SWR (Stale-While-Revalidate) triggers background refresh when cache is stale (30s before expiry) but returns old IP instantly",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/dynamicModels.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "credentialCacheKey discriminates by connectionId",
+          "status": "passed"
+        },
+        {
+          "fullName": "credentialCacheKey never returns a bare provider key without a discriminator",
+          "status": "passed"
+        },
+        {
+          "fullName": "fetchWithFallback bypasses cache with forceRefresh",
+          "status": "passed"
+        },
+        {
+          "fullName": "fetchWithFallback returns null when the fetcher throws (fallback to hardcoded)",
+          "status": "passed"
+        },
+        {
+          "fullName": "fetchWithFallback returns null when the fetcher yields null (no cache poisoning)",
+          "status": "passed"
+        },
+        {
+          "fullName": "fetchWithFallback returns the fetcher value and caches it",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/embeddingsCore.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "buildEmbeddingsBody array input — passes array as-is",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildEmbeddingsBody custom encoding_format is forwarded",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildEmbeddingsBody gemini batch input forwards dimensions on each request",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildEmbeddingsBody gemini single input forwards dimensions as outputDimensionality",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildEmbeddingsBody no encoding_format in body → defaults to float",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildEmbeddingsBody single string input — includes model and input, default encoding_format=float",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildEmbeddingsHeaders openai — uses accessToken when apiKey is absent",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildEmbeddingsHeaders openai → Authorization: Bearer, Content-Type: application/json",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildEmbeddingsHeaders openai-compatible-* → Authorization: Bearer only (no extra headers)",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildEmbeddingsHeaders openrouter → adds HTTP-Referer and X-Title headers",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildEmbeddingsUrl antigravity (non-openai-compatible, no URL mapping) → 400",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildEmbeddingsUrl openai → https://api.openai.com/v1/embeddings",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildEmbeddingsUrl openai-compatible-* → uses baseUrl from providerSpecificData",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildEmbeddingsUrl openai-compatible-* strips trailing slash from baseUrl",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildEmbeddingsUrl openai-compatible-* without baseUrl → falls back to api.openai.com",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildEmbeddingsUrl openrouter → https://openrouter.ai/api/v1/embeddings",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildEmbeddingsUrl unsupported provider (e.g. gemini-cli) → 400 error, no fetch called",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — input validation empty array input passes validation and reaches provider",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — input validation empty string input passes validation",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — input validation input is a number → 400 Bad Request",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — input validation input is an object → 400 Bad Request",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — input validation input is null → 400 Bad Request",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — input validation missing input → 400 Bad Request",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — provider error handling error result response has OpenAI-format error body",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — provider error handling invalid JSON from provider → returns 502",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — provider error handling network error (fetch throws) → returns 502 Bad Gateway",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — provider error handling provider 400 → returns success=false with status 400",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — provider error handling provider 429 → returns success=false with status 429",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — provider error handling provider 500 → returns success=false with status 500",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — success path calls onRequestSuccess callback on success",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — success path does not call onRequestSuccess on provider error",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — success path provider response with non-standard format is passed through as-is",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — success path response body is valid OpenAI-format JSON",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — success path response Content-Type is application/json",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — success path response includes CORS header Access-Control-Allow-Origin: *",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — success path returns success=true with Response on 200",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — token refresh on 401/403 on 401 with no refresh token, falls back gracefully (no crash)",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleEmbeddingsCore — token refresh on 401/403 on 401, attempts retry after refresh; succeeds if refresh gives new token",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/gemini-usage-projectid.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Gemini CLI usage project id resolution normalizes project objects returned by loadCodeAssist",
+          "status": "passed"
+        },
+        {
+          "fullName": "Gemini CLI usage project id resolution returns actionable guidance when no project id is available",
+          "status": "passed"
+        },
+        {
+          "fullName": "Gemini CLI usage project id resolution uses the projectId stored on the provider connection",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/gemini-v1beta-sse-buffering.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Gemini v1beta SSE buffering parses JSON data lines split across chunks without dropping tokens",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/github-responses-routing.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "GithubExecutor.execute cached-route guard (#1062) does NOT use /responses for a Gemini model even if it was wrongly cached as codex",
+          "status": "passed"
+        },
+        {
+          "fullName": "GithubExecutor.supportsResponsesEndpoint allows OpenAI/codex models on the /responses endpoint",
+          "status": "passed"
+        },
+        {
+          "fullName": "GithubExecutor.supportsResponsesEndpoint excludes Claude models from the /responses endpoint",
+          "status": "passed"
+        },
+        {
+          "fullName": "GithubExecutor.supportsResponsesEndpoint excludes Gemini models from the /responses endpoint",
+          "status": "passed"
+        },
+        {
+          "fullName": "GithubExecutor.supportsResponsesEndpoint is null-safe",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/grokBilling.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "buildMergedGrokQuotas — two-endpoint parity with CLIProxyAPI fails open: only credits shape available → still shows weekly/api",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildMergedGrokQuotas — two-endpoint parity with CLIProxyAPI fails open: only plain shape available → still shows monthly credits",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildMergedGrokQuotas — two-endpoint parity with CLIProxyAPI produces Weekly limit + Api usage + Monthly credits with correct percentages",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseGrokCliBilling — credits shape (regression) still parses the ?format=credits shape (On-demand bar)",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseGrokCliBilling — plain /v1/billing shape adds a Weekly limit row when currentPeriod is present",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseGrokCliBilling — plain /v1/billing shape renders Monthly credits even when depleted ($0/$0) instead of hiding the table",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseGrokCliBilling — plain /v1/billing shape reports Pay-as-you-go Disabled when onDemandCap is 0",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseGrokCliBilling — plain /v1/billing shape reports Pay-as-you-go Enabled and a Monthly bar when there is a cap/limit",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/hf-model-routing.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "HuggingFace model alias parsing resolves hf alias to huggingface provider",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/image-generation.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "handleImageGenerationCore calls onRequestSuccess callback on success",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleImageGenerationCore forwards xAI Grok Imagine options (size, quality, background, output_format)",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleImageGenerationCore generates image with Cloudflare Workers AI JSON response",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleImageGenerationCore generates image with Codex gpt-5.5-image using current Codex version header",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleImageGenerationCore generates image with Gemini format",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleImageGenerationCore generates image with Minimax format",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleImageGenerationCore generates image with NanoBanana format",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleImageGenerationCore generates image with OpenAI format",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleImageGenerationCore generates image with SD WebUI format",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleImageGenerationCore handles HuggingFace binary response",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleImageGenerationCore handles network errors",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleImageGenerationCore handles OpenRouter with HTTP-Referer header",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleImageGenerationCore handles provider error responses",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleImageGenerationCore rejects unsupported provider",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleImageGenerationCore resolves Cloudflare img2img and inpainting URL inputs before sending",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleImageGenerationCore uses multipart form data for Cloudflare FLUX.2 models",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleImageGenerationCore validates required prompt field",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/kiro-buffer-boundary.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "KiroExecutor buffer boundary invariance (Phase 2) handles a chunk larger than the initial backing buffer (grow path)",
+          "status": "passed"
+        },
+        {
+          "fullName": "KiroExecutor buffer boundary invariance (Phase 2) produces identical SSE regardless of how the stream is chunked",
+          "status": "passed"
+        },
+        {
+          "fullName": "KiroExecutor buffer boundary invariance (Phase 2) splits mid-frame (across header and payload) without corrupting events",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/kiro-client-headers.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "KiroExecutor.buildHeaders — client fidelity derives a stable per-account machineId suffix (same account → same UA)",
+          "status": "passed"
+        },
+        {
+          "fullName": "KiroExecutor.buildHeaders — client fidelity emits agent-mode + optout fidelity headers",
+          "status": "passed"
+        },
+        {
+          "fullName": "KiroExecutor.buildHeaders — client fidelity gives different accounts different machineIds",
+          "status": "passed"
+        },
+        {
+          "fullName": "KiroExecutor.buildHeaders — client fidelity helper builds both UA strings for the streaming surface with a derived machineId",
+          "status": "passed"
+        },
+        {
+          "fullName": "KiroExecutor.buildHeaders — client fidelity preserves the api_key auth branch (tokentype API_KEY)",
+          "status": "passed"
+        },
+        {
+          "fullName": "KiroExecutor.buildHeaders — client fidelity preserves the external_idp auth branch (TokenType EXTERNAL_IDP)",
+          "status": "passed"
+        },
+        {
+          "fullName": "KiroExecutor.buildHeaders — client fidelity runtime surface swaps the sub-client version + api segment but keeps the same machineId",
+          "status": "passed"
+        },
+        {
+          "fullName": "KiroExecutor.buildHeaders — client fidelity still sets Accept + X-Amz-Target eventstream headers",
+          "status": "passed"
+        },
+        {
+          "fullName": "KiroExecutor.buildHeaders — client fidelity UA matches the aws-sdk-js/1.0.34 … KiroIDE- shape",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/kiro-conversationid-claude.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "claudeToKiroRequest — deterministic conversationId [C1] fresh single-turn with timestamp prefix → same id across two moments",
+          "status": "passed"
+        },
+        {
+          "fullName": "claudeToKiroRequest — deterministic conversationId different first-user-content → different id",
+          "status": "passed"
+        },
+        {
+          "fullName": "claudeToKiroRequest — deterministic conversationId produces a valid uuid (not undefined/empty)",
+          "status": "passed"
+        },
+        {
+          "fullName": "claudeToKiroRequest — deterministic conversationId same first-user-content (with history) → same id",
+          "status": "passed"
+        },
+        {
+          "fullName": "claudeToKiroRequest — deterministic conversationId seed ignores timestamp: same user content at different times → same id",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/kiro-external-idp-refresh.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "refreshKiroToken — external_idp branch keeps the old refresh token when Microsoft does not rotate it",
+          "status": "passed"
+        },
+        {
+          "fullName": "refreshKiroToken — external_idp branch never hits the AWS OIDC or Kiro social endpoints for external_idp",
+          "status": "passed"
+        },
+        {
+          "fullName": "refreshKiroToken — external_idp branch POSTs form-urlencoded to the Microsoft tokenEndpoint with the right params",
+          "status": "passed"
+        },
+        {
+          "fullName": "refreshKiroToken — external_idp branch rejects a non-Microsoft tokenEndpoint before making any request",
+          "status": "passed"
+        },
+        {
+          "fullName": "refreshKiroToken — external_idp branch returns null (no request) when clientId is missing",
+          "status": "passed"
+        },
+        {
+          "fullName": "refreshKiroToken — external_idp branch returns null when Microsoft responds with an error (e.g. 401)",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/kiro-fused-objecthandoff.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Kiro fused object hand-off (Phase 3 option c) emitObjects mode yields JS objects (not bytes) with a done sentinel",
+          "status": "passed"
+        },
+        {
+          "fullName": "Kiro fused object hand-off (Phase 3 option c) fused output contains the translated Claude content and thinking",
+          "status": "passed"
+        },
+        {
+          "fullName": "Kiro fused object hand-off (Phase 3 option c) produces byte-identical Claude SSE vs the byte path",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/kiro-model-id-resolve.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "kiro model id resolve keeps dotted opus/sonnet ids as-is (no extra rewrite)",
+          "status": "passed"
+        },
+        {
+          "fullName": "kiro model id resolve openai-to-kiro dash→dot normalization pattern matches Claude Code ids",
+          "status": "passed"
+        },
+        {
+          "fullName": "kiro model id resolve static kr catalog has no upstreamModelId override for opus 4.8",
+          "status": "passed"
+        },
+        {
+          "fullName": "kiro model id resolve strips -thinking / -agentic fictions before upstream",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/kiro-model-slots.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Kiro MITM model slots exposes the kiro mitm tool",
+          "status": "passed"
+        },
+        {
+          "fullName": "Kiro MITM model slots offers a mappable slot for the agent default model id 'auto'",
+          "status": "passed"
+        },
+        {
+          "fullName": "Kiro MITM model slots offers a mappable slot for the background sub-task model id 'simple-task'",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/kiro-profilearn-endpoint.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "isKiroDevEndpoint detects kiro.dev hosts",
+          "status": "passed"
+        },
+        {
+          "fullName": "resolveKiroRequestProfileArn — account-bound / social account-specific ARN always wins regardless of endpoint",
+          "status": "passed"
+        },
+        {
+          "fullName": "resolveKiroRequestProfileArn — account-bound / social social falls back to the shared social profile when no ARN stored",
+          "status": "passed"
+        },
+        {
+          "fullName": "resolveKiroRequestProfileArn — builder-id (free tier, no own profile) never lets the shared placeholder count as an account-specific ARN",
+          "status": "passed"
+        },
+        {
+          "fullName": "resolveKiroRequestProfileArn — builder-id (free tier, no own profile) OMITS the ARN on the amazonaws surfaces",
+          "status": "passed"
+        },
+        {
+          "fullName": "resolveKiroRequestProfileArn — builder-id (free tier, no own profile) sends the shared builder ARN on the kiro.dev surface",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/kiro-thinking-strip.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "KiroExecutor thinking tag stripping handles empty content after stripping when hasReasoningContent is true",
+          "status": "passed"
+        },
+        {
+          "fullName": "KiroExecutor thinking tag stripping handles multi-chunk thinking block spanning several frames",
+          "status": "passed"
+        },
+        {
+          "fullName": "KiroExecutor thinking tag stripping strips <thinking> tags and re-emits as reasoning_content",
+          "status": "passed"
+        },
+        {
+          "fullName": "KiroExecutor thinking tag stripping strips thinking from claude-sonnet model",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/kiro-tokenRefresh.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "kiro/token-refresh wrapper refreshKiroToken works even when fetchKiroProfileArn is missing in providers.js",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/kiro-tool-name-sanitize.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "buildKiroToolNameMap disambiguates two originals that collapse to the same sanitized name",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildKiroToolNameMap does not let a sanitized name collide with a distinct already-valid name",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildKiroToolNameMap only contains entries for names that actually changed",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildKiroToolNameMap returns an empty map when every name is valid",
+          "status": "passed"
+        },
+        {
+          "fullName": "request round-trip — payload sanitize + map attach [claude route] sanitizes MCP tool def, keeps valid tool, attaches map",
+          "status": "passed"
+        },
+        {
+          "fullName": "request round-trip — payload sanitize + map attach [openai route] sanitizes MCP tool def and attaches map",
+          "status": "passed"
+        },
+        {
+          "fullName": "request round-trip — payload sanitize + map attach valid-only tool set leaves the payload without a map (common path untouched)",
+          "status": "passed"
+        },
+        {
+          "fullName": "response restore — sanitized → original at emit [claude route] fail-open: a name not in the map passes through unchanged",
+          "status": "passed"
+        },
+        {
+          "fullName": "response restore — sanitized → original at emit [claude route] restores the original tool name on the tool_use block",
+          "status": "passed"
+        },
+        {
+          "fullName": "response restore — sanitized → original at emit [openai route] restores the original tool name in the tool_call chunk",
+          "status": "passed"
+        },
+        {
+          "fullName": "restoreToolNamesInOpenAIResponse — non-streaming restore is a no-op with an empty map or a non-OpenAI body",
+          "status": "passed"
+        },
+        {
+          "fullName": "restoreToolNamesInOpenAIResponse — non-streaming restore restores sanitized names on an OpenAI-shaped body and fails open",
+          "status": "passed"
+        },
+        {
+          "fullName": "sanitizeKiroToolName is idempotent: sanitize(sanitize(x)) === sanitize(x)",
+          "status": "passed"
+        },
+        {
+          "fullName": "sanitizeKiroToolName leaves an already-valid name byte-identical",
+          "status": "passed"
+        },
+        {
+          "fullName": "sanitizeKiroToolName shortens an MCP triple to a valid <=64 name that keeps the mcp__ prefix",
+          "status": "passed"
+        },
+        {
+          "fullName": "sanitizeKiroToolName strips characters outside [a-zA-Z0-9_-]",
+          "status": "passed"
+        },
+        {
+          "fullName": "sanitizeKiroToolName truncates names longer than 64 chars",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/live-models-for-select-modal.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "liveModelsForSelectModal applyLiveCatalogToChips fail-open when live empty",
+          "status": "passed"
+        },
+        {
+          "fullName": "liveModelsForSelectModal kiro live-only replaces static and keeps custom",
+          "status": "passed"
+        },
+        {
+          "fullName": "liveModelsForSelectModal parseProviderModelsPayload accepts common shapes",
+          "status": "passed"
+        },
+        {
+          "fullName": "liveModelsForSelectModal pickFirstActiveConnectionByProvider keeps first active per provider",
+          "status": "passed"
+        },
+        {
+          "fullName": "liveModelsForSelectModal union providers keep static + add live",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/logger-debug-toggle.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "logger runtime debug toggle debug() emits only when enabled",
+          "status": "passed"
+        },
+        {
+          "fullName": "logger runtime debug toggle isDebugLevel() reflects setDebugEnabled state",
+          "status": "passed"
+        },
+        {
+          "fullName": "logger runtime debug toggle restores ENV_LEVEL (DEBUG) when toggled off",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/merge-provider-models.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "mergeProviderModels kiro falls back to static when live empty/null (no shelved)",
+          "status": "passed"
+        },
+        {
+          "fullName": "mergeProviderModels kiro live-only: available = live; static missing → shelved (Disabled)",
+          "status": "passed"
+        },
+        {
+          "fullName": "mergeProviderModels non-kiro providers still union static + live",
+          "status": "passed"
+        },
+        {
+          "fullName": "mergeProviderModels normalizeCatalogModel accepts string / id / name / model",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/mimo-free.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "bootstrapJwt automatically rotates proxy URLs from proxy pool on 429 retries",
+          "status": "passed"
+        },
+        {
+          "fullName": "bootstrapJwt caches the jwt and does not re-fetch while still valid",
+          "status": "passed"
+        },
+        {
+          "fullName": "bootstrapJwt falls back and rotates through all active system proxy pools on 429 retries if no connection-specific pool is provided",
+          "status": "passed"
+        },
+        {
+          "fullName": "bootstrapJwt prioritizes connection pool and rotates to system-wide pools on 429 retries",
+          "status": "passed"
+        },
+        {
+          "fullName": "bootstrapJwt re-fetches once the cached jwt is within the expiry buffer",
+          "status": "passed"
+        },
+        {
+          "fullName": "bootstrapJwt retries on 429 at bootstrap without rotating fingerprint",
+          "status": "passed"
+        },
+        {
+          "fullName": "bootstrapJwt returns the jwt from the bootstrap response",
+          "status": "passed"
+        },
+        {
+          "fullName": "bootstrapJwt sends the machine fingerprint as the bootstrap client",
+          "status": "passed"
+        },
+        {
+          "fullName": "bootstrapJwt throws when the bootstrap response has no jwt",
+          "status": "passed"
+        },
+        {
+          "fullName": "bootstrapJwt throws when the bootstrap response is not ok",
+          "status": "passed"
+        },
+        {
+          "fullName": "generateFingerprint is stable per machine (deterministic across calls)",
+          "status": "passed"
+        },
+        {
+          "fullName": "generateFingerprint returns a 64-char hex sha256 digest",
+          "status": "passed"
+        },
+        {
+          "fullName": "generateSessionId only emits lowercase alphanumeric characters in the suffix",
+          "status": "passed"
+        },
+        {
+          "fullName": "generateSessionId produces a fresh id on each call",
+          "status": "passed"
+        },
+        {
+          "fullName": "generateSessionId uses the ses_ prefix and a 24-char random suffix",
+          "status": "passed"
+        },
+        {
+          "fullName": "injectSystemMarker does not duplicate the marker when already present",
+          "status": "passed"
+        },
+        {
+          "fullName": "injectSystemMarker keeps a caller-provided system prompt alongside the marker",
+          "status": "passed"
+        },
+        {
+          "fullName": "injectSystemMarker leaves a body without a messages array untouched",
+          "status": "passed"
+        },
+        {
+          "fullName": "injectSystemMarker prepends a system message with the marker when none is present",
+          "status": "passed"
+        },
+        {
+          "fullName": "injectSystemMarker preserves the original user message after injection",
+          "status": "passed"
+        },
+        {
+          "fullName": "MiMo Free provider registration exposes all free-channel models for mmf",
+          "status": "passed"
+        },
+        {
+          "fullName": "MiMo Free provider registration lists mimo-free in the dashboard FREE_PROVIDERS catalog",
+          "status": "passed"
+        },
+        {
+          "fullName": "MiMo Free provider registration maps the mimo-free alias to mmf",
+          "status": "passed"
+        },
+        {
+          "fullName": "MiMo Free provider registration registers a specialized executor for mimo-free and the mmf alias",
+          "status": "passed"
+        },
+        {
+          "fullName": "MiMo Free provider registration registers mimo-free as a no-auth provider in open-sse config",
+          "status": "passed"
+        },
+        {
+          "fullName": "MimoFreeExecutor buildHeaders includes the MiMo source and session affinity",
+          "status": "passed"
+        },
+        {
+          "fullName": "MimoFreeExecutor buildUrl returns the free-ai chat endpoint",
+          "status": "passed"
+        },
+        {
+          "fullName": "MimoFreeExecutor execute injects the marker and sends a Bearer JWT to the chat endpoint",
+          "status": "passed"
+        },
+        {
+          "fullName": "MimoFreeExecutor retries once with a fresh JWT on 401/403 without rotating fingerprint",
+          "status": "passed"
+        },
+        {
+          "fullName": "MimoFreeExecutor transformRequest injects the system marker",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseJwtExp derives the expiry from the JWT exp claim (ms)",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseJwtExp falls back to a future timestamp when the JWT is unparseable",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/minimax-tts.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "MiniMax TTS sends MiniMax T2A payload and converts hex audio to base64 JSON",
+          "status": "passed"
+        },
+        {
+          "fullName": "MiniMax TTS surfaces MiniMax base_resp errors",
+          "status": "passed"
+        },
+        {
+          "fullName": "MiniMax TTS uses the default MiniMax voice when no voice is provided",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/minimax-usage.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "MiniMax usage keeps non-TTS MiniMax quota rows instead of filtering to text only",
+          "status": "passed"
+        },
+        {
+          "fullName": "MiniMax usage parses coding-plan TTS quota counts as remaining counts",
+          "status": "passed"
+        },
+        {
+          "fullName": "MiniMax usage parses token-plan TTS quota counts as used counts",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/minimax-voices.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "MiniMax voices API fetches China MiniMax voices when provider=minimax-cn",
+          "status": "passed"
+        },
+        {
+          "fullName": "MiniMax voices API fetches global MiniMax voices with stored API key",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/model-test-routing.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "model test route kind routing fails embedding model tests when provider returns no embedding data",
+          "status": "passed"
+        },
+        {
+          "fullName": "model test route kind routing returns formatted HTTP errors for non-2xx embedding responses",
+          "status": "passed"
+        },
+        {
+          "fullName": "model test route kind routing routes embedding model tests to /api/v1/embeddings",
+          "status": "passed"
+        },
+        {
+          "fullName": "model test route kind routing routes image model tests to /api/v1/images/generations",
+          "status": "passed"
+        },
+        {
+          "fullName": "model test route kind routing routes stt model tests to /api/v1/audio/transcriptions",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/model-test-timeout.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "model test timeout classification distinguishes timeout errors from auth and server failures",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/oauth-cursor-auto-import.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "GET /api/oauth/cursor/auto-import extracts tokens using exact keys",
+          "status": "passed"
+        },
+        {
+          "fullName": "GET /api/oauth/cursor/auto-import falls back to fuzzy key matching on macOS when exact keys are missing",
+          "status": "passed"
+        },
+        {
+          "fullName": "GET /api/oauth/cursor/auto-import linux uses single hardcoded path and original error message",
+          "status": "passed"
+        },
+        {
+          "fullName": "GET /api/oauth/cursor/auto-import returns descriptive error if macOS db file exists but cannot be opened",
+          "status": "passed"
+        },
+        {
+          "fullName": "GET /api/oauth/cursor/auto-import returns login-prompt error when tokens are missing even after fallback",
+          "status": "passed"
+        },
+        {
+          "fullName": "GET /api/oauth/cursor/auto-import returns not-found when no macOS cursor db paths are accessible",
+          "status": "passed"
+        },
+        {
+          "fullName": "GET /api/oauth/cursor/auto-import unsupported platform returns 400",
+          "status": "passed"
+        },
+        {
+          "fullName": "GET /api/oauth/cursor/auto-import unwraps JSON-encoded string values",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/openai-responses-terminal-event.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "OpenAI Responses streaming termination does not add response.failed when a Responses stream already completed",
+          "status": "passed"
+        },
+        {
+          "fullName": "OpenAI Responses streaming termination emits a response.failed event when a Responses stream closes before a terminal event",
+          "status": "passed"
+        },
+        {
+          "fullName": "OpenAI Responses streaming termination emits response.failed before DONE when a Responses stream sends DONE without a terminal event",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/openai-to-claude-response-tools.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "openaiToClaudeResponse tool argument sanitization drops invalid Read pages and clamps numeric bounds",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToClaudeResponse tool argument sanitization keeps valid PDF pages",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/openai-to-claude-toolcall-edgecases.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "openaiToClaudeResponse tool_call edge cases (KiroGo-style upstream) finish_reason \"tool_use\" maps to stop_reason tool_use",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToClaudeResponse tool_call edge cases (KiroGo-style upstream) id on first fragment, arguments on later id-less fragments",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToClaudeResponse tool_call edge cases (KiroGo-style upstream) no id at all, tool identified by index only",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToClaudeResponse tool_call edge cases (KiroGo-style upstream) tool block streamed but finish_reason \"stop\" still yields tool_use",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/openai-to-claude.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "openaiToClaudeRequest response_format handling should inject basic JSON instructions for json_object type",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToClaudeRequest response_format handling should inject JSON schema instructions for json_schema type",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToClaudeRequest response_format handling should not modify system prompt when response_format is missing",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToClaudeRequest response_format handling should preserve existing system messages when adding response_format",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToClaudeRequest tool_choice handling converts OpenAI forced tool ({type:'function'}) to Claude {type:'tool'}",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToClaudeRequest tool_choice handling maps string tool_choice values",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToClaudeRequest tool_choice handling never leaks an invalid type (falls back to auto)",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToClaudeRequest tool_choice handling omits tool_choice entirely when the request has none",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToClaudeRequest tool_choice handling passes through Claude-native tool_choice objects unchanged",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToClaudeResponse omits empty Read pages tool argument before emitting Claude input deltas",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/openai-to-commandcode.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "openaiToCommandCode — assistant tool_calls / tool-call converts assistant.tool_calls[] into content blocks of type tool-call",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToCommandCode — basic envelope returns the expected top-level envelope shape",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToCommandCode — content shape MUST always emit content as Array (never string) for user",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToCommandCode — content shape MUST always emit content as Array for assistant",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToCommandCode — system handling hoists system messages to params.system (string), not messages[]",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToCommandCode — system handling joins multiple system messages with blank line",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToCommandCode — system handling omits params.system when no system messages",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToCommandCode — tool role / tool-result (AI SDK) converts role:\"tool\" to role:\"tool\" with tool-result block; output is {type:\"text\",value}",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToCommandCode — tools schema conversion converts OpenAI {type:\"function\", function:{...}} to Anthropic plain {name, input_schema}",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToCommandCode — tools schema conversion does not include tools field when input has none",
+          "status": "passed"
+        },
+        {
+          "fullName": "openaiToCommandCode — tools schema conversion preserves description on converted tool",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/openai-to-kiro.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "buildKiroPayload basic message conversion should convert a simple text message",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildKiroPayload basic message conversion should fallback to '[Tool Output]' for empty message content with tool results",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildKiroPayload basic message conversion should fallback to 'continue' for empty message content without tool results",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildKiroPayload basic message conversion should not include images field when no images are present",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildKiroPayload image forwarding should forward base64 image from image_url content part",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildKiroPayload image forwarding should forward multiple base64 images",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildKiroPayload image forwarding should include both images and text content together",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildKiroPayload image forwarding should not include images field when images array is empty",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildKiroPayload image forwarding should treat http image URLs as text fallback (Kiro only supports base64)",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildKiroPayload profileArn always prefers the account's own ARN omits profileArn for idc with no stored ARN (executor discovers it)",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildKiroPayload profileArn always prefers the account's own ARN uses the stored ARN for account-bound api_key auth",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildKiroPayload profileArn always prefers the account's own ARN uses the stored ARN for builder-id",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildKiroPayload profileArn always prefers the account's own ARN uses the stored ARN for imported tokens",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildKiroPayload profileArn resolution falls back to social shared profileArn when authMethod is google/github",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildKiroPayload profileArn resolution omits profileArn for builder-id with no stored ARN (executor discovers it)",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildKiroPayload profileArn resolution USES the account's own stored ARN for builder-id (discovered, real)",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/param-support.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "stripUnsupportedParams clamps Volcengine Ark GLM-5 max_tokens to model output ceiling",
+          "status": "passed"
+        },
+        {
+          "fullName": "stripUnsupportedParams drops reasoning-related params for xAI provider",
+          "status": "passed"
+        },
+        {
+          "fullName": "stripUnsupportedParams flattens Cloudflare AI OpenAI content-part arrays",
+          "status": "passed"
+        },
+        {
+          "fullName": "stripUnsupportedParams still drops unsupported GitHub model params",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/passthrough-double-done.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Passthrough [DONE] handling (Phase 3 double-DONE fix) emits exactly one [DONE] when upstream already sent [DONE]",
+          "status": "passed"
+        },
+        {
+          "fullName": "Passthrough [DONE] handling (Phase 3 double-DONE fix) still emits one [DONE] when upstream never sent one (flush supplies it)",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/perplexity-web.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "buildPplxRequestBody includes required params",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildPplxRequestBody sets query_str at both top-level AND params (required by upstream API)",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildQuery first turn: returns JSON with instructions + query",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildQuery follow-up (with backendUuid): returns plain currentMsg, no JSON",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildQuery ignores tools on follow-up turn (uses session)",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildQuery includes history when present on first turn",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildQuery injects tools into instructions on first turn",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildQuery truncates query if JSON exceeds 96000 chars",
+          "status": "passed"
+        },
+        {
+          "fullName": "formatToolsHint handles flat tool schema",
+          "status": "passed"
+        },
+        {
+          "fullName": "formatToolsHint handles OpenAI tool schema (function wrapper)",
+          "status": "passed"
+        },
+        {
+          "fullName": "formatToolsHint returns empty string for no tools",
+          "status": "passed"
+        },
+        {
+          "fullName": "formatToolsHint truncates long descriptions to first line, max 200 chars",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseOpenAIMessages extracts system + history + current msg",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseOpenAIMessages handles multi-part content (array of text blocks)",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseOpenAIMessages skips empty content messages",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseOpenAIMessages treats developer role as system",
+          "status": "passed"
+        },
+        {
+          "fullName": "PerplexityWebExecutor.execute applies THINKING_MAP when reasoning_effort is set",
+          "status": "passed"
+        },
+        {
+          "fullName": "PerplexityWebExecutor.execute injects body.tools into query_str instructions",
+          "status": "passed"
+        },
+        {
+          "fullName": "PerplexityWebExecutor.execute maps pplx-auto → mode=concise, pref=pplx_pro",
+          "status": "passed"
+        },
+        {
+          "fullName": "PerplexityWebExecutor.execute returns 400 on missing messages",
+          "status": "passed"
+        },
+        {
+          "fullName": "PerplexityWebExecutor.execute sends Bearer header when credentials.accessToken provided",
+          "status": "passed"
+        },
+        {
+          "fullName": "PerplexityWebExecutor.execute sends Cookie header when credentials.apiKey provided",
+          "status": "passed"
+        },
+        {
+          "fullName": "PerplexityWebExecutor.execute surfaces 429 with rate-limit message",
+          "status": "passed"
+        },
+        {
+          "fullName": "PerplexityWebExecutor.execute surfaces upstream 401 with friendly auth message",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/pipe-with-disconnect-timing.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "pipeWithDisconnect timing markers captures upstream first byte and client first chunk timings",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/provider-models-minimax-m3.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "MiniMax-M3 model registration does not regress the existing M2.7 / M2.5 / M2.1 entries",
+          "status": "passed"
+        },
+        {
+          "fullName": "MiniMax-M3 model registration exposes MiniMax-M3 through getModelsByProviderId for both provider IDs",
+          "status": "passed"
+        },
+        {
+          "fullName": "MiniMax-M3 model registration includes MiniMax-M3 in PROVIDER_MODELS.minimax",
+          "status": "passed"
+        },
+        {
+          "fullName": "MiniMax-M3 model registration includes MiniMax-M3 in PROVIDER_MODELS['minimax-cn']",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/provider-pricing-minimax-m3.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "MiniMax-M3 pricing includes MiniMax-M3 in MODEL_PRICING",
+          "status": "passed"
+        },
+        {
+          "fullName": "MiniMax-M3 pricing MiniMax-M3 cached price matches the design spec (0.06)",
+          "status": "passed"
+        },
+        {
+          "fullName": "MiniMax-M3 pricing MiniMax-M3 input price matches the design spec (0.30)",
+          "status": "passed"
+        },
+        {
+          "fullName": "MiniMax-M3 pricing MiniMax-M3 output price matches the design spec (1.20)",
+          "status": "passed"
+        },
+        {
+          "fullName": "MiniMax-M3 pricing MiniMax-M3 pricing has numeric shape (input, output, cached)",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/provider-test-models-routing.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "provider test-models route kind routing routes huggingface image models to /api/v1/images/generations",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/provider-validation.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Provider Validation API Anthropic Compatible should normalize URL by removing /messages suffix",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API Anthropic Compatible should send correct headers for Anthropic API",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API Error Messages - /chat/completions Status Codes should return auth error for 401",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API Error Messages - /chat/completions Status Codes should return failed for other codes",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API Error Messages - /chat/completions Status Codes should return invalid model for 400",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API Error Messages - /chat/completions Status Codes should return not found for 404",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API Error Messages - /chat/completions Status Codes should return server error for 503",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API Error Messages - /models Status Codes should return auth error for 401",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API Error Messages - /models Status Codes should return auth error for 403",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API Error Messages - /models Status Codes should return not found for 404",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API Error Messages - /models Status Codes should return server error for 500",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API Error Messages - /models Status Codes should return server error for 502",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API Error Messages - /models Status Codes should return unexpected for other codes",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API Error Messages - Network should map CERT_HAS_EXPIRED to user-friendly message",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API Error Messages - Network should map ECONNREFUSED to user-friendly message",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API Error Messages - Network should map ENOTFOUND to user-friendly message",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API Error Messages - Network should map timeout to user-friendly message",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API Fetch timeout should abort the underlying fetch when validation times out",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API OpenAI Compatible should fallback to chat/completions when /models fails and modelId provided",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API OpenAI Compatible should return error when /models fails and no modelId",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API OpenAI Compatible should return valid:true when /models succeeds",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API Response Format should return correct format for failure with error",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API Response Format should return correct format for success via /models",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API Response Format should return correct format for success via chat",
+          "status": "passed"
+        },
+        {
+          "fullName": "Provider Validation API URL Validation should validate correct URL format",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/proxy-helper.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Proxy Helper Utilities maskProxyUrl handles SOCKS proxy URLs with credentials",
+          "status": "passed"
+        },
+        {
+          "fullName": "Proxy Helper Utilities maskProxyUrl leaves standard proxy URLs without credentials unchanged",
+          "status": "passed"
+        },
+        {
+          "fullName": "Proxy Helper Utilities maskProxyUrl redacts username and password in proxy URLs",
+          "status": "passed"
+        },
+        {
+          "fullName": "Proxy Helper Utilities maskProxyUrl returns placeholder for invalid URLs",
+          "status": "passed"
+        },
+        {
+          "fullName": "Proxy Helper Utilities normalizeProxyUrl automatically prepends http protocol to bare host:port inputs",
+          "status": "passed"
+        },
+        {
+          "fullName": "Proxy Helper Utilities normalizeProxyUrl returns null for empty inputs",
+          "status": "passed"
+        },
+        {
+          "fullName": "Proxy Helper Utilities normalizeProxyUrl returns valid URL as is",
+          "status": "passed"
+        },
+        {
+          "fullName": "Proxy Helper Utilities sanitizeProxyError formats standard error properties",
+          "status": "passed"
+        },
+        {
+          "fullName": "Proxy Helper Utilities sanitizeProxyError redacts credentials from proxy URLs embedded inside error messages",
+          "status": "passed"
+        },
+        {
+          "fullName": "Proxy Helper Utilities sanitizeProxyError redacts proxy-authorization headers inside error messages",
+          "status": "passed"
+        },
+        {
+          "fullName": "Proxy Helper Utilities sanitizeProxyError slices excessively long error messages to safe limit",
+          "status": "passed"
+        },
+        {
+          "fullName": "Proxy Helper Utilities shouldBypassByNoProxy matches exact hostnames and subdomains of the suffix",
+          "status": "passed"
+        },
+        {
+          "fullName": "Proxy Helper Utilities shouldBypassByNoProxy matches suffix dot subdomains",
+          "status": "passed"
+        },
+        {
+          "fullName": "Proxy Helper Utilities shouldBypassByNoProxy matches wildcard pattern",
+          "status": "passed"
+        },
+        {
+          "fullName": "Proxy Helper Utilities shouldBypassByNoProxy returns false if noProxy pattern list is empty",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/qoder.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "buildCosyHeaders Authorization is a Bearer COSY token with payload+sig",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildCosyHeaders auto-generates a machineId when none is supplied",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildCosyHeaders Cosy-Bodyhash is the MD5 of the request body, Cosy-Bodylength is the length",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildCosyHeaders Cosy-Machineid + Cosy-Machinetoken match the supplied machineId",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildCosyHeaders Cosy-Sigpath also handles the encoded chat URL",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildCosyHeaders Cosy-Sigpath strips the leading /algo prefix",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildCosyHeaders Cosy-User reflects the supplied userId verbatim",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildCosyHeaders empty body produces the canonical empty-MD5 hash",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildCosyHeaders produces all required Cosy-* headers",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildCosyHeaders throws when authToken is missing",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildCosyHeaders throws when userId is missing",
+          "status": "passed"
+        },
+        {
+          "fullName": "buildCosyHeaders two calls with identical inputs differ only in fields that include fresh randomness",
+          "status": "passed"
+        },
+        {
+          "fullName": "generatePkcePair produces base64url-safe verifier and challenge of the right length",
+          "status": "passed"
+        },
+        {
+          "fullName": "generatePkcePair returns codeVerifier (not verifier) on the higher-level helper",
+          "status": "passed"
+        },
+        {
+          "fullName": "generatePkcePair verifier and challenge are different (challenge is sha256 of verifier)",
+          "status": "passed"
+        },
+        {
+          "fullName": "initiateDeviceFlow produces a verification URL pointing at qoder.com/device/selectAccounts",
+          "status": "passed"
+        },
+        {
+          "fullName": "initiateDeviceFlow returns nonce and machineId as UUIDs",
+          "status": "passed"
+        },
+        {
+          "fullName": "normalizeMessages flattens multipart text content into a string",
+          "status": "passed"
+        },
+        {
+          "fullName": "normalizeMessages hoists role:system out of messages into systemText",
+          "status": "passed"
+        },
+        {
+          "fullName": "normalizeMessages joins multiple system messages with a blank line",
+          "status": "passed"
+        },
+        {
+          "fullName": "normalizeMessages returns empty results for empty input",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseExpiry accepts ms-epoch as a JSON number",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseExpiry accepts ms-epoch as a numeric string",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseExpiry accepts RFC3339 strings",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseExpiry does not interpret short numeric strings as a year",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseExpiry falls back to ~30 days when both inputs are missing",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseExpiry falls back to ~30 days when both inputs are unparseable",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseExpiry falls back to expiresInSeconds when expiresAt is missing",
+          "status": "passed"
+        },
+        {
+          "fullName": "parseExpiry treats expires_in: 0 as already expired (now), not 30-day fallback",
+          "status": "passed"
+        },
+        {
+          "fullName": "QODER_MODEL_MAP allows Qoder's latest model key",
+          "status": "passed"
+        },
+        {
+          "fullName": "QODER_MODEL_MAP exposes Qoder's latest model in the static provider catalog",
+          "status": "passed"
+        },
+        {
+          "fullName": "qoderEncodeBody accepts string and Buffer inputs equivalently",
+          "status": "passed"
+        },
+        {
+          "fullName": "qoderEncodeBody handles empty input without throwing",
+          "status": "passed"
+        },
+        {
+          "fullName": "qoderEncodeBody is deterministic for identical input",
+          "status": "passed"
+        },
+        {
+          "fullName": "qoderEncodeBody only emits characters from the custom alphabet",
+          "status": "passed"
+        },
+        {
+          "fullName": "qoderEncodeBody preserves base64 length (input length divisible by 3)",
+          "status": "passed"
+        },
+        {
+          "fullName": "qoderEncodeBody preserves base64 length (input length not divisible by 3)",
+          "status": "passed"
+        },
+        {
+          "fullName": "qoderEncodeBody produces different output for different input",
+          "status": "passed"
+        },
+        {
+          "fullName": "wrapQoderSSE does not forward chunks after [DONE] has been emitted",
+          "status": "passed"
+        },
+        {
+          "fullName": "wrapQoderSSE drains a trailing partial line without a newline in flush()",
+          "status": "passed"
+        },
+        {
+          "fullName": "wrapQoderSSE forwards an OpenAI envelope chunk and emits [DONE] in flush",
+          "status": "passed"
+        },
+        {
+          "fullName": "wrapQoderSSE non-ok responses are returned unchanged (no transform)",
+          "status": "passed"
+        },
+        {
+          "fullName": "wrapQoderSSE strips embedded newlines from inner body before forwarding",
+          "status": "passed"
+        },
+        {
+          "fullName": "wrapQoderSSE upstream error envelope produces an error chunk + [DONE]",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/reasoningContentInjector.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "injectReasoningContent — DeepSeek thinking round-trip applies provider-level rule for provider 'deepseek' (scope all)",
+          "status": "passed"
+        },
+        {
+          "fullName": "injectReasoningContent — DeepSeek thinking round-trip does not touch non-deepseek providers/models",
+          "status": "passed"
+        },
+        {
+          "fullName": "injectReasoningContent — DeepSeek thinking round-trip injects reasoning_content on a deepseek- assistant message that lacks it",
+          "status": "passed"
+        },
+        {
+          "fullName": "injectReasoningContent — DeepSeek thinking round-trip maps deepseek-v4-pro-none alias to disabled thinking and strips reasoning_effort",
+          "status": "passed"
+        },
+        {
+          "fullName": "injectReasoningContent — DeepSeek thinking round-trip matches deepseek model id case-insensitively for custom providers (#1543)",
+          "status": "passed"
+        },
+        {
+          "fullName": "injectReasoningContent — DeepSeek thinking round-trip preserves an existing reasoning_content instead of overwriting it",
+          "status": "passed"
+        },
+        {
+          "fullName": "injectReasoningContent — MiniMax thinking round-trip applies provider-level rule for provider 'minimax-cn' (scope all)",
+          "status": "passed"
+        },
+        {
+          "fullName": "injectReasoningContent — MiniMax thinking round-trip DefaultExecutor transformRequest runs the injector for minimax",
+          "status": "passed"
+        },
+        {
+          "fullName": "injectReasoningContent — MiniMax thinking round-trip injects reasoning_content on a minimax assistant message that lacks it",
+          "status": "passed"
+        },
+        {
+          "fullName": "injectReasoningContent — MiniMax thinking round-trip injects reasoning_content on minimax assistant message with tool_calls but no reasoning_content",
+          "status": "passed"
+        },
+        {
+          "fullName": "injectReasoningContent — MiniMax thinking round-trip preserves an existing reasoning_content on minimax instead of overwriting",
+          "status": "passed"
+        },
+        {
+          "fullName": "OpenCodeExecutor — issue #1543 regression runs the injector so deepseek-v4-flash-free round-trips reasoning_content",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/regression-baseline.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "regression baseline verifier includes failed suites without a failed assertion",
+          "status": "passed"
+        },
+        {
+          "fullName": "regression baseline verifier rejects malformed reports and tests outside the repository",
+          "status": "passed"
+        },
+        {
+          "fullName": "regression baseline verifier uses repository-relative IDs for Windows and slash-normalized test paths",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/request-logger.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "request logger redaction masks sensitive headers, query params, and nested body values",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/resolve-timeout-field.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "resolveTimeoutField clamps values above the cap down to the max",
+          "status": "passed"
+        },
+        {
+          "fullName": "resolveTimeoutField exposes the agreed caps (120s connect / 10min stall)",
+          "status": "passed"
+        },
+        {
+          "fullName": "resolveTimeoutField keeps a valid number below the cap unchanged",
+          "status": "passed"
+        },
+        {
+          "fullName": "resolveTimeoutField returns null for empty string and explicit null (clear)",
+          "status": "passed"
+        },
+        {
+          "fullName": "resolveTimeoutField returns undefined when the field is absent from the body (keep existing)",
+          "status": "passed"
+        },
+        {
+          "fullName": "resolveTimeoutField treats garbage (NaN, <=0, non-number) as clear (null)",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/responses-abort-terminal.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Responses abort terminal synthesis does not synthesize terminal for non-Responses streams (callback null)",
+          "status": "passed"
+        },
+        {
+          "fullName": "Responses abort terminal synthesis emits response.failed + [DONE] when upstream errors (abort/stall)",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/rtk.e2e.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "RTK end-to-end compresses git diff tool_result and writes [RTK] savings to log",
+          "status": "skipped"
+        },
+        {
+          "fullName": "RTK end-to-end compresses grep-style tool_result",
+          "status": "skipped"
+        },
+        {
+          "fullName": "RTK end-to-end rtkEnabled flag is true (user must enable via dashboard)",
+          "status": "skipped"
+        },
+        {
+          "fullName": "RTK end-to-end server is reachable",
+          "status": "skipped"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/rtk.multi-provider.e2e.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "RTK multi-provider E2E compresses git diff for antigravity (ag/* → openai→antigravity)",
+          "status": "skipped"
+        },
+        {
+          "fullName": "RTK multi-provider E2E compresses git diff for claude (cc/* → openai→claude)",
+          "status": "skipped"
+        },
+        {
+          "fullName": "RTK multi-provider E2E compresses git diff for codex (cx/* → openai→openai-responses)",
+          "status": "skipped"
+        },
+        {
+          "fullName": "RTK multi-provider E2E compresses git diff for cursor (cu/* → openai→cursor)",
+          "status": "skipped"
+        },
+        {
+          "fullName": "RTK multi-provider E2E compresses git diff for deepseek (deepseek/* → openai, passthrough)",
+          "status": "skipped"
+        },
+        {
+          "fullName": "RTK multi-provider E2E compresses git diff for gemini (gemini/* → openai→gemini)",
+          "status": "skipped"
+        },
+        {
+          "fullName": "RTK multi-provider E2E compresses git diff for kiro (kr/* → openai→kiro)",
+          "status": "skipped"
+        },
+        {
+          "fullName": "RTK multi-provider E2E compresses git diff for ollama (ollama/* → openai→ollama)",
+          "status": "skipped"
+        },
+        {
+          "fullName": "RTK multi-provider E2E server reachable and rtkEnabled=true",
+          "status": "skipped"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/rtk.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "autoDetectFilter (extras) detects Cursor search list",
+          "status": "passed"
+        },
+        {
+          "fullName": "autoDetectFilter (extras) detects ls via total + perms rows",
+          "status": "passed"
+        },
+        {
+          "fullName": "autoDetectFilter (extras) detects tree via box-drawing glyphs",
+          "status": "passed"
+        },
+        {
+          "fullName": "autoDetectFilter detects find",
+          "status": "passed"
+        },
+        {
+          "fullName": "autoDetectFilter detects git diff",
+          "status": "passed"
+        },
+        {
+          "fullName": "autoDetectFilter detects git log before git diff",
+          "status": "passed"
+        },
+        {
+          "fullName": "autoDetectFilter detects git log oneline output",
+          "status": "passed"
+        },
+        {
+          "fullName": "autoDetectFilter detects git status",
+          "status": "passed"
+        },
+        {
+          "fullName": "autoDetectFilter detects grep",
+          "status": "passed"
+        },
+        {
+          "fullName": "autoDetectFilter falls back to dedupLog for generic text",
+          "status": "passed"
+        },
+        {
+          "fullName": "compressMessages (disabled) returns null when disabled",
+          "status": "passed"
+        },
+        {
+          "fullName": "compressMessages (enabled) compresses Claude array-form tool_result text parts",
+          "status": "passed"
+        },
+        {
+          "fullName": "compressMessages (enabled) compresses Claude string-form tool_result",
+          "status": "passed"
+        },
+        {
+          "fullName": "compressMessages (enabled) compresses OpenAI tool message (string content)",
+          "status": "passed"
+        },
+        {
+          "fullName": "compressMessages (enabled) handles mix of messages without crashing",
+          "status": "passed"
+        },
+        {
+          "fullName": "compressMessages (enabled) never produces empty content (R14 guard)",
+          "status": "passed"
+        },
+        {
+          "fullName": "compressMessages (enabled) skips below MIN_COMPRESS_SIZE (<500 bytes)",
+          "status": "passed"
+        },
+        {
+          "fullName": "compressMessages (enabled) skips is_error tool_result",
+          "status": "passed"
+        },
+        {
+          "fullName": "compressMessages (enabled) skips when body has no messages",
+          "status": "passed"
+        },
+        {
+          "fullName": "formatRtkLog formats savings line with percentage",
+          "status": "passed"
+        },
+        {
+          "fullName": "formatRtkLog returns null when no hits",
+          "status": "passed"
+        },
+        {
+          "fullName": "RTK filters (extras) ls: compact_ls strips perms/owner, keeps name + size",
+          "status": "passed"
+        },
+        {
+          "fullName": "RTK filters (extras) ls: filters noise dirs",
+          "status": "passed"
+        },
+        {
+          "fullName": "RTK filters (extras) readNumbered: compacts very long line-numbered dump",
+          "status": "passed"
+        },
+        {
+          "fullName": "RTK filters (extras) searchList: groups Cursor Glob output by parent dir",
+          "status": "passed"
+        },
+        {
+          "fullName": "RTK filters (extras) smartTruncate: keeps head+tail, drops middle",
+          "status": "passed"
+        },
+        {
+          "fullName": "RTK filters (extras) smartTruncate: passes through small input",
+          "status": "passed"
+        },
+        {
+          "fullName": "RTK filters (extras) tree: removes summary, keeps structure",
+          "status": "passed"
+        },
+        {
+          "fullName": "RTK filters dedupLog collapses consecutive duplicates",
+          "status": "passed"
+        },
+        {
+          "fullName": "RTK filters find groups paths by parent dir, shows basenames (Rust format)",
+          "status": "passed"
+        },
+        {
+          "fullName": "RTK filters gitDiff truncates hunks beyond 100 lines and preserves file header",
+          "status": "passed"
+        },
+        {
+          "fullName": "RTK filters gitLog keeps commit metadata and omits embedded diff body",
+          "status": "passed"
+        },
+        {
+          "fullName": "RTK filters gitStatus groups by kind and produces compact output (Rust format)",
+          "status": "passed"
+        },
+        {
+          "fullName": "RTK filters grep groups matches by file and caps per-file lines (Rust format)",
+          "status": "passed"
+        },
+        {
+          "fullName": "RTK flag default off, toggle works",
+          "status": "passed"
+        },
+        {
+          "fullName": "safeApply returns input if filter returns non-string",
+          "status": "passed"
+        },
+        {
+          "fullName": "safeApply returns input if filter throws",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/rtkKiro.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Kiro format RTK support compresses tool results in Kiro conversationState.currentMessage",
+          "status": "passed"
+        },
+        {
+          "fullName": "Kiro format RTK support compresses tool results in Kiro conversationState.history",
+          "status": "passed"
+        },
+        {
+          "fullName": "Kiro format RTK support handles Kiro body with no tool results gracefully",
+          "status": "passed"
+        },
+        {
+          "fullName": "Kiro format RTK support handles malformed Kiro body without crashing",
+          "status": "passed"
+        },
+        {
+          "fullName": "Kiro format RTK support handles multiple tool results across history and currentMessage",
+          "status": "passed"
+        },
+        {
+          "fullName": "Kiro format RTK support preserves error tool results without compression",
+          "status": "passed"
+        },
+        {
+          "fullName": "Kiro format RTK support returns null when RTK is disabled",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/security-audit.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "AUDIT-001: Synchronous restart guard mitmIsRestarting should be reset on max-restarts early return",
+          "status": "passed"
+        },
+        {
+          "fullName": "AUDIT-001: Synchronous restart guard mitmIsRestarting should be set before first await expression",
+          "status": "passed"
+        },
+        {
+          "fullName": "AUDIT-002: API key masking byApiKey object keys should use masked key, not raw key (usage-stats.js)",
+          "status": "passed"
+        },
+        {
+          "fullName": "AUDIT-002: API key masking getUsageHistory (usage-query.js) should use apiKeyMasked instead of apiKey",
+          "status": "passed"
+        },
+        {
+          "fullName": "AUDIT-002: API key masking getUsageStats (usage-stats.js) should use apiKeyMasked in byApiKey entries",
+          "status": "passed"
+        },
+        {
+          "fullName": "AUDIT-002: API key masking usage-helpers.js should contain maskApiKey function",
+          "status": "passed"
+        },
+        {
+          "fullName": "AUDIT-002: API key masking usage-stats.js should import maskApiKey from usage-helpers",
+          "status": "passed"
+        },
+        {
+          "fullName": "AUDIT-003: Proxy URL validation should accept valid http proxy URLs",
+          "status": "passed"
+        },
+        {
+          "fullName": "AUDIT-003: Proxy URL validation should accept valid socks5 proxy URLs",
+          "status": "passed"
+        },
+        {
+          "fullName": "AUDIT-003: Proxy URL validation should reject non-allowed schemes (file://)",
+          "status": "passed"
+        },
+        {
+          "fullName": "AUDIT-003: Proxy URL validation should reject non-allowed schemes (javascript:)",
+          "status": "passed"
+        },
+        {
+          "fullName": "AUDIT-003: Proxy URL validation should reject URLs with shell metacharacters (backtick)",
+          "status": "passed"
+        },
+        {
+          "fullName": "AUDIT-003: Proxy URL validation should reject URLs with shell metacharacters (newline)",
+          "status": "passed"
+        },
+        {
+          "fullName": "AUDIT-003: Proxy URL validation source should contain validateProxyUrl function",
+          "status": "passed"
+        },
+        {
+          "fullName": "AUDIT-004: Atomic lock file for MITM startup manager.js should define LOCK_FILE constant",
+          "status": "passed"
+        },
+        {
+          "fullName": "AUDIT-004: Atomic lock file for MITM startup should clean up lock file on all exit paths",
+          "status": "passed"
+        },
+        {
+          "fullName": "AUDIT-004: Atomic lock file for MITM startup should use O_EXCL flag (wx) for atomic creation",
+          "status": "passed"
+        },
+        {
+          "fullName": "AUDIT-018: XSS escaping in OAuth callback should escape ampersand, angle brackets, and quotes",
+          "status": "passed"
+        },
+        {
+          "fullName": "AUDIT-018: XSS escaping in OAuth callback should use safeMessage in rendered HTML, not raw message",
+          "status": "passed"
+        },
+        {
+          "fullName": "AUDIT-018: XSS escaping in OAuth callback source should contain escapeHtml function",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/stream-stability-improvements.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Stream Stability and Fault Tolerance Improvements buffers fragmented JSON strings in kiroToClaudeResponse",
+          "status": "passed"
+        },
+        {
+          "fullName": "Stream Stability and Fault Tolerance Improvements uses dynamic semantic stall timeout of 180s for reasoning models",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/streaming-handler-ttft.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "streamingHandler TTFT path defers placeholder request detail persistence until after response construction",
+          "status": "passed"
+        },
+        {
+          "fullName": "streamingHandler TTFT path reuses the same request-detail id on stream completion",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/translate-line-loop.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "Phase 5(a) indexOf line loop — framing + UTF-8 invariance is identical whether a multi-byte char is split across a chunk boundary",
+          "status": "passed"
+        },
+        {
+          "fullName": "Phase 5(a) indexOf line loop — framing + UTF-8 invariance preserves event: before its paired data: within one chunk",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/translator-request-normalization.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "request normalization claudeToOpenAIRequest flattens text-only content arrays into string",
+          "status": "passed"
+        },
+        {
+          "fullName": "request normalization claudeToOpenAIRequest preserves multimodal arrays",
+          "status": "passed"
+        },
+        {
+          "fullName": "request normalization filterToOpenAIFormat flattens text-only arrays to string",
+          "status": "passed"
+        },
+        {
+          "fullName": "request normalization parseSSELine still supports SSE data lines",
+          "status": "passed"
+        },
+        {
+          "fullName": "request normalization parseSSELine supports provider raw NDJSON stream lines",
+          "status": "passed"
+        },
+        {
+          "fullName": "request normalization translateRequest keeps /v1/messages Claude->OpenAI text payloads string-safe",
+          "status": "passed"
+        },
+        {
+          "fullName": "request normalization translateRequest preserves output_config for Anthropic Claude",
+          "status": "passed"
+        },
+        {
+          "fullName": "request normalization translateRequest strips unsupported Anthropic output_config for MiniMax Claude-compatible endpoints",
+          "status": "passed"
+        },
+        {
+          "fullName": "request normalization translateResponse ignores same-format null flush chunks",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/upstream-parity-wiring.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "resolveTransport (registry transports) deepseek exposes openai + claude transports",
+          "status": "passed"
+        },
+        {
+          "fullName": "resolveTransport (registry transports) unknown provider returns null",
+          "status": "passed"
+        },
+        {
+          "fullName": "thinkingUnified (upstream parity) applyThinking keeps openai effort on body",
+          "status": "passed"
+        },
+        {
+          "fullName": "thinkingUnified (upstream parity) extractThinking reads openai reasoning_effort",
+          "status": "passed"
+        },
+        {
+          "fullName": "thinkingUnified (upstream parity) parseSuffix reads level/budget/none/auto",
+          "status": "passed"
+        },
+        {
+          "fullName": "thinkingUnified (upstream parity) stripThinkingSuffix removes trailing (level)",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/usage-concern.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "toOpenAIUsage claude: folds cache read+create into prompt, exposes details",
+          "status": "passed"
+        },
+        {
+          "fullName": "toOpenAIUsage claude: no cache -> no prompt_tokens_details",
+          "status": "passed"
+        },
+        {
+          "fullName": "toOpenAIUsage commandcode: keeps totalTokens fallback",
+          "status": "passed"
+        },
+        {
+          "fullName": "toOpenAIUsage gemini fallback: candidates=0 -> derive from total - prompt - thoughts",
+          "status": "passed"
+        },
+        {
+          "fullName": "toOpenAIUsage gemini: full fields, completion = candidates + thoughts",
+          "status": "passed"
+        },
+        {
+          "fullName": "toOpenAIUsage kiro: input/output straight",
+          "status": "passed"
+        },
+        {
+          "fullName": "toOpenAIUsage ollama: prompt_eval_count/eval_count",
+          "status": "passed"
+        },
+        {
+          "fullName": "toOpenAIUsage unknown kind / null raw -> null",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/usage-dispatch.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "usage dispatch every supported provider routes to its handler (no fallback message)",
+          "status": "passed"
+        },
+        {
+          "fullName": "usage dispatch unsupported provider → not-implemented message",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/usage-oauth-refresh.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "usage OAuth refresh force=true skips needs check and still refreshes",
+          "status": "passed"
+        },
+        {
+          "fullName": "usage OAuth refresh xai expired token → refreshProviderCredentials + persist new accessToken",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/usage-stream-coalescing.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "usage stream coalescing does not overlap full stats recalculation for rapid updates",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/web-cookie-validation.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "grok-web validation should accept raw token without sso= prefix",
+          "status": "passed"
+        },
+        {
+          "fullName": "grok-web validation should POST to /rest/app-chat/conversations/new",
+          "status": "passed"
+        },
+        {
+          "fullName": "grok-web validation should return valid:false with error when response is 401",
+          "status": "passed"
+        },
+        {
+          "fullName": "grok-web validation should return valid:false with error when response is 403",
+          "status": "passed"
+        },
+        {
+          "fullName": "grok-web validation should return valid:true when response is 200",
+          "status": "passed"
+        },
+        {
+          "fullName": "grok-web validation should return valid:true when response is 400 (auth accepted but bad body)",
+          "status": "passed"
+        },
+        {
+          "fullName": "grok-web validation should return valid:true when response is 429 (rate limited but auth ok)",
+          "status": "passed"
+        },
+        {
+          "fullName": "grok-web validation should send Cloudflare-bypass headers",
+          "status": "passed"
+        },
+        {
+          "fullName": "grok-web validation should strip sso= prefix from apiKey",
+          "status": "passed"
+        },
+        {
+          "fullName": "perplexity-web validation should accept raw token without prefix",
+          "status": "passed"
+        },
+        {
+          "fullName": "perplexity-web validation should POST to /rest/sse/perplexity_ask",
+          "status": "passed"
+        },
+        {
+          "fullName": "perplexity-web validation should return valid:false when response is 401",
+          "status": "passed"
+        },
+        {
+          "fullName": "perplexity-web validation should return valid:false when response is 403",
+          "status": "passed"
+        },
+        {
+          "fullName": "perplexity-web validation should return valid:true when response is 200",
+          "status": "passed"
+        },
+        {
+          "fullName": "perplexity-web validation should strip __Secure-next-auth.session-token= prefix",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/xai-oauth-service.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "xai/oauth service builds authorize URLs with CLIProxyAPI query extras",
+          "status": "passed"
+        },
+        {
+          "fullName": "xai/oauth service discovers endpoints without custom user-agent headers",
+          "status": "passed"
+        },
+        {
+          "fullName": "xai/oauth service exchanges dashboard codes against the discovered xAI token endpoint",
+          "status": "passed"
+        },
+        {
+          "fullName": "xai/oauth service generates dashboard auth data with CLIProxyAPI PKCE size and discovered endpoints",
+          "status": "passed"
+        },
+        {
+          "fullName": "xai/oauth service validates discovered endpoints are https x.ai URLs",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/xai-tokenRefresh.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "xai/token-refresh wrapper formatProviderCredentials returns Bearer-shape for xai",
+          "status": "passed"
+        },
+        {
+          "fullName": "xai/token-refresh wrapper refreshTokenByProvider returns expiresIn for refreshed xai tokens",
+          "status": "passed"
+        },
+        {
+          "fullName": "xai/token-refresh wrapper refreshTokenByProvider returns null when refreshToken missing",
+          "status": "passed"
+        },
+        {
+          "fullName": "xai/token-refresh wrapper refreshXaiToken module loads without throwing",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "tests/unit/xaiVideo.test.js",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "fullName": "handleXaiVideo accepts apiKey as Bearer when accessToken missing",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleXaiVideo creates a video job with accessToken",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleXaiVideo polls with GET and no body when request_id is set",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleXaiVideo returns 400 for 1.5 without image before calling upstream",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleXaiVideo returns 401 without access token or apiKey",
+          "status": "passed"
+        },
+        {
+          "fullName": "handleXaiVideo surfaces upstream errors as non-ok",
+          "status": "passed"
+        },
+        {
+          "fullName": "normalizeVideoBody defaults model to grok-imagine-video",
+          "status": "passed"
+        },
+        {
+          "fullName": "normalizeVideoBody maps duration_seconds → duration and drops alias",
+          "status": "passed"
+        },
+        {
+          "fullName": "normalizeVideoBody splits reference_images string",
+          "status": "passed"
+        },
+        {
+          "fullName": "resolveBearerToken / hasVideoCredentials prefers accessToken then apiKey",
+          "status": "passed"
+        },
+        {
+          "fullName": "resolveVideoEndpoint defaults to POST /videos/generations",
+          "status": "passed"
+        },
+        {
+          "fullName": "resolveVideoEndpoint polls GET /videos/{request_id} when request_id is present",
+          "status": "passed"
+        },
+        {
+          "fullName": "resolveVideoEndpoint routes edits/extensions operations",
+          "status": "passed"
+        },
+        {
+          "fullName": "videoModelRequiresImage / validateVideoBody allows 1.5 when image is set",
+          "status": "passed"
+        },
+        {
+          "fullName": "videoModelRequiresImage / validateVideoBody flags grok-imagine-video-1.5 as image-required",
+          "status": "passed"
+        },
+        {
+          "fullName": "videoModelRequiresImage / validateVideoBody rejects 1.5 create without image",
+          "status": "passed"
+        },
+        {
+          "fullName": "videoModelRequiresImage / validateVideoBody skips image check for poll / base model",
+          "status": "passed"
+        }
+      ]
+    }
+  ]
+}

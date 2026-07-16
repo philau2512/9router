@@ -131,6 +131,75 @@ export async function POST(request) {
       });
     }
 
+    // Text-to-video / image-to-video (async job create → request_id)
+    // Do NOT use chat completions for kind=video.
+    if (kind === "video") {
+      const modelId = String(model || "");
+      const bare = modelId.includes("/")
+        ? modelId.slice(modelId.indexOf("/") + 1)
+        : modelId;
+      // grok-imagine-video-1.5 rejects text-only — must send a start frame
+      const needsImage =
+        /grok-imagine-video-1\.5/i.test(bare) ||
+        /image.?to.?video/i.test(bare);
+      const videoBody = {
+        model,
+        prompt: needsImage
+          ? "Slow serene camera motion, cinematic"
+          : "a red cube spinning slowly",
+        duration: 1,
+        resolution: "480p",
+      };
+      if (needsImage) {
+        videoBody.image =
+          "https://docs.x.ai/assets/api-examples/video/milkyway-still.png";
+        videoBody.image_url = videoBody.image;
+      }
+      const res = await fetch(`${baseUrl}/api/v1/video/generations`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(videoBody),
+        signal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),
+      });
+      const latencyMs = Date.now() - start;
+      const rawText = await res.text().catch(() => "");
+      let parsed = null;
+      try {
+        parsed = rawText ? JSON.parse(rawText) : null;
+      } catch {}
+      if (!res.ok) {
+        const detail =
+          parsed?.error?.message ||
+          parsed?.error?.error ||
+          parsed?.error ||
+          rawText;
+        return NextResponse.json({
+          ok: false,
+          latencyMs,
+          error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`,
+          status: res.status,
+        });
+      }
+      // xAI returns { request_id } on create; some providers may return video immediately
+      const ok =
+        !!(parsed?.request_id || parsed?.video?.url || parsed?.url) ||
+        String(parsed?.status || "").toLowerCase() === "pending";
+      if (!ok) {
+        return NextResponse.json({
+          ok: false,
+          latencyMs,
+          status: res.status,
+          error: "Provider returned no video job id",
+        });
+      }
+      return NextResponse.json({
+        ok: true,
+        latencyMs,
+        error: null,
+        status: res.status,
+      });
+    }
+
     // STT / audio transcription
     if (kind === "stt") {
       const sttForm = new FormData();

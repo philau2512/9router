@@ -1,5 +1,5 @@
 // Provider alias to ID mapping
-const ALIAS_TO_PROVIDER_ID = {
+export const PROVIDER_ALIASES = Object.freeze({
   cc: "claude",
   cx: "codex",
   gc: "gemini-cli",
@@ -140,13 +140,13 @@ const ALIAS_TO_PROVIDER_ID = {
   glhf: "glhf",
   bb: "blackbox",
   blackbox: "blackbox",
-};
+});
 
 /**
  * Resolve provider alias to provider ID
  */
 export function resolveProviderAlias(aliasOrId) {
-  return ALIAS_TO_PROVIDER_ID[aliasOrId] || aliasOrId;
+  return PROVIDER_ALIASES[aliasOrId] || aliasOrId;
 }
 
 /**

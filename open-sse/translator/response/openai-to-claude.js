@@ -1,5 +1,6 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
+import * as log from "../../../src/sse/utils/logger.js";
 
 // Prefix for Claude OAuth tool names (must match request translator)
 const CLAUDE_OAUTH_TOOL_PREFIX = "proxy_";
@@ -196,13 +197,28 @@ export function openaiToClaudeResponse(chunk, state) {
     for (const tc of delta.tool_calls) {
       const idx = tc.index ?? 0;
 
-      if (tc.id) {
+      // Diagnostic: surface whether upstream sent tc.id on this delta. A tool
+      // block only opens when tc.id is present (see below); providers that omit
+      // it never emit content_block_start → tool_use is silently dropped.
+      log.debug(
+        "O2C-TOOL",
+        `idx=${idx} | hasId=${!!tc.id} | name=${tc.function?.name || "-"} | argLen=${tc.function?.arguments?.length || 0}`,
+      );
+
+      // Open a tool_use block the first time we see this tool-call index —
+      // NOT gated on tc.id. Standard OpenAI streams the id only on the first
+      // fragment (so first-seen == has-id there), but some compatible upstreams
+      // (Kiro-flavored) identify a tool call by index alone and never send an
+      // id. Synthesize a deterministic, Anthropic-valid id in that case so the
+      // block still opens and argument deltas are not discarded.
+      if (!state.toolCalls.has(idx)) {
         stopThinkingBlock(state, results);
         stopTextBlock(state, results);
 
+        const toolId = tc.id || `call_idx_${idx}`;
         const toolBlockIndex = state.nextBlockIndex++;
         state.toolCalls.set(idx, {
-          id: tc.id,
+          id: toolId,
           name: tc.function?.name || "",
           blockIndex: toolBlockIndex,
         });
@@ -218,11 +234,17 @@ export function openaiToClaudeResponse(chunk, state) {
           index: toolBlockIndex,
           content_block: {
             type: "tool_use",
-            id: tc.id,
+            id: toolId,
             name: toolName,
             input: {},
           },
         });
+      } else if (tc.function?.name && !state.toolCalls.get(idx).name) {
+        // Name arrived on a later fragment than the block open — backfill it so
+        // the tool_use block isn't left nameless. (content_block_start already
+        // emitted; Anthropic clients read the name from that event, so this
+        // only keeps internal state consistent for arg sanitization.)
+        state.toolCalls.get(idx).name = tc.function.name;
       }
 
       if (tc.function?.arguments) {
@@ -270,6 +292,15 @@ export function openaiToClaudeResponse(chunk, state) {
 
   // Finish
   if (choice.finish_reason) {
+    // Diagnostic: the mismatch that ends a turn early is when tool blocks were
+    // streamed (toolBlocks>0) but finish_reason isn't "tool_calls", so the
+    // mapped stop_reason becomes end_turn and the client stops instead of
+    // running the tool. Log all three to confirm which side is at fault.
+    log.debug(
+      "O2C-FINISH",
+      `finish_reason=${choice.finish_reason} | toolBlocks=${state.toolCalls?.size || 0} | mappedStop=${convertFinishReason(choice.finish_reason)}`,
+    );
+
     stopThinkingBlock(state, results);
     stopTextBlock(state, results);
 
@@ -301,9 +332,19 @@ export function openaiToClaudeResponse(chunk, state) {
 
     // Use tracked usage (will be estimated in stream.js if not valid)
     const finalUsage = state.usage || { input_tokens: 0, output_tokens: 0 };
+    // If any tool_use block was emitted this turn, the stop_reason MUST be
+    // tool_use regardless of what the upstream reported — otherwise the client
+    // sees end_turn and stops without running the tool. Some OpenAI-compatible
+    // providers (e.g. Kiro-flavored) finish a tool turn with "stop" or a
+    // non-standard "tool_use" reason; both would otherwise map to end_turn.
+    const emittedToolUse = (state.toolCalls?.size || 0) > 0;
     results.push({
       type: "message_delta",
-      delta: { stop_reason: convertFinishReason(choice.finish_reason) },
+      delta: {
+        stop_reason: emittedToolUse
+          ? "tool_use"
+          : convertFinishReason(choice.finish_reason),
+      },
       usage: finalUsage,
     });
     results.push({ type: "message_stop" });
@@ -320,6 +361,7 @@ function convertFinishReason(reason) {
     case "length":
       return "max_tokens";
     case "tool_calls":
+    case "tool_use":
       return "tool_use";
     default:
       return "end_turn";

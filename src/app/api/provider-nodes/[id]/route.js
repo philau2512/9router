@@ -7,6 +7,11 @@ import {
   updateProviderConnection,
   updateProviderNode,
 } from "@/models";
+import {
+  resolveTimeoutField,
+  CONNECTION_TIMEOUT_MAX_MS,
+  STALL_TIMEOUT_MAX_MS,
+} from "@/lib/providerNormalization";
 
 // PUT /api/provider-nodes/[id] - Update provider node
 export async function PUT(request, { params }) {
@@ -15,6 +20,17 @@ export async function PUT(request, { params }) {
     const body = await request.json();
     const { name, prefix, apiType, baseUrl } = body;
     const node = await getProviderNodeById(id);
+
+    // Optional per-node timeout knobs (ms raw). Three states:
+    //   undefined (key absent) → keep existing; null/"" → clear; number → set (clamped).
+    const connectionTimeoutMs = resolveTimeoutField(
+      body.connectionTimeoutMs,
+      CONNECTION_TIMEOUT_MAX_MS,
+    );
+    const stallTimeoutMs = resolveTimeoutField(
+      body.stallTimeoutMs,
+      STALL_TIMEOUT_MAX_MS,
+    );
 
     if (!node) {
       return NextResponse.json(
@@ -80,6 +96,15 @@ export async function PUT(request, { params }) {
       updates.apiType = apiType;
     }
 
+    // Only touch timeout fields when the client sent them (undefined = keep).
+    // null clears (stored as null → runtime falls back to default); number sets.
+    if (connectionTimeoutMs !== undefined) {
+      updates.connectionTimeoutMs = connectionTimeoutMs;
+    }
+    if (stallTimeoutMs !== undefined) {
+      updates.stallTimeoutMs = stallTimeoutMs;
+    }
+
     const updated = await updateProviderNode(id, updates);
 
     const connections = await getProviderConnections({ provider: id });
@@ -92,6 +117,10 @@ export async function PUT(request, { params }) {
             apiType: node.type === "openai-compatible" ? apiType : undefined,
             baseUrl: sanitizedBaseUrl,
             nodeName: updated.name,
+            // Propagate only when the client sent the field (undefined = keep
+            // whatever the spread above carried). null clears → runtime default.
+            ...(connectionTimeoutMs !== undefined ? { connectionTimeoutMs } : {}),
+            ...(stallTimeoutMs !== undefined ? { stallTimeoutMs } : {}),
           },
         }),
       ),

@@ -344,7 +344,9 @@ export const APIKEY_PROVIDERS = {
     textIcon: "XA",
     website: "https://x.ai",
     notice: { apiKeyUrl: "https://console.x.ai" },
-    serviceKinds: ["llm", "imageToText", "webSearch", "image"],
+    // Must include "video" — AI_PROVIDERS merges APIKEY over OAUTH, so omitting
+    // video here hides xAI from /dashboard/media-providers/video.
+    serviceKinds: ["llm", "imageToText", "webSearch", "image", "video"],
     searchViaChat: {
       defaultModel: "grok-4.20-reasoning",
       pricingUrl: "https://x.ai/api#pricing",

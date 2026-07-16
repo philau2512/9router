@@ -18,6 +18,95 @@
 export const KIRO_AGENTIC_SUFFIX = "-agentic";
 export const KIRO_THINKING_SUFFIX = "-thinking";
 
+// Namespace for deterministic conversationId (uuidv5). Shared by both the
+// OpenAI and Claude routes so two requests with the same first-user-content
+// hash to the same Kiro/AWS conversation context (reuses the Builder ID prompt
+// cache instead of burning free-tier quota on a fresh context per request).
+export const KIRO_CONVERSATION_NAMESPACE =
+  "34f7193f-561d-4050-bc84-9547d953d6bf";
+
+// --- Client fidelity (Phase 2, Group A) ---------------------------------
+// The Kiro IDE talks to CodeWhisperer via the aws-sdk-js v1 client. Emulating
+// its real User-Agent + agent-mode/optout headers (instead of the thin
+// "AWS-SDK-JS/3.0.0 kiro-ide/1.0.0") lowers the risk of an upstream flagging a
+// free-tier account for looking like an unknown client.
+//
+// SINGLE SOURCE OF TRUTH for the client identity. The chat/streaming path
+// (generateAssistantResponse) and the model-listing path (ListAvailableModels
+// in services/kiroModels.js) are two aws-sdk sub-clients of the SAME IDE
+// install: the `api/<service>#<ver>` segment legitimately differs per
+// sub-client, but the IDE build, node runtime, OS and — crucially — the
+// machineId MUST be identical, or the same account presents two conflicting
+// fingerprints on the same surface (the opposite of the ban-avoidance goal).
+import { createHash } from "crypto";
+
+// aws-sdk sub-client versions — legitimately differ per service surface.
+export const KIRO_STREAMING_SDK_VERSION = "1.0.34"; // codewhispererstreaming
+export const KIRO_RUNTIME_SDK_VERSION = "1.0.0"; // codewhispererruntime (listing)
+// Shared IDE-install identity — MUST match across every sub-client call.
+export const KIRO_CLIENT_VERSION = "0.10.32"; // KiroIDE build the reference client reports
+export const KIRO_NODE_VERSION = "22.21.1"; // node runtime the IDE bundles
+export const KIRO_AGENT_OS = "windows";
+export const KIRO_AGENT_OS_VERSION = "10.0.26200";
+
+/**
+ * Derive a STABLE per-account machineId. Keyed off whatever durable identifier
+ * the credential carries, so the same account always presents the same id
+ * across restarts and across both sub-client surfaces. Never random — a
+ * per-request random id would itself be an anomalous fingerprint.
+ *
+ * @param {object} credentials
+ * @returns {string} 64-char hex machine id
+ */
+export function deriveKiroMachineId(credentials) {
+  const seed =
+    credentials?.providerSpecificData?.clientId ||
+    credentials?.refreshToken ||
+    credentials?.providerSpecificData?.profileArn ||
+    credentials?.accessToken ||
+    "kiro-anonymous";
+  return createHash("sha256").update(String(seed)).digest("hex");
+}
+
+/**
+ * Build the two User-Agent strings a real Kiro IDE client sends for a given
+ * sub-client surface:
+ *   - `streaming` → the long `User-Agent` header
+ *   - `short`     → the compact `X-Amz-User-Agent` header
+ *
+ * The machineId is derived from the credential (stable per account) and always
+ * appended, matching the model-listing path so both calls from one account
+ * carry the identical `KiroIDE-<ver>-<machineId>` tag.
+ *
+ * @param {object} [opts]
+ * @param {object} [opts.credentials] Credential to derive the machineId from.
+ * @param {"streaming"|"runtime"} [opts.surface="streaming"] aws-sdk sub-client.
+ * @returns {{ streaming: string, short: string, machineId: string }}
+ */
+export function buildKiroClientUserAgent({
+  credentials,
+  surface = "streaming",
+} = {}) {
+  const machineId = deriveKiroMachineId(credentials);
+  const sdkVersion =
+    surface === "runtime"
+      ? KIRO_RUNTIME_SDK_VERSION
+      : KIRO_STREAMING_SDK_VERSION;
+  const apiName =
+    surface === "runtime" ? "codewhispererruntime" : "codewhispererstreaming";
+  // Retrieval-mode token: listing advertises N,E (name + endpoint discovery);
+  // streaming advertises E only. Matches the reference client per surface.
+  const retrievalMode = surface === "runtime" ? "N,E" : "E";
+  const kiroTag = `KiroIDE-${KIRO_CLIENT_VERSION}-${machineId}`;
+  const streaming =
+    `aws-sdk-js/${sdkVersion} ua/2.1 ` +
+    `os/${KIRO_AGENT_OS}#${KIRO_AGENT_OS_VERSION} lang/js ` +
+    `md/nodejs#${KIRO_NODE_VERSION} ` +
+    `api/${apiName}#${sdkVersion} m/${retrievalMode} ${kiroTag}`;
+  const short = `aws-sdk-js/${sdkVersion} ${kiroTag}`;
+  return { streaming, short, machineId };
+}
+
 // Shared CodeWhisperer profile ARNs. These are ENDPOINT-SPECIFIC — the same
 // account needs a DIFFERENT profileArn depending on which host it hits. This
 // was verified empirically against a real Builder ID account (see matrix below,

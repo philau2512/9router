@@ -23,11 +23,14 @@ export const USAGE_SUPPORTED_PROVIDERS = [
   "xai", // Grok Build OAuth connections are stored under provider "xai"
 ];
 
-// Subset that uses apikey auth (still surfaced on quota page)
+// Subset that uses apikey auth (still surfaced on quota page).
+// kiro headless keys use authType "api_key" (underscore) — still listed here so
+// /api/providers/client and /api/usage accept them for Quota Tracker.
 export const USAGE_APIKEY_PROVIDERS = [
   "glm",
   "glm-cn",
   "minimax",
   "minimax-cn",
   "vercel-ai-gateway",
+  "kiro",
 ];

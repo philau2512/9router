@@ -32,8 +32,30 @@ export default {
     { id: "grok-code-fast-1", name: "Grok Code Fast" },
     { id: "grok-3", name: "Grok 3" },
     { id: "grok-2-image-1212", name: "Grok 2 Image", params: ["n","response_format"], kind: "image" },
+    {
+      id: "grok-imagine-image",
+      name: "Grok Imagine Image",
+      params: ["n", "size", "quality", "background", "response_format", "image_detail", "output_format"],
+      kind: "image",
+    },
+    {
+      id: "grok-imagine-video",
+      name: "Grok Imagine Video",
+      params: ["duration", "aspect_ratio", "resolution", "image", "video", "reference_images", "operation", "request_id"],
+      kind: "video",
+      modes: ["text-to-video", "image-to-video", "reference-to-video"],
+    },
+    {
+      id: "grok-imagine-video-1.5",
+      name: "Grok Imagine Video 1.5 (Image→Video)",
+      // Text-to-video not supported — requires image. No reference_images on 1.5.
+      params: ["duration", "aspect_ratio", "resolution", "image", "video", "operation", "request_id"],
+      kind: "video",
+      modes: ["image-to-video"],
+      requireImage: true,
+    },
   ],
-  serviceKinds: ["llm","imageToText","webSearch","image"],
+  serviceKinds: ["llm", "imageToText", "webSearch", "image", "video"],
   imageConfig: { baseUrl: "https://api.x.ai/v1/images/generations", bodyFields: ["model","prompt","n","response_format"] },
   searchViaChat: {
     defaultModel: "grok-4.20-reasoning",

@@ -1,7 +1,10 @@
 // Real Antigravity-MITM requests (Gemini-internal: { request: { contents, ... } }) → OpenAI.
 import { describe, it, expect } from "vitest";
 import "./registerAll.js";
-import { translateRequest } from "../../open-sse/translator/index.js";
+import {
+  translateRequest,
+  translateResponse,
+} from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 
 const AG2O = (req) =>
@@ -43,10 +46,8 @@ describe("Antigravity → OpenAI", () => {
     ).toContain('"next"');
   });
 
-  // antigravity-to-openai.js:167 — functionCall without id gets a random Date.now() id
-  // KNOWN BUG: unstable id breaks matching with its functionResponse
-  it.fails("functionCall without id keeps a stable matchable id", () => {
-    const out = AG2O({
+  it("functionCall without id keeps a stable matchable id", () => {
+    const req = {
       contents: [
         {
           role: "model",
@@ -59,12 +60,349 @@ describe("Antigravity → OpenAI", () => {
           ],
         },
       ],
-    });
+    };
+    const out = AG2O(req);
+    const repeated = AG2O(req);
     const asst = out.messages.find((m) => m.tool_calls);
     const tool = out.messages.find((m) => m.role === "tool");
+
     expect(tool?.tool_call_id, "id mismatch between call and response").toBe(
       asst?.tool_calls?.[0]?.id,
     );
+    expect(repeated.messages.find((m) => m.tool_calls)?.tool_calls?.[0]?.id).toBe(
+      asst?.tool_calls?.[0]?.id,
+    );
+  });
+
+  it("matches repeated missing IDs by same-name encounter order", () => {
+    const out = AG2O({
+      contents: [
+        {
+          role: "model",
+          parts: [
+            { functionCall: { name: "search", args: { q: "first" } } },
+            { functionCall: { name: "search", args: { q: "second" } } },
+          ],
+        },
+        {
+          role: "user",
+          parts: [
+            { functionResponse: { name: "search", response: { result: "one" } } },
+            { functionResponse: { name: "search", response: { result: "two" } } },
+          ],
+        },
+      ],
+    });
+    const calls = out.messages.find((m) => m.tool_calls)?.tool_calls || [];
+    const results = out.messages.filter((m) => m.role === "tool");
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0].id).not.toBe(calls[1].id);
+    expect(results.map((result) => result.tool_call_id)).toEqual(
+      calls.map((call) => call.id),
+    );
+  });
+
+  it("preserves native tool IDs in both request directions", () => {
+    const requestOut = AG2O({
+      contents: [
+        {
+          role: "model",
+          parts: [{ functionCall: { id: "native-call", name: "search", args: {} } }],
+        },
+        {
+          role: "user",
+          parts: [
+            {
+              functionResponse: {
+                id: "native-call",
+                name: "search",
+                response: { result: "done" },
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const responseState = {};
+    const nativeResponse = {
+      response: {
+        responseId: "native-response-stream",
+        candidates: [
+          {
+            content: {
+              parts: [
+                { functionCall: { id: "native-response", name: "search", args: {} } },
+              ],
+            },
+          },
+        ],
+      },
+    };
+    const responseOut = translateResponse(
+      FORMATS.ANTIGRAVITY,
+      FORMATS.OPENAI,
+      nativeResponse,
+      responseState,
+    );
+
+    expect(requestOut.messages.find((m) => m.tool_calls)?.tool_calls?.[0]?.id).toBe(
+      "native-call",
+    );
+    expect(responseOut.at(-1)?.choices?.[0]?.delta?.tool_calls?.[0]?.id).toBe(
+      "native-response",
+    );
+    expect(
+      translateResponse(FORMATS.ANTIGRAVITY, FORMATS.OPENAI, nativeResponse, {}),
+    ).toEqual(responseOut);
+
+    const missingIdResponse = {
+      response: {
+        candidates: [
+          {
+            content: {
+              parts: [{ functionCall: { name: "search", args: {} } }],
+            },
+          },
+        ],
+      },
+    };
+    const missingIdOut = translateResponse(
+      FORMATS.ANTIGRAVITY,
+      FORMATS.OPENAI,
+      missingIdResponse,
+      {},
+    );
+    expect(
+      translateResponse(
+        FORMATS.ANTIGRAVITY,
+        FORMATS.OPENAI,
+        missingIdResponse,
+        {},
+      ),
+    ).toEqual(missingIdOut);
+    expect(missingIdOut.at(-1)?.choices?.[0]?.delta?.tool_calls?.[0]?.id).toBe(
+      "gemini_call_0_search",
+    );
+    expect(requestOut.messages.find((m) => m.role === "tool")?.tool_call_id).toBe(
+      "native-call",
+    );
+  });
+
+  it("emits accumulated OpenAI tool-call IDs in Antigravity response", () => {
+    const state = {};
+    translateResponse(
+      FORMATS.OPENAI,
+      FORMATS.ANTIGRAVITY,
+      {
+        id: "chatcmpl-1",
+        model: "m",
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                { index: 0, id: "call-from-openai", function: { name: "search" } },
+              ],
+            },
+            finish_reason: null,
+          },
+        ],
+      },
+      state,
+    );
+    const out = translateResponse(
+      FORMATS.OPENAI,
+      FORMATS.ANTIGRAVITY,
+      {
+        choices: [
+          {
+            delta: { tool_calls: [{ index: 0, function: { arguments: "{}" } }] },
+            finish_reason: "tool_calls",
+          },
+        ],
+      },
+      state,
+    );
+
+    expect(out[0].response.candidates[0].content.parts[0].functionCall.id).toBe(
+      "call-from-openai",
+    );
+  });
+
+  it("pairs mixed native and generated same-name calls without corrupting FIFO", () => {
+    const input = {
+      contents: [
+        {
+          role: "model",
+          parts: [
+            { functionCall: { id: "native-search", name: "search", args: {} } },
+            { functionCall: { name: "search", args: {} } },
+            { functionCall: { name: "lookup", args: {} } },
+          ],
+        },
+        {
+          role: "user",
+          parts: [
+            { functionResponse: { id: "native-search", name: "search", response: {} } },
+            { functionResponse: { name: "lookup", response: {} } },
+            { functionResponse: { name: "search", response: {} } },
+          ],
+        },
+      ],
+    };
+    const out = AG2O(input);
+    const calls = out.messages.find((message) => message.tool_calls).tool_calls;
+    const results = out.messages.filter((message) => message.role === "tool");
+
+    expect(results.map((message) => message.tool_call_id)).toEqual([
+      "native-search",
+      calls[2].id,
+      calls[1].id,
+    ]);
+    expect(input.contents[0].parts[1].functionCall.id).toBeUndefined();
+  });
+
+  it("keeps unmatched and response-before-call tool results on the documented name fallback", () => {
+    const out = AG2O({
+      contents: [
+        {
+          role: "user",
+          parts: [{ functionResponse: { name: "before-call", response: {} } }],
+        },
+        {
+          role: "model",
+          parts: [{ functionCall: { name: "before-call", args: {} } }],
+        },
+      ],
+    });
+
+    expect(out.messages[0].tool_call_id).toBe("before-call");
+    expect(out.messages[1].tool_calls[0].id).toBe(
+      "ag_call_1_0_before-call",
+    );
+  });
+
+  it("uses unique deterministic response IDs across normal and thought-signature calls", () => {
+    const state = {};
+    const first = translateResponse(
+      FORMATS.ANTIGRAVITY,
+      FORMATS.OPENAI,
+      {
+        response: {
+          candidates: [
+            {
+              content: {
+                parts: [
+                  { functionCall: { name: "normal/tool", args: {} } },
+                  {
+                    thoughtSignature: "sig",
+                    functionCall: { name: "thought tool", args: {} },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+      state,
+    );
+    const second = translateResponse(
+      FORMATS.ANTIGRAVITY,
+      FORMATS.OPENAI,
+      { response: { candidates: [{ content: { parts: [{ functionCall: { name: "later", args: {} } }] } }] } },
+      state,
+    );
+    const ids = [...first, ...second]
+      .flatMap((chunk) => chunk.choices[0].delta.tool_calls || [])
+      .map((call) => call.id);
+
+    expect(ids).toEqual([
+      "gemini_call_0_normal_tool",
+      "gemini_call_1_thought_tool",
+      "gemini_call_2_later",
+    ]);
+  });
+
+  it("flushes multiple fragmented OpenAI calls with late IDs and does not replay them", () => {
+    const state = {};
+    translateResponse(
+      FORMATS.OPENAI,
+      FORMATS.ANTIGRAVITY,
+      {
+        id: "chatcmpl-multi",
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                { index: 1, function: { name: "look" } },
+                { index: 0, function: { name: "sea" } },
+              ],
+            },
+            finish_reason: null,
+          },
+        ],
+      },
+      state,
+    );
+    const finished = translateResponse(
+      FORMATS.OPENAI,
+      FORMATS.ANTIGRAVITY,
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                { index: 0, id: "late-search", function: { name: "rch", arguments: "{}" } },
+                { index: 1, id: "late-lookup", function: { name: "up", arguments: "{}" } },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      },
+      state,
+    );
+    const parts = finished[0].response.candidates[0].content.parts;
+
+    expect(parts.map((part) => part.functionCall)).toEqual([
+      { id: "late-search", name: "search", args: {} },
+      { id: "late-lookup", name: "lookup", args: {} },
+    ]);
+  });
+
+  it("does not re-emit flushed OpenAI tool calls in a later completion", () => {
+    const state = {};
+    translateResponse(
+      FORMATS.OPENAI,
+      FORMATS.ANTIGRAVITY,
+      {
+        id: "first",
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                { index: 0, id: "first-call", function: { name: "first", arguments: "{}" } },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      },
+      state,
+    );
+    const second = translateResponse(
+      FORMATS.OPENAI,
+      FORMATS.ANTIGRAVITY,
+      {
+        id: "second",
+        choices: [{ delta: { content: "done" }, finish_reason: "stop" }],
+      },
+      state,
+    );
+
+    expect(second[0].response.candidates[0].content.parts).toEqual([
+      { text: "done" },
+    ]);
   });
 
   // antigravity-to-openai.js:144-147 — signature-only part handling (regression guard)

@@ -14,6 +14,15 @@ function createInitialFormData(node, isAnthropic) {
       (isAnthropic
         ? "https://api.anthropic.com/v1"
         : "https://api.openai.com/v1"),
+    // Preload existing timeout knobs (ms raw); empty string when unset.
+    connectionTimeoutMs:
+      typeof node?.connectionTimeoutMs === "number"
+        ? String(node.connectionTimeoutMs)
+        : "",
+    stallTimeoutMs:
+      typeof node?.stallTimeoutMs === "number"
+        ? String(node.stallTimeoutMs)
+        : "",
   };
 }
 
@@ -50,6 +59,15 @@ function EditCompatibleNodeModalContent({
         name: formData.name,
         prefix: formData.prefix,
         baseUrl: formData.baseUrl,
+        // Always send both keys: empty → null (clear to default), number → set.
+        connectionTimeoutMs:
+          formData.connectionTimeoutMs === ""
+            ? null
+            : Number(formData.connectionTimeoutMs),
+        stallTimeoutMs:
+          formData.stallTimeoutMs === ""
+            ? null
+            : Number(formData.stallTimeoutMs),
       };
       if (!isAnthropic) {
         payload.apiType = formData.apiType;
@@ -120,6 +138,26 @@ function EditCompatibleNodeModalContent({
             : "https://api.openai.com/v1"
         }
         hint={`Use the base URL (ending in /v1) for your ${isAnthropic ? "Anthropic" : "OpenAI"}-compatible API.`}
+      />
+      <Input
+        label="Connection timeout (ms)"
+        type="number"
+        value={formData.connectionTimeoutMs}
+        onChange={(e) =>
+          setFormData({ ...formData, connectionTimeoutMs: e.target.value })
+        }
+        placeholder="Default 60000 (max 120000)"
+        hint="Optional. Time to wait for response headers. Leave empty to clear. Raise for slow reasoning models."
+      />
+      <Input
+        label="Stall timeout (ms)"
+        type="number"
+        value={formData.stallTimeoutMs}
+        onChange={(e) =>
+          setFormData({ ...formData, stallTimeoutMs: e.target.value })
+        }
+        placeholder="Default 300000 (max 600000)"
+        hint="Optional. Max gap between stream chunks before aborting. Leave empty to clear."
       />
       <div className="flex gap-2">
         <Input

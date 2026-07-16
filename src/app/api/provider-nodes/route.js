@@ -6,6 +6,11 @@ import {
   CUSTOM_EMBEDDING_PREFIX,
 } from "@/shared/constants/providers";
 import { generateId } from "@/shared/utils";
+import {
+  resolveTimeoutField,
+  CONNECTION_TIMEOUT_MAX_MS,
+  STALL_TIMEOUT_MAX_MS,
+} from "@/lib/providerNormalization";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +46,21 @@ export async function POST(request) {
     const body = await request.json();
     const { name, prefix, apiType, baseUrl, type } = body;
 
+    // Optional per-node timeout knobs (ms raw). At create time null/undefined are
+    // equivalent (new node, no prior value) so only a clamped number is persisted.
+    const connectionTimeoutMs = resolveTimeoutField(
+      body.connectionTimeoutMs,
+      CONNECTION_TIMEOUT_MAX_MS,
+    );
+    const stallTimeoutMs = resolveTimeoutField(
+      body.stallTimeoutMs,
+      STALL_TIMEOUT_MAX_MS,
+    );
+    const timeoutFields = {
+      ...(typeof connectionTimeoutMs === "number" ? { connectionTimeoutMs } : {}),
+      ...(typeof stallTimeoutMs === "number" ? { stallTimeoutMs } : {}),
+    };
+
     if (!name?.trim()) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
@@ -70,6 +90,8 @@ export async function POST(request) {
         apiType,
         baseUrl: (baseUrl || OPENAI_COMPATIBLE_DEFAULTS.baseUrl).trim(),
         name: name.trim(),
+        // New node: only a valid clamped number is persisted (null/undefined → unset).
+        ...timeoutFields,
       });
       return NextResponse.json({ node }, { status: 201 });
     }
@@ -109,6 +131,7 @@ export async function POST(request) {
         prefix: prefix.trim(),
         baseUrl: sanitizedBaseUrl,
         name: name.trim(),
+        ...timeoutFields,
       });
       return NextResponse.json({ node }, { status: 201 });
     }

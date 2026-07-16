@@ -167,9 +167,13 @@ export function kiroToClaudeResponse(chunk, state) {
         stopThinkingBlock(state, results);
         stopTextBlock(state, results);
         const toolBlockIndex = state.nextBlockIndex++;
+        // Restore the client's original tool name if it was sanitized on the
+        // way up (fail-open: names absent from the map pass through unchanged).
+        const rawName = tc.function?.name || "";
+        const toolName = state.toolNameMap?.get(rawName) || rawName;
         state.toolCalls.set(idx, {
           id: tc.id,
-          name: tc.function?.name || "",
+          name: toolName,
           blockIndex: toolBlockIndex,
         });
         results.push({
@@ -178,7 +182,7 @@ export function kiroToClaudeResponse(chunk, state) {
           content_block: {
             type: "tool_use",
             id: tc.id,
-            name: tc.function?.name || "",
+            name: toolName,
             input: {},
           },
         });
@@ -231,11 +235,13 @@ export function kiroToClaudeResponse(chunk, state) {
 }
 
 /**
- * Non-streaming Kiro → Claude. KiroExecutor only produces a stream, so this is
- * a defensive helper for any non-streaming caller that hands us an aggregated
- * OpenAI-shaped completion.
+ * Non-streaming Kiro → Claude. KiroExecutor only produces a stream, so this
+ * helper currently has NO caller in the repo (the non-streaming path is handled
+ * inline in nonStreamingHandler.js, which does not thread a toolNameMap). The
+ * optional `state` is honoured here so tool-name restore stays correct IF a
+ * caller ever wires it — it is not a claim that non-streaming restore is live.
  */
-export function kiroToClaudeNonStreaming(data) {
+export function kiroToClaudeNonStreaming(data, state = null) {
   const content = [];
   const choice = data?.choices?.[0];
   const message = choice?.message || {};
@@ -254,10 +260,14 @@ export function kiroToClaudeNonStreaming(data) {
       } catch {
         input = {};
       }
+      // Restore the client's original tool name if it was sanitized on the way
+      // up (fail-open: a name not in the map passes through unchanged).
+      const rawName = tc.function?.name || "";
+      const toolName = state?.toolNameMap?.get(rawName) || rawName;
       content.push({
         type: "tool_use",
         id: tc.id || `toolu_${Date.now()}`,
-        name: tc.function?.name || "",
+        name: toolName,
         input,
       });
     }

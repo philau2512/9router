@@ -16,7 +16,7 @@ export default function KiroOAuthWrapper({
   onSuccess,
   onClose,
 }) {
-  const [authMethod, setAuthMethod] = useState(null); // null | "builder-id" | "idc" | "social" | "import"
+  const [authMethod, setAuthMethod] = useState(null); // null | "builder-id" | "idc" | "social" | "import" | "api-key" | "import-cli-proxy"
   const [socialProvider, setSocialProvider] = useState(null); // "google" | "github"
   const [idcConfig, setIdcConfig] = useState(null);
 
@@ -33,8 +33,12 @@ export default function KiroOAuthWrapper({
         // Use social login with manual callback
         setAuthMethod("social");
         setSocialProvider(config.provider);
-      } else if (method === "import") {
-        // Import handled in KiroAuthModal, just close
+      } else if (
+        method === "import" ||
+        method === "api-key" ||
+        method === "import-cli-proxy"
+      ) {
+        // Credential already persisted inside KiroAuthModal — refresh list & close
         onSuccess?.();
       }
     },

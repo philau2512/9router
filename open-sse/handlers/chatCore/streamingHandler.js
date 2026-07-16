@@ -215,9 +215,16 @@ export async function handleStreamingResponse({
   const onAbortTerminal = isResponsesPassthrough
     ? buildAbortedResponsesTerminalBytes
     : null;
-  // Per-provider stall timeout override (e.g. Qoder reasoning models need 120s)
+  // Stall timeout resolution. Priority:
+  //   credentials.providerSpecificData.stallTimeoutMs (>0, user override for
+  //     slow reasoning models on compatible providers)
+  //   → PROVIDERS[provider].stallTimeoutMs (built-in, e.g. Qoder 120s)
+  //   → STREAM_STALL_TIMEOUT_MS (universal 5-minute default)
+  const csStall = Number(credentials?.providerSpecificData?.stallTimeoutMs);
   const stallTimeoutMs =
-    PROVIDERS[provider]?.stallTimeoutMs || STREAM_STALL_TIMEOUT_MS;
+    Number.isFinite(csStall) && csStall > 0
+      ? csStall
+      : PROVIDERS[provider]?.stallTimeoutMs || STREAM_STALL_TIMEOUT_MS;
 
   // Track accumulated content for semantic stall detection and mid-stream resume
   const streamStateTracker = {

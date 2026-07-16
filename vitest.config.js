@@ -20,6 +20,7 @@ export default defineConfig({
       "**/.git/**",
       "**/tests/unit/db-benchmark.test.js",
       "**/tests/unit/embeddings.cloud.test.js",
+      "**/*.real.test.js",
     ],
   },
 });
