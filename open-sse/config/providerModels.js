@@ -1615,8 +1615,16 @@ export const PROVIDER_ID_TO_ALIAS = Object.fromEntries(
 );
 
 export function getModelsByProviderId(providerId) {
+  // Catalog keys are mixed: most OAuth providers use short alias (cc, kr, …)
+  // while grok-cli is stored under the full id. Fall back to providerId when
+  // PROVIDER_ID_TO_ALIAS points at a short alias that has no table (e.g. gcli).
   const alias = PROVIDER_ID_TO_ALIAS[providerId] || providerId;
-  return PROVIDER_MODELS[alias] || [];
+  return (
+    PROVIDER_MODELS[alias] ||
+    PROVIDER_MODELS[providerId] ||
+    (alias === "gcli" ? PROVIDER_MODELS["grok-cli"] : null) ||
+    []
+  );
 }
 
 // Get strip list for a model entry (explicit opt-in only)
