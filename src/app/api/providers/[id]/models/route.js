@@ -328,6 +328,11 @@ const PROVIDER_MODELS_CONFIG = {
         accessToken: connection.accessToken,
         refreshToken: connection.refreshToken,
         expiresAt: connection.expiresAt || null,
+        connectionId: connection.id,
+        connectionName:
+          connection.displayName || connection.name || connection.email || null,
+        name: connection.name || null,
+        email: connection.email || null,
         providerSpecificData: connection.providerSpecificData || {},
       };
       let warning;

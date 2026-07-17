@@ -1,7 +1,7 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { randomUUID } from "crypto";
-import { refreshKiroToken } from "../services/tokenRefresh.js";
+import { refreshKiroToken, withRefreshAccountLog } from "../services/tokenRefresh.js";
 import {
   resolveKiroRequestProfileArn,
   buildKiroClientUserAgent,
@@ -865,7 +865,7 @@ export class KiroExecutor extends BaseExecutor {
       const result = await refreshKiroToken(
         credentials.refreshToken,
         credentials.providerSpecificData,
-        log,
+        withRefreshAccountLog(credentials, log),
         proxyOptions,
         true,
       );

@@ -74,7 +74,11 @@ describe("usage OAuth refresh", () => {
     );
     expect(refreshProviderCredentials).toHaveBeenCalledWith(
       "xai",
-      expect.objectContaining({ accessToken: "old-token" }),
+      expect.objectContaining({
+        accessToken: "old-token",
+        connectionId: "conn-xai-1",
+        providerSpecificData: { email: "a@b.com" },
+      }),
       console,
     );
     expect(updateProviderConnection).toHaveBeenCalledWith(

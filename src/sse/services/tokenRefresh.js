@@ -252,6 +252,12 @@ export async function checkAndRefreshToken(provider, credentials) {
 
     log.info("TOKEN_REFRESH", "Refreshing provider credentials proactively", {
       provider,
+      account:
+        creds.connectionName ||
+        creds.displayName ||
+        creds.name ||
+        creds.email ||
+        (creds.connectionId ? String(creds.connectionId).slice(0, 8) : null),
       expiresIn: remaining === null ? null : Math.round(remaining / 1000),
       refreshLeadMs: refreshLead,
       lastRefreshAt: creds.lastRefreshAt || null,

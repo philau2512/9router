@@ -42,4 +42,6 @@ export {
   formatProviderCredentials,
   getAllAccessTokens,
   refreshWithRetry,
+  resolveRefreshAccountLabel,
+  withRefreshAccountLog,
 } from "./refresh-orchestrator.js";

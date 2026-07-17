@@ -75,6 +75,10 @@ export async function POST(request) {
       idToken: connection.idToken,
       lastRefreshAt: connection.lastRefreshAt,
       connectionId: connection.id,
+      connectionName:
+        connection.displayName || connection.name || connection.email || null,
+      name: connection.name || null,
+      email: connection.email || null,
       copilotToken: connection.providerSpecificData?.copilotToken,
       copilotTokenExpiresAt:
         connection.providerSpecificData?.copilotTokenExpiresAt,
