@@ -22,6 +22,7 @@ import {
   parseProviderModelsPayload,
   pickFirstActiveConnectionByProvider,
 } from "@/shared/utils/liveModelsForSelectModal";
+import { filterActiveProvidersForModelSelect } from "@/shared/utils/modelSelectActiveProviders";
 
 // Provider order: OAuth first, then Free Tier, then API Key (matches dashboard/providers)
 const PROVIDER_ORDER = [
@@ -49,15 +50,12 @@ export default function ModelSelectModal({
   addedModelValues = [],
   closeOnSelect = true,
 }) {
-  // Filter activeProviders by serviceKinds when kindFilter set (e.g. "webSearch", "webFetch")
-  const filteredActiveProviders = useMemo(() => {
-    if (!kindFilter) return activeProviders;
-    return activeProviders.filter((p) => {
-      const info = AI_PROVIDERS[p.provider];
-      const kinds = info?.serviceKinds || ["llm"];
-      return kinds.includes(kindFilter);
-    });
-  }, [activeProviders, kindFilter]);
+  // Drop disabled / delisted (e.g. iflow) / inactive custom connections before grouping.
+  const filteredActiveProviders = useMemo(
+    () =>
+      filterActiveProvidersForModelSelect(activeProviders, { kindFilter }),
+    [activeProviders, kindFilter],
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [combos, setCombos] = useState([]);
   const [providerNodes, setProviderNodes] = useState([]);
@@ -123,7 +121,8 @@ export default function ModelSelectModal({
   // Live catalog per provider (first active connection wins). Fail-open → {}.
   const fetchLiveModels = useCallback(
     async (signal) => {
-      const byProvider = pickFirstActiveConnectionByProvider(activeProviders);
+      const selectable = filterActiveProvidersForModelSelect(activeProviders);
+      const byProvider = pickFirstActiveConnectionByProvider(selectable);
       if (byProvider.size === 0) {
         if (!signal?.aborted) {
           setLiveModelsByProviderId({});
