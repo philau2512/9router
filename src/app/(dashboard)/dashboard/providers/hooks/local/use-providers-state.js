@@ -10,9 +10,17 @@ import {
 } from "@/shared/constants/providers";
 import { getRelativeTime } from "@/shared/utils";
 import { getConnectionErrorTag } from "../../components/local/helpers";
+import { getProviderConnectionMatchIds } from "./providerConnectionMatch";
+
+export { getProviderConnectionMatchIds } from "./providerConnectionMatch";
 
 const APIKEY_INITIAL_VISIBLE = 20;
 
+/**
+ * Provider ids whose connections count toward a dashboard card.
+ * xai detail page already unions xai + grok-cli; the list card must match
+ * or OAuth-only Grok Build shows "No connections" on xAI while detail has 1.
+ */
 export function useProvidersState() {
   const [connections, setConnections] = useState([]);
   const [providerNodes, setProviderNodes] = useState([]);
@@ -40,8 +48,9 @@ export function useProvidersState() {
   const getProviderStats = (providerId, authType) => {
     // authType may be a single string or an array (kiro counts oauth + api_key)
     const authTypes = Array.isArray(authType) ? authType : [authType];
+    const matchIds = new Set(getProviderConnectionMatchIds(providerId));
     const providerConnections = connections.filter(
-      (c) => c.provider === providerId && authTypes.includes(c.authType),
+      (c) => matchIds.has(c.provider) && authTypes.includes(c.authType),
     );
 
     const getEffectiveStatus = (conn) => {
@@ -125,10 +134,12 @@ export function useProvidersState() {
 
   // Toggle all connections for a provider on/off.
   // authType may be a single string or an array (kiro: oauth + api_key/apikey).
+  // xai card also toggles sibling grok-cli OAuth rows (same as detail page).
   const handleToggleProvider = async (providerId, authType, newActive) => {
     const authTypes = Array.isArray(authType) ? authType : [authType];
+    const matchIds = new Set(getProviderConnectionMatchIds(providerId));
     const matches = (c) =>
-      c.provider === providerId && authTypes.includes(c.authType);
+      matchIds.has(c.provider) && authTypes.includes(c.authType);
     const providerConns = connections.filter(matches);
     setConnections((prev) =>
       prev.map((c) => (matches(c) ? { ...c, isActive: newActive } : c)),
