@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useNotificationStore } from "@/store/notificationStore";
 import Sidebar from "../Sidebar";
 import Header from "../Header";
+
+const SIDEBAR_COLLAPSED_KEY = "9router.sidebarCollapsed";
 
 function getToastStyle(type) {
   if (type === "success") {
@@ -36,11 +38,38 @@ function getToastStyle(type) {
 
 export default function DashboardLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Desktop icon-rail collapse (persisted). Mobile keeps drawer open/close.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const pathname = usePathname();
   const notifications = useNotificationStore((state) => state.notifications);
   const removeNotification = useNotificationStore(
     (state) => state.removeNotification,
   );
+
+  useEffect(() => {
+    try {
+      if (globalThis.localStorage?.getItem(SIDEBAR_COLLAPSED_KEY) === "1") {
+        setSidebarCollapsed(true);
+      }
+    } catch {
+      /* private mode */
+    }
+  }, []);
+
+  const toggleSidebarCollapsed = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        globalThis.localStorage?.setItem(
+          SIDEBAR_COLLAPSED_KEY,
+          next ? "1" : "0",
+        );
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-bg">
@@ -92,9 +121,12 @@ export default function DashboardLayout({ children }) {
         />
       )}
 
-      {/* Sidebar - Desktop */}
-      <div className="hidden lg:flex">
-        <Sidebar />
+      {/* Sidebar - Desktop (overflow-visible so mid-edge toggle can sit on the border) */}
+      <div className="relative z-30 hidden h-full overflow-visible lg:flex">
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={toggleSidebarCollapsed}
+        />
       </div>
 
       {/* Sidebar - Mobile */}
