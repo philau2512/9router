@@ -73,9 +73,15 @@ export async function handleEmbeddings(request) {
   const { provider, model } = modelInfo;
 
   if (modelStr !== `${provider}/${model}`) {
-    log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
+    log.info(
+      "ROUTING",
+      `${log.hlModel(modelStr)} → ${log.hlModel(`${provider}/${model}`)}`,
+    );
   } else {
-    log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
+    log.info(
+      "ROUTING",
+      `Provider: ${provider}, Model: ${log.hlModel(model)}`,
+    );
   }
 
   // Credential + fallback loop (mirrors handleChat)

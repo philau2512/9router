@@ -340,7 +340,7 @@ export async function handleChatCore({
       const think = log.fmtThink?.(extractThinking(translatedBody));
       const acc = credentials?.connectionName || "-";
       const parts = [
-        `POST ${clientModel} → ${provider}/${model}`,
+        `POST ${log.hlModel?.(clientModel) ?? clientModel} → ${log.hlModel?.(`${provider}/${model}`) ?? `${provider}/${model}`}`,
         fmtStr,
         stream ? "STREAM" : "JSON",
         `${msgN}MSG`,

@@ -70,12 +70,23 @@ function formatData(data) {
   }
 }
 
+// Bold amber/orange — scan-friendly for model & combo names in terminal logs.
+// Level color only wraps the prefix so these codes stay visible mid-line.
+export const MODEL_HL = "\x1b[1;38;5;214m";
+export const MODEL_HL_RESET = "\x1b[22;39m";
+
+/** Wrap a model or combo name for terminal highlight (amber-orange). */
+export function hlModel(name) {
+  if (name == null || name === "") return "";
+  return `${MODEL_HL}${name}${MODEL_HL_RESET}`;
+}
+
 export function debug(tag, message, data) {
   if (currentLevel <= LOG_LEVELS.DEBUG) {
     const dataStr = data ? ` ${formatData(data)}` : "";
     const prefix = getContextPrefix();
     console.log(
-      `\x1b[36m[${formatTime()}] ${prefix}🔍 [${tag}] ${message}${dataStr}\x1b[0m`,
+      `\x1b[36m[${formatTime()}] ${prefix}🔍 [${tag}]\x1b[0m ${message}${dataStr}`,
     );
   }
 }
@@ -85,7 +96,7 @@ export function info(tag, message, data) {
     const dataStr = data ? ` ${formatData(data)}` : "";
     const prefix = getContextPrefix();
     console.log(
-      `\x1b[32m[${formatTime()}] ${prefix}ℹ️  [${tag}] ${message}${dataStr}\x1b[0m`,
+      `\x1b[32m[${formatTime()}] ${prefix}ℹ️  [${tag}]\x1b[0m ${message}${dataStr}`,
     );
   }
 }
@@ -95,7 +106,7 @@ export function warn(tag, message, data) {
     const dataStr = data ? ` ${formatData(data)}` : "";
     const prefix = getContextPrefix();
     console.log(
-      `\x1b[33m[${formatTime()}] ${prefix}⚠️  [${tag}] ${message}${dataStr}\x1b[0m`,
+      `\x1b[33m[${formatTime()}] ${prefix}⚠️  [${tag}]\x1b[0m ${message}${dataStr}`,
     );
   }
 }
@@ -105,7 +116,7 @@ export function error(tag, message, data) {
     const dataStr = data ? ` ${formatData(data)}` : "";
     const prefix = getContextPrefix();
     console.log(
-      `\x1b[31m[${formatTime()}] ${prefix}❌ [${tag}] ${message}${dataStr}\x1b[0m`,
+      `\x1b[31m[${formatTime()}] ${prefix}❌ [${tag}]\x1b[0m ${message}${dataStr}`,
     );
   }
 }
@@ -114,7 +125,7 @@ export function request(method, path, extra) {
   const dataStr = extra ? ` ${formatData(extra)}` : "";
   const prefix = getContextPrefix();
   console.log(
-    `\x1b[36m[${formatTime()}] ${prefix}📥 ${method} ${path}${dataStr}\x1b[0m`,
+    `\x1b[36m[${formatTime()}] ${prefix}📥\x1b[0m ${method} ${path}${dataStr}`,
   );
 }
 
@@ -124,7 +135,7 @@ export function response(status, duration, extra) {
   const color = status < 400 ? "\x1b[32m" : "\x1b[31m";
   const prefix = getContextPrefix();
   console.log(
-    `${color}[${formatTime()}] ${prefix}${icon} ${status} (${duration}ms)${dataStr}\x1b[0m`,
+    `${color}[${formatTime()}] ${prefix}${icon}\x1b[0m ${status} (${duration}ms)${dataStr}`,
   );
 }
 
@@ -132,7 +143,7 @@ export function stream(event, data) {
   const dataStr = data ? ` ${formatData(data)}` : "";
   const prefix = getContextPrefix();
   console.log(
-    `\x1b[35m[${formatTime()}] ${prefix}🌊 [STREAM] ${event}${dataStr}\x1b[0m`,
+    `\x1b[35m[${formatTime()}] ${prefix}🌊 [STREAM]\x1b[0m ${event}${dataStr}`,
   );
 }
 
@@ -141,7 +152,7 @@ export function ttft(message, data) {
     const dataStr = data ? ` ${formatData(data)}` : "";
     const prefix = getContextPrefix();
     console.log(
-      `\x1b[34m[${formatTime()}] ${prefix}🤯 [TTFT] ${message} | ${dataStr}\x1b[0m`,
+      `\x1b[34m[${formatTime()}] ${prefix}🤯 [TTFT]\x1b[0m ${message} | ${dataStr}`,
     );
   }
 }
