@@ -186,6 +186,11 @@ export default function ConnectionRow({
     : isCookieConnection
       ? "Cookie"
       : "API Key";
+  const codexPlan =
+    connection.provider === "codex" &&
+    typeof connection.providerSpecificData?.chatgptPlanType === "string"
+      ? connection.providerSpecificData.chatgptPlanType.trim()
+      : "";
   const isEmail = (v) =>
     typeof v === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
   const displayName =
@@ -372,6 +377,11 @@ export default function ConnectionRow({
             <Badge variant="default" size="sm">
               {authLabel}
             </Badge>
+            {codexPlan && (
+              <Badge variant="primary" size="sm" className="capitalize">
+                {codexPlan}
+              </Badge>
+            )}
             {hasAnyProxy && (
               <Badge variant={proxyBadgeVariant} size="sm">
                 Proxy
@@ -651,6 +661,10 @@ ConnectionRow.propTypes = {
     name: PropTypes.string,
     email: PropTypes.string,
     displayName: PropTypes.string,
+    provider: PropTypes.string,
+    providerSpecificData: PropTypes.shape({
+      chatgptPlanType: PropTypes.string,
+    }),
     modelLockUntil: PropTypes.string,
     testStatus: PropTypes.string,
     isActive: PropTypes.bool,
