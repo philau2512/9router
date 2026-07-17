@@ -49,7 +49,41 @@ const systemItems = [
   { href: "/dashboard/skills", label: "Skills", icon: "extension" },
 ];
 
-export default function Sidebar({ onClose }) {
+function navItemClass(active, collapsed) {
+  return cn(
+    "flex items-center rounded-lg transition-all group",
+    collapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-1",
+    active
+      ? "bg-primary/10 text-primary"
+      : "text-text-muted hover:bg-surface-2 hover:text-text-main",
+  );
+}
+
+function navIconClass(active) {
+  return cn(
+    "material-symbols-outlined text-[18px] shrink-0",
+    active ? "fill-1" : "group-hover:text-primary transition-colors",
+  );
+}
+
+function NavLabel({ collapsed, children, className }) {
+  return (
+    <span
+      className={cn(
+        collapsed ? "sr-only" : "text-[13px] font-medium",
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+export default function Sidebar({
+  onClose,
+  collapsed = false,
+  onToggleCollapse,
+}) {
   const pathname = usePathname();
   const [mediaOpen, setMediaOpen] = useState(false);
   const [showShutdownModal, setShowShutdownModal] = useState(false);
@@ -142,32 +176,77 @@ export default function Sidebar({ onClose }) {
 
   return (
     <>
-      <aside className="flex w-72 flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl transition-colors duration-300 min-h-full">
+      <aside
+        className={cn(
+          "relative flex h-full min-h-full flex-col overflow-visible border-r border-border-subtle bg-vibrancy backdrop-blur-xl transition-[width,colors] duration-300",
+          collapsed ? "w-[72px]" : "w-72",
+        )}
+      >
+        {/* Mid-edge collapse toggle — sits on the right border like a rail handle */}
+        {typeof onToggleCollapse === "function" && (
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
+            className={cn(
+              "absolute top-1/2 right-0 z-40 flex h-8 w-4 -translate-y-1/2 translate-x-1/2 items-center justify-center",
+              "rounded-md border border-border-subtle bg-surface-1 text-text-muted shadow-sm",
+              "hover:bg-surface-2 hover:text-primary transition-colors",
+            )}
+          >
+            <span className="material-symbols-outlined text-[14px] leading-none">
+              {collapsed ? "chevron_right" : "chevron_left"}
+            </span>
+          </button>
+        )}
+
         {/* Traffic lights */}
-        <div className="flex items-center gap-2 px-6 pt-5 pb-2">
+        <div
+          className={cn(
+            "flex items-center gap-2 pt-5 pb-2",
+            collapsed ? "justify-center px-2" : "px-6",
+          )}
+        >
           <div className="w-3 h-3 rounded-full bg-[#FF5F56]" />
           <div className="w-3 h-3 rounded-full bg-[#FFBD2E]" />
           <div className="w-3 h-3 rounded-full bg-[#27C93F]" />
         </div>
 
         {/* Logo */}
-        <div className="px-6 py-4 flex flex-col gap-2">
-          <Link href="/dashboard" className="flex items-center gap-3">
-            <div className="flex items-center justify-center size-9 rounded-[10px] bg-gradient-to-br from-brand-500 to-brand-700 shadow-[var(--shadow-warm)]">
+        <div
+          className={cn(
+            "py-4 flex flex-col gap-2",
+            collapsed ? "px-2 items-center" : "px-6",
+          )}
+        >
+          <Link
+            href="/dashboard"
+            className={cn(
+              "flex items-center",
+              collapsed ? "justify-center" : "gap-3",
+            )}
+            title={APP_CONFIG.name}
+            onClick={onClose}
+          >
+            <div className="flex items-center justify-center size-9 rounded-[10px] bg-gradient-to-br from-brand-500 to-brand-700 shadow-[var(--shadow-warm)] shrink-0">
               <span className="material-symbols-outlined text-white text-[20px]">
                 hub
               </span>
             </div>
-            <div className="flex flex-col">
-              <h1 className="text-lg font-semibold tracking-tight text-text-main">
-                {APP_CONFIG.name}
-              </h1>
-              <span className="text-xs text-text-muted">
-                v{APP_CONFIG.version}
-              </span>
-            </div>
+            {!collapsed && (
+              <div className="flex flex-col min-w-0">
+                <h1 className="text-lg font-semibold tracking-tight text-text-main truncate">
+                  {APP_CONFIG.name}
+                </h1>
+                <span className="text-xs text-text-muted">
+                  v{APP_CONFIG.version}
+                </span>
+              </div>
+            )}
           </Link>
-          {updateInfo && (
+          {updateInfo && !collapsed && (
             <div className="flex flex-col gap-1.5 rounded p-1 -m-1">
               <span className="text-xs font-semibold text-green-600 dark:text-amber-500">
                 ↑ New version available: v{updateInfo.latestVersion}
@@ -191,69 +270,84 @@ export default function Sidebar({ onClose }) {
               </div>
             </div>
           )}
+          {updateInfo && collapsed && (
+            <button
+              type="button"
+              onClick={() => setShowUpdateModal(true)}
+              title={`Update to v${updateInfo.latestVersion}`}
+              className="flex size-9 items-center justify-center rounded-lg bg-green-600/15 text-green-600 dark:text-amber-500 hover:bg-green-600/25 transition-colors"
+            >
+              <span className="material-symbols-outlined text-[18px]">
+                system_update
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-4 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
+        <nav
+          className={cn(
+            "flex-1 py-2 space-y-0.5 overflow-y-auto custom-scrollbar",
+            collapsed ? "px-2" : "px-4",
+          )}
+        >
           {navItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
               onClick={onClose}
-              className={cn(
-                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                isActive(item.href)
-                  ? "bg-primary/10 text-primary"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text-main",
-              )}
+              title={item.label}
+              className={navItemClass(isActive(item.href), collapsed)}
             >
-              <span
-                className={cn(
-                  "material-symbols-outlined text-[18px]",
-                  isActive(item.href)
-                    ? "fill-1"
-                    : "group-hover:text-primary transition-colors",
-                )}
-              >
+              <span className={navIconClass(isActive(item.href))}>
                 {item.icon}
               </span>
-              <span className="text-[13px] font-medium">{item.label}</span>
+              <NavLabel collapsed={collapsed}>{item.label}</NavLabel>
             </Link>
           ))}
 
           {/* System section */}
           <div className="pt-3 mt-2 space-y-0.5">
-            <p className="px-4 text-xs font-semibold text-text-muted/60 uppercase tracking-wider mb-2">
-              System
-            </p>
+            {!collapsed && (
+              <p className="px-4 text-xs font-semibold text-text-muted/60 uppercase tracking-wider mb-2">
+                System
+              </p>
+            )}
 
             {/* Media Providers accordion */}
             <button
+              type="button"
               onClick={() => setMediaOpen((v) => !v)}
+              title="Media Providers"
               className={cn(
-                "w-full flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                pathname.startsWith("/dashboard/media-providers")
-                  ? "bg-primary/10 text-primary"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text-main",
+                "w-full",
+                navItemClass(
+                  pathname.startsWith("/dashboard/media-providers"),
+                  collapsed,
+                ),
               )}
             >
-              <span className="material-symbols-outlined text-[18px]">
+              <span className="material-symbols-outlined text-[18px] shrink-0">
                 perm_media
               </span>
-              <span className="text-[13px] font-medium flex-1 text-left">
-                Media Providers
-              </span>
-              <span
-                className="material-symbols-outlined text-[14px] transition-transform"
-                style={{
-                  transform: mediaOpen ? "rotate(180deg)" : "rotate(0deg)",
-                }}
-              >
-                expand_more
-              </span>
+              {!collapsed && (
+                <>
+                  <span className="text-[13px] font-medium flex-1 text-left">
+                    Media Providers
+                  </span>
+                  <span
+                    className="material-symbols-outlined text-[14px] transition-transform"
+                    style={{
+                      transform: mediaOpen ? "rotate(180deg)" : "rotate(0deg)",
+                    }}
+                  >
+                    expand_more
+                  </span>
+                </>
+              )}
             </button>
             {mediaOpen && (
-              <div className="pl-4">
+              <div className={cn(collapsed ? "space-y-0.5" : "pl-4")}>
                 {MEDIA_PROVIDER_KINDS.filter((k) =>
                   VISIBLE_MEDIA_KINDS.includes(k.id),
                 ).map((kind) => (
@@ -261,8 +355,12 @@ export default function Sidebar({ onClose }) {
                     key={kind.id}
                     href={`/dashboard/media-providers/${kind.id}`}
                     onClick={onClose}
+                    title={kind.label}
                     className={cn(
-                      "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
+                      "flex items-center rounded-lg transition-all group",
+                      collapsed
+                        ? "justify-center px-2 py-2"
+                        : "gap-3 px-4 py-1",
                       pathname.startsWith(
                         `/dashboard/media-providers/${kind.id}`,
                       )
@@ -270,27 +368,33 @@ export default function Sidebar({ onClose }) {
                         : "text-text-muted hover:bg-surface-2 hover:text-text-main",
                     )}
                   >
-                    <span className="material-symbols-outlined text-[16px]">
+                    <span className="material-symbols-outlined text-[16px] shrink-0">
                       {kind.icon}
                     </span>
-                    <span className="text-sm">{kind.label}</span>
+                    {!collapsed && (
+                      <span className="text-sm">{kind.label}</span>
+                    )}
                   </Link>
                 ))}
                 <Link
                   key={COMBINED_WEB_ITEM.id}
                   href={COMBINED_WEB_ITEM.href}
                   onClick={onClose}
+                  title={COMBINED_WEB_ITEM.label}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
+                    "flex items-center rounded-lg transition-all group",
+                    collapsed ? "justify-center px-2 py-2" : "gap-3 px-4 py-1",
                     pathname.startsWith(COMBINED_WEB_ITEM.href)
                       ? "bg-primary/10 text-primary"
                       : "text-text-muted hover:bg-surface-2 hover:text-text-main",
                   )}
                 >
-                  <span className="material-symbols-outlined text-[16px]">
+                  <span className="material-symbols-outlined text-[16px] shrink-0">
                     {COMBINED_WEB_ITEM.icon}
                   </span>
-                  <span className="text-sm">{COMBINED_WEB_ITEM.label}</span>
+                  {!collapsed && (
+                    <span className="text-sm">{COMBINED_WEB_ITEM.label}</span>
+                  )}
                 </Link>
               </div>
             )}
@@ -300,24 +404,13 @@ export default function Sidebar({ onClose }) {
                 key={item.href}
                 href={item.href}
                 onClick={onClose}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                  isActive(item.href)
-                    ? "bg-primary/10 text-primary"
-                    : "text-text-muted hover:bg-surface-2 hover:text-text-main",
-                )}
+                title={item.label}
+                className={navItemClass(isActive(item.href), collapsed)}
               >
-                <span
-                  className={cn(
-                    "material-symbols-outlined text-[18px]",
-                    isActive(item.href)
-                      ? "fill-1"
-                      : "group-hover:text-primary transition-colors",
-                  )}
-                >
+                <span className={navIconClass(isActive(item.href))}>
                   {item.icon}
                 </span>
-                <span className="text-[13px] font-medium">{item.label}</span>
+                <NavLabel collapsed={collapsed}>{item.label}</NavLabel>
               </Link>
             ))}
 
@@ -330,80 +423,83 @@ export default function Sidebar({ onClose }) {
                   key={item.href}
                   href={item.href}
                   onClick={onClose}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                    isActive(item.href)
-                      ? "bg-primary/10 text-primary"
-                      : "text-text-muted hover:bg-surface-2 hover:text-text-main",
-                  )}
+                  title={item.label}
+                  className={navItemClass(isActive(item.href), collapsed)}
                 >
-                  <span
-                    className={cn(
-                      "material-symbols-outlined text-[18px]",
-                      isActive(item.href)
-                        ? "fill-1"
-                        : "group-hover:text-primary transition-colors",
-                    )}
-                  >
+                  <span className={navIconClass(isActive(item.href))}>
                     {item.icon}
                   </span>
-                  <span className="text-[13px] font-medium">{item.label}</span>
+                  <NavLabel collapsed={collapsed}>{item.label}</NavLabel>
                 </Link>
               ) : null;
             })}
 
             {/* Remote */}
             <button
+              type="button"
               onClick={() => setShowRemoteModal(true)}
+              title="Remote"
               className={cn(
-                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group w-full",
-                "text-text-muted hover:bg-surface-2 hover:text-text-main",
+                "w-full",
+                navItemClass(false, collapsed),
               )}
             >
-              <span className="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors">
+              <span className="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors shrink-0">
                 computer
               </span>
-              <span className="text-[13px] font-medium">Remote</span>
+              <NavLabel collapsed={collapsed}>Remote</NavLabel>
             </button>
 
             {/* Settings */}
             <Link
               href="/dashboard/profile"
               onClick={onClose}
-              className={cn(
-                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                isActive("/dashboard/profile")
-                  ? "bg-primary/10 text-primary"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text-main",
+              title="Settings"
+              className={navItemClass(
+                isActive("/dashboard/profile"),
+                collapsed,
               )}
             >
               <span
-                className={cn(
-                  "material-symbols-outlined text-[18px]",
-                  isActive("/dashboard/profile")
-                    ? "fill-1"
-                    : "group-hover:text-primary transition-colors",
-                )}
+                className={navIconClass(isActive("/dashboard/profile"))}
               >
                 settings
               </span>
-              <span className="text-[13px] font-medium">Settings</span>
+              <NavLabel collapsed={collapsed}>Settings</NavLabel>
             </Link>
           </div>
         </nav>
 
         {/* Footer section */}
-        <div className="p-3 border-t border-border-subtle">
-          {/* Shutdown button */}
-          <Button
-            variant="outline"
-            fullWidth
-            icon="power_settings_new"
-            onClick={() => setShowShutdownModal(true)}
-            className="text-red-500 border-red-200 hover:bg-red-50 hover:border-red-300"
-          >
-            Shutdown
-          </Button>
+        <div
+          className={cn(
+            "border-t border-border-subtle",
+            collapsed ? "p-2" : "p-3",
+          )}
+        >
+          {collapsed ? (
+            <button
+              type="button"
+              onClick={() => setShowShutdownModal(true)}
+              title="Shutdown"
+              aria-label="Shutdown"
+              className="flex w-full items-center justify-center rounded-lg border border-red-200/60 py-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+            >
+              <span className="material-symbols-outlined text-[20px]">
+                power_settings_new
+              </span>
+            </button>
+          ) : (
+            <Button
+              variant="outline"
+              fullWidth
+              icon="power_settings_new"
+              onClick={() => setShowShutdownModal(true)}
+              className="text-red-500 border-red-200 hover:bg-red-50 hover:border-red-300"
+            >
+              Shutdown
+            </Button>
+          )}
         </div>
       </aside>
 
@@ -480,6 +576,14 @@ export default function Sidebar({ onClose }) {
 
 Sidebar.propTypes = {
   onClose: PropTypes.func,
+  collapsed: PropTypes.bool,
+  onToggleCollapse: PropTypes.func,
+};
+
+NavLabel.propTypes = {
+  collapsed: PropTypes.bool,
+  children: PropTypes.node,
+  className: PropTypes.string,
 };
 
 function ManualUpdatePanel({
