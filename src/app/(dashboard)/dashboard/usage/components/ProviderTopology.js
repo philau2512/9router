@@ -10,20 +10,26 @@ import {
   Background,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { AI_PROVIDERS } from "@/shared/constants/providers";
+import {
+  buildActiveProviderSet,
+  buildProviderMatchSet,
+} from "./topologyActiveMatch";
+import { buildLayout } from "./topologyLayout";
 
 // Force-stop FE animation if a provider stays active longer than this
 const FE_ACTIVE_TIMEOUT_MS = 60000;
 const FE_ACTIVE_TICK_MS = 1000;
 
-function getProviderConfig(providerId) {
-  return AI_PROVIDERS[providerId] || { color: "#6b7280", name: providerId };
-}
-
-// Use local provider images from /public/providers/
-function getProviderImageUrl(providerId) {
-  return `/providers/${providerId}.png`;
-}
+// Pure helpers re-exported for unit tests (no React/xyflow needed at call site).
+export {
+  expandTopologyProviderIds,
+  buildActiveProviderSet,
+  buildProviderMatchSet,
+  countActiveProviderGroups,
+  isTopologyProviderActive,
+  TOPOLOGY_PROVIDER_ALIASES,
+} from "./topologyActiveMatch";
+export { buildLayout } from "./topologyLayout";
 
 // Custom provider node - rectangle with image + name
 function ProviderNode({ data }) {
@@ -159,145 +165,38 @@ RouterNode.propTypes = {
 
 const nodeTypes = { provider: ProviderNode, router: RouterNode };
 
-// Place N nodes evenly along an ellipse around the router center.
-function buildLayout(providers, activeSet, lastSet, errorSet) {
-  const nodeW = 180;
-  const nodeH = 30;
-  const routerW = 120;
-  const routerH = 44;
-  const nodeGap = 24;
-
-  const count = providers.length;
-
-  // Compute rx so arc spacing between nodes >= nodeW + nodeGap
-  const minRx = ((nodeW + nodeGap) * count) / (2 * Math.PI);
-  const rx = Math.max(320, minRx);
-  const ry = Math.max(200, rx * 0.55); // ellipse ratio ~0.55
-  if (count === 0) {
-    return {
-      nodes: [
-        {
-          id: "router",
-          type: "router",
-          position: { x: 0, y: 0 },
-          data: { activeCount: 0 },
-          draggable: false,
-        },
-      ],
-      edges: [],
-    };
-  }
-
-  const nodes = [];
-  const edges = [];
-
-  nodes.push({
-    id: "router",
-    type: "router",
-    position: { x: -routerW / 2, y: -routerH / 2 },
-    data: { activeCount: activeSet.size },
-    draggable: false,
-  });
-
-  const edgeStyle = (active, last, error, _color) => {
-    if (error) return { stroke: "#ef4444", strokeWidth: 2.5, opacity: 0.9 };
-    if (active) return { stroke: "#22c55e", strokeWidth: 2.5, opacity: 0.9 };
-    if (last) return { stroke: "#f59e0b", strokeWidth: 2, opacity: 0.7 };
-    // Use hardcoded color instead of CSS variable for reliable cross-theme visibility
-    return { stroke: "#4b5563", strokeWidth: 1.5, opacity: 0.5 };
-  };
-
-  providers.forEach((p, i) => {
-    const config = getProviderConfig(p.provider);
-    const active = activeSet.has(p.provider?.toLowerCase());
-    const last = !active && lastSet.has(p.provider?.toLowerCase());
-    const error = !active && errorSet.has(p.provider?.toLowerCase());
-    const nodeId = `provider-${p.provider}`;
-    const data = {
-      label:
-        (config.name !== p.provider ? config.name : null) ||
-        p.nodeName ||
-        p.name ||
-        p.provider,
-      color: config.color || "#6b7280",
-      imageUrl: getProviderImageUrl(p.provider),
-      textIcon:
-        config.textIcon || (p.provider || "?").slice(0, 2).toUpperCase(),
-      active,
-    };
-
-    // Distribute evenly starting from top (−π/2), clockwise
-    const angle = -Math.PI / 2 + (2 * Math.PI * i) / count;
-    const cx = rx * Math.cos(angle);
-    const cy = ry * Math.sin(angle);
-
-    // Pick router handle closest to the node direction
-    let sourceHandle, targetHandle;
-    if (
-      Math.abs(angle + Math.PI / 2) < Math.PI / 4 ||
-      Math.abs(angle - (3 * Math.PI) / 2) < Math.PI / 4
-    ) {
-      sourceHandle = "top";
-      targetHandle = "bottom";
-    } else if (Math.abs(angle - Math.PI / 2) < Math.PI / 4) {
-      sourceHandle = "bottom";
-      targetHandle = "top";
-    } else if (cx > 0) {
-      sourceHandle = "right";
-      targetHandle = "left";
-    } else {
-      sourceHandle = "left";
-      targetHandle = "right";
-    }
-
-    nodes.push({
-      id: nodeId,
-      type: "provider",
-      position: { x: cx - nodeW / 2, y: cy - nodeH / 2 },
-      data,
-      draggable: false,
-    });
-
-    edges.push({
-      id: `e-${nodeId}`,
-      source: "router",
-      sourceHandle,
-      target: nodeId,
-      targetHandle,
-      animated: active,
-      style: edgeStyle(active, last, error, config.color),
-    });
-  });
-
-  return { nodes, edges };
-}
-
 export default function ProviderTopology({
   providers = [],
   activeRequests = [],
   lastProvider = "",
   errorProvider = "",
 }) {
-  // Serialize to stable string keys so useMemo only re-runs when values actually change
+  // Serialize to stable string keys so useMemo only re-runs when values actually change.
+  // Expand sibling ids here so timeout tracking and edge match share one set.
   const activeKey = useMemo(
     () =>
-      activeRequests
-        .map((r) => r.provider?.toLowerCase())
-        .filter(Boolean)
-        .sort()
-        .join(","),
+      Array.from(buildActiveProviderSet(activeRequests)).sort().join(","),
     [activeRequests],
   );
-  const lastKey = lastProvider?.toLowerCase() || "";
-  const errorKey = errorProvider?.toLowerCase() || "";
+  const lastKey = useMemo(
+    () => Array.from(buildProviderMatchSet(lastProvider)).sort().join(","),
+    [lastProvider],
+  );
+  const errorKey = useMemo(
+    () => Array.from(buildProviderMatchSet(errorProvider)).sort().join(","),
+    [errorProvider],
+  );
 
   const rawActiveSet = useMemo(
     () => new Set(activeKey ? activeKey.split(",") : []),
     [activeKey],
   );
-  const lastSet = useMemo(() => new Set(lastKey ? [lastKey] : []), [lastKey]);
+  const lastSet = useMemo(
+    () => new Set(lastKey ? lastKey.split(",") : []),
+    [lastKey],
+  );
   const errorSet = useMemo(
-    () => new Set(errorKey ? [errorKey] : []),
+    () => new Set(errorKey ? errorKey.split(",") : []),
     [errorKey],
   );
 
