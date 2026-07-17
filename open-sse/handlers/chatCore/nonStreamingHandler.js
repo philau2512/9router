@@ -48,6 +48,7 @@ export function translateNonStreamingResponse(
       pendingThoughtContinuation = "",
       reasoningContent = "";
     let sawThought = false;
+    let signedToolCall = false;
     const toolCalls = [];
 
     if (content?.parts) {
@@ -56,10 +57,20 @@ export function translateNonStreamingResponse(
           reasoningContent += part.text;
           sawThought = true;
         } else if (part.text !== undefined) {
-          if (isAntigravity && sawThought) pendingThoughtContinuation += part.text;
-          else textContent += part.text;
+          if (
+            isAntigravity &&
+            !part.thoughtSignature &&
+            !part.thought_signature
+          ) {
+            pendingThoughtContinuation += part.text;
+          } else {
+            textContent += part.text;
+          }
         }
         if (part.functionCall) {
+          if (isAntigravity && (part.thoughtSignature || part.thought_signature)) {
+            signedToolCall = true;
+          }
           toolCalls.push({
             id: `call_${part.functionCall.name}_${Date.now()}_${toolCalls.length}`,
             type: "function",
@@ -79,7 +90,9 @@ export function translateNonStreamingResponse(
       }
     }
 
-    if (!(isAntigravity && upstreamFinishReason === "max_tokens")) {
+    if (
+      !(isAntigravity && (upstreamFinishReason === "max_tokens" || signedToolCall))
+    ) {
       textContent += pendingThoughtContinuation;
     }
 

@@ -436,6 +436,187 @@ describe("Antigravity → OpenAI", () => {
     ]);
   });
 
+  it("suppresses traced unmarked self-talk before a signed Antigravity tool call", () => {
+    const state = {};
+    const selfTalk = [
+      "Chúng ta đang ở Agent Mode. ",
+      "Hãy xem lại các quy tắc trước khi chỉnh sửa.",
+    ];
+    const first = translateResponse(
+      FORMATS.ANTIGRAVITY,
+      FORMATS.OPENAI,
+      {
+        response: {
+          candidates: [{ content: { parts: selfTalk.map((text) => ({ text })) } }],
+        },
+      },
+      state,
+    );
+    const toolTurn = translateResponse(
+      FORMATS.ANTIGRAVITY,
+      FORMATS.OPENAI,
+      {
+        response: {
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    thoughtSignature: "provider-signed-agent-turn",
+                    functionCall: {
+                      id: "read-call",
+                      name: "Read",
+                      args: { path: "src/diffTracker.ts", offset: 250 },
+                    },
+                  },
+                ],
+              },
+              finishReason: "STOP",
+            },
+          ],
+        },
+      },
+      state,
+    );
+    const deltas = [...first, ...toolTurn].map((chunk) =>
+      chunk.choices[0].delta,
+    );
+
+    expect(deltas.map((delta) => delta.content).filter(Boolean)).toEqual([]);
+    expect(deltas.flatMap((delta) => delta.tool_calls || [])).toMatchObject([
+      { id: "read-call", function: { name: "Read" } },
+    ]);
+    expect(toolTurn.at(-1).choices[0].finish_reason).toBe("tool_calls");
+  });
+
+  it("keeps signed visible text before a signed Antigravity tool call", () => {
+    const state = {};
+    const visible = translateResponse(
+      FORMATS.ANTIGRAVITY,
+      FORMATS.OPENAI,
+      {
+        response: {
+          candidates: [
+            {
+              content: {
+                parts: [{ thoughtSignature: "visible-sig", text: "visible preamble" }],
+              },
+            },
+          ],
+        },
+      },
+      state,
+    );
+    const tool = translateResponse(
+      FORMATS.ANTIGRAVITY,
+      FORMATS.OPENAI,
+      {
+        response: {
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    thoughtSignature: "tool-sig",
+                    functionCall: { id: "read-call", name: "Read", args: {} },
+                  },
+                ],
+              },
+              finishReason: "STOP",
+            },
+          ],
+        },
+      },
+      state,
+    );
+
+    expect(visible.map((chunk) => chunk.choices[0].delta.content).filter(Boolean)).toEqual([
+      "visible preamble",
+    ]);
+    expect(tool.flatMap((chunk) => chunk.choices[0].delta.tool_calls || [])).toMatchObject([
+      { id: "read-call", function: { name: "Read" } },
+    ]);
+  });
+
+  it("keeps signed visible text in a non-streaming Antigravity tool response", () => {
+    const out = translateNonStreamingResponse(
+      {
+        response: {
+          candidates: [
+            {
+              content: {
+                parts: [
+                  { thoughtSignature: "visible-sig", text: "visible preamble" },
+                  {
+                    thoughtSignature: "tool-sig",
+                    functionCall: { name: "Read", args: { path: "src/file.ts" } },
+                  },
+                ],
+              },
+              finishReason: "STOP",
+            },
+          ],
+        },
+      },
+      FORMATS.ANTIGRAVITY,
+      FORMATS.OPENAI,
+    );
+
+    expect(out.choices[0].message.content).toBe("visible preamble");
+    expect(out.choices[0].message.tool_calls).toHaveLength(1);
+  });
+
+  it("suppresses signed-tool self-talk in a non-streaming Antigravity response", () => {
+    const out = translateNonStreamingResponse(
+      {
+        response: {
+          candidates: [
+            {
+              content: {
+                parts: [
+                  { text: "private agent narration" },
+                  {
+                    thoughtSignature: "provider-signed-agent-turn",
+                    functionCall: { name: "Read", args: { path: "src/file.ts" } },
+                  },
+                ],
+              },
+              finishReason: "STOP",
+            },
+          ],
+        },
+      },
+      FORMATS.ANTIGRAVITY,
+      FORMATS.OPENAI,
+    );
+
+    expect(out.choices[0].message.content).toBeUndefined();
+    expect(out.choices[0].message.tool_calls).toHaveLength(1);
+    expect(out.choices[0].finish_reason).toBe("tool_calls");
+  });
+
+  it("keeps unmarked Antigravity text visible when no signed tool call follows", () => {
+    const out = translateResponse(
+      FORMATS.ANTIGRAVITY,
+      FORMATS.OPENAI,
+      {
+        response: {
+          candidates: [
+            {
+              content: { parts: [{ text: "visible final answer" }] },
+              finishReason: "STOP",
+            },
+          ],
+        },
+      },
+      {},
+    );
+
+    expect(out.map((chunk) => chunk.choices[0].delta.content).filter(Boolean)).toEqual([
+      "visible final answer",
+    ]);
+  });
+
   it("drops an unmarked thought continuation when Gemini truncates", () => {
     const state = {};
     const first = translateResponse(
