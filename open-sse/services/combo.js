@@ -6,6 +6,7 @@ import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
 import { unavailableResponse } from "../utils/error.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { extractTextContent } from "../translator/helpers/geminiHelper.js";
+import { hlModel } from "../../src/sse/utils/logger.js";
 
 // Hard capabilities = input modalities; missing one drops request data (e.g. image
 // stripped). Must be prioritized. Soft (e.g. search) only degrades a feature.
@@ -220,7 +221,7 @@ export async function handleComboChat({
       if (reordered[0] !== rotatedModels[0]) {
         log?.info?.(
           "COMBO",
-          `auto-switch for [${[...required].join(",")}] → ${reordered[0]}`,
+          `auto-switch for [${[...required].join(",")}] → ${hlModel(reordered[0])}`,
         );
       }
       rotatedModels = reordered;
@@ -235,7 +236,7 @@ export async function handleComboChat({
     const modelStr = rotatedModels[i];
     log.info(
       "COMBO",
-      `Trying model ${i + 1}/${rotatedModels.length}: ${modelStr}`,
+      `Trying model ${i + 1}/${rotatedModels.length}: ${hlModel(modelStr)}`,
     );
 
     try {
@@ -243,7 +244,7 @@ export async function handleComboChat({
 
       // Success (2xx) - return response
       if (result.ok) {
-        log.info("COMBO", `Model ${modelStr} succeeded`);
+        log.info("COMBO", `Model ${hlModel(modelStr)} succeeded`);
         return result;
       }
 
@@ -287,7 +288,7 @@ export async function handleComboChat({
       );
 
       if (!shouldFallback) {
-        log.warn("COMBO", `Model ${modelStr} failed (no fallback)`, {
+        log.warn("COMBO", `Model ${hlModel(modelStr)} failed (no fallback)`, {
           status: result.status,
         });
         return result;
@@ -306,7 +307,7 @@ export async function handleComboChat({
       ) {
         log.info(
           "COMBO",
-          `Model ${modelStr} transient ${result.status}, waiting ${cooldownMs}ms before next`,
+          `Model ${hlModel(modelStr)} transient ${result.status}, waiting ${cooldownMs}ms before next`,
         );
         await new Promise((r) => setTimeout(r, cooldownMs));
       }
@@ -314,14 +315,14 @@ export async function handleComboChat({
       // Fallback to next model
       lastError = errorText || String(result.status);
       if (!lastStatus) lastStatus = result.status;
-      log.warn("COMBO", `Model ${modelStr} failed, trying next`, {
+      log.warn("COMBO", `Model ${hlModel(modelStr)} failed, trying next`, {
         status: result.status,
       });
     } catch (error) {
       // Catch unexpected exceptions to ensure fallback continues
       lastError = error.message || String(error);
       if (!lastStatus) lastStatus = 500;
-      log.warn("COMBO", `Model ${modelStr} threw error, trying next`, {
+      log.warn("COMBO", `Model ${hlModel(modelStr)} threw error, trying next`, {
         error: lastError,
       });
     }

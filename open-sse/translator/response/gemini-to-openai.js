@@ -12,6 +12,7 @@ export function geminiToOpenAIResponse(chunk, state) {
   const results = [];
   const candidate = response.candidates[0];
   const content = candidate.content;
+  const isAntigravityResponse = state.responseTargetFormat === FORMATS.ANTIGRAVITY;
 
   // Initialize state
   if (!state.messageId) {
@@ -37,6 +38,89 @@ export function geminiToOpenAIResponse(chunk, state) {
     });
   }
 
+  const emitVisibleText = (text) => {
+    results.push({
+      id: `chatcmpl-${state.messageId}`,
+      object: "chat.completion.chunk",
+      created: Math.floor(Date.now() / 1000),
+      model: state.model,
+      choices: [
+        {
+          index: 0,
+          delta: { content: text },
+          finish_reason: null,
+        },
+      ],
+    });
+  };
+
+  const emitText = (text, isThought) => {
+    if (isThought) {
+      if (state.geminiPendingContent) {
+        const pending = state.geminiPendingContent;
+        state.geminiPendingContent = "";
+        emitVisibleText(pending);
+      }
+      state.geminiSawThought = true;
+      results.push({
+        id: `chatcmpl-${state.messageId}`,
+        object: "chat.completion.chunk",
+        created: Math.floor(Date.now() / 1000),
+        model: state.model,
+        choices: [
+          {
+            index: 0,
+            delta: { reasoning_content: text },
+            finish_reason: null,
+          },
+        ],
+      });
+      return;
+    }
+
+    if (isAntigravityResponse) {
+      // Antigravity sometimes streams agent self-talk as plain text, then only
+      // establishes its private context with a signed tool call. Hold all
+      // unmarked Antigravity text until that boundary or a terminal result
+      // proves whether it is visible assistant output.
+      state.geminiPendingContent = (state.geminiPendingContent || "") + text;
+      return;
+    }
+
+    emitVisibleText(text);
+  };
+
+  const emitToolCall = (toolCall) => {
+    results.push({
+      id: `chatcmpl-${state.messageId}`,
+      object: "chat.completion.chunk",
+      created: Math.floor(Date.now() / 1000),
+      model: state.model,
+      choices: [
+        {
+          index: 0,
+          delta: { tool_calls: [toolCall] },
+          finish_reason: null,
+        },
+      ],
+    });
+  };
+
+  const flushPendingContent = () => {
+    if (!state.geminiPendingContent) return;
+    const pending = state.geminiPendingContent;
+    state.geminiPendingContent = "";
+    state.geminiSawThought = false;
+    emitVisibleText(pending);
+  };
+
+  const flushPendingToolCalls = () => {
+    for (const toolCall of state.geminiPendingToolCalls || []) {
+      emitToolCall(toolCall);
+    }
+    state.geminiPendingToolCalls = [];
+  };
+
   // Process parts
   if (content?.parts) {
     for (const part of content.parts) {
@@ -49,21 +133,11 @@ export function geminiToOpenAIResponse(chunk, state) {
         const hasFunctionCall = !!part.functionCall;
 
         if (hasTextContent) {
-          results.push({
-            id: `chatcmpl-${state.messageId}`,
-            object: "chat.completion.chunk",
-            created: Math.floor(Date.now() / 1000),
-            model: state.model,
-            choices: [
-              {
-                index: 0,
-                delta: isThought
-                  ? { reasoning_content: part.text }
-                  : { content: part.text },
-                finish_reason: null,
-              },
-            ],
-          });
+          // A signature without `thought:true` belongs to a visible Gemini
+          // response part. Only unmarked text is ambiguous before a signed
+          // tool boundary.
+          if (isThought) emitText(part.text, true);
+          else emitVisibleText(part.text);
         }
 
         if (hasFunctionCall) {
@@ -89,19 +163,19 @@ export function geminiToOpenAIResponse(chunk, state) {
           // which the downstream openai-to-claude translator uses for Claude block metadata.
           state.geminiToolCallCount = (state.geminiToolCallCount || 0) + 1;
 
-          results.push({
-            id: `chatcmpl-${state.messageId}`,
-            object: "chat.completion.chunk",
-            created: Math.floor(Date.now() / 1000),
-            model: state.model,
-            choices: [
-              {
-                index: 0,
-                delta: { tool_calls: [toolCall] },
-                finish_reason: null,
-              },
-            ],
-          });
+          if (isAntigravityResponse && hasThoughtSig) {
+            // This is the protocol boundary that identifies preceding plain
+            // text as agent reasoning rather than user-visible output.
+            state.geminiPendingContent = "";
+          }
+          if (isAntigravityResponse && state.geminiSawThought) {
+            state.geminiPendingToolCalls = [
+              ...(state.geminiPendingToolCalls || []),
+              toolCall,
+            ];
+          } else {
+            emitToolCall(toolCall);
+          }
         }
         continue;
       }
@@ -111,21 +185,7 @@ export function geminiToOpenAIResponse(chunk, state) {
       // can also stream thought parts without a signature; those must not be
       // surfaced as normal assistant content in OpenAI-compatible clients.
       if (part.text !== undefined && part.text !== "") {
-        results.push({
-          id: `chatcmpl-${state.messageId}`,
-          object: "chat.completion.chunk",
-          created: Math.floor(Date.now() / 1000),
-          model: state.model,
-          choices: [
-            {
-              index: 0,
-              delta: isThought
-                ? { reasoning_content: part.text }
-                : { content: part.text },
-              finish_reason: null,
-            },
-          ],
-        });
+        emitText(part.text, isThought);
       }
 
       // Function call
@@ -152,19 +212,14 @@ export function geminiToOpenAIResponse(chunk, state) {
         // which the downstream openai-to-claude translator uses for Claude block metadata.
         state.geminiToolCallCount = (state.geminiToolCallCount || 0) + 1;
 
-        results.push({
-          id: `chatcmpl-${state.messageId}`,
-          object: "chat.completion.chunk",
-          created: Math.floor(Date.now() / 1000),
-          model: state.model,
-          choices: [
-            {
-              index: 0,
-              delta: { tool_calls: [toolCall] },
-              finish_reason: null,
-            },
-          ],
-        });
+        if (isAntigravityResponse && state.geminiSawThought) {
+          state.geminiPendingToolCalls = [
+            ...(state.geminiPendingToolCalls || []),
+            toolCall,
+          ];
+        } else {
+          emitToolCall(toolCall);
+        }
       }
 
       // Inline data (images)
@@ -261,6 +316,16 @@ export function geminiToOpenAIResponse(chunk, state) {
     if (finishReason === "stop" && state.geminiToolCallCount > 0) {
       finishReason = "tool_calls";
     }
+
+    if (isAntigravityResponse && finishReason === "max_tokens") {
+      // Antigravity can emit an unmarked continuation of thought before a
+      // truncated completion. It is ambiguous until this terminal reason, so
+      // never surface that pending continuation as visible assistant text.
+      state.geminiPendingContent = "";
+    } else {
+      flushPendingContent();
+    }
+    flushPendingToolCalls();
 
     const finalChunk = {
       id: `chatcmpl-${state.messageId}`,

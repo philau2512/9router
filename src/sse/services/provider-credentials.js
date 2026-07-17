@@ -304,6 +304,19 @@ export async function markAccountUnavailable(
 ) {
   if (!connectionId || connectionId === "noauth")
     return { shouldFallback: false, cooldownMs: 0 };
+
+  // Client abort is not a provider/account failure — never write modelLock_*.
+  const abortProbe =
+    typeof errorText === "string" ? errorText.toLowerCase() : "";
+  if (
+    status === 499 ||
+    abortProbe.includes("request aborted") ||
+    abortProbe.includes("client disconnected") ||
+    abortProbe.includes("the user aborted a request")
+  ) {
+    return { shouldFallback: false, cooldownMs: 0 };
+  }
+
   const connections = await getProviderConnections({ provider });
   const conn = connections.find((c) => c.id === connectionId);
   const backoffLevel = conn?.backoffLevel || 0;

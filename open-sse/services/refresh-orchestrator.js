@@ -15,6 +15,84 @@ import {
 import { parseVertexSaJson, refreshVertexToken } from "./refresh-vertex.js";
 
 /**
+ * Human-readable account label for TOKEN_REFRESH logs (name / email / short id).
+ * @param {object|null|undefined} credentials
+ * @returns {string|null}
+ */
+export function resolveRefreshAccountLabel(credentials) {
+  if (!credentials || typeof credentials !== "object") return null;
+  const fromCreds =
+    credentials.connectionName ||
+    credentials.displayName ||
+    credentials.name ||
+    credentials.email ||
+    credentials.providerSpecificData?.email ||
+    credentials.providerSpecificData?.name ||
+    credentials.providerSpecificData?.displayName ||
+    null;
+  if (fromCreds) return String(fromCreds);
+  // Some paths pass a raw connection row (id + name) without connectionId/connectionName.
+  if (credentials.id && (credentials.name || credentials.email)) {
+    return String(credentials.name || credentials.email);
+  }
+  const id = credentials.connectionId || credentials.id || null;
+  if (id) return String(id).slice(0, 8);
+  return null;
+}
+
+/**
+ * Wrap a logger so TOKEN_REFRESH entries include which connection/account.
+ * Other tags pass through unchanged.
+ * @param {object|null|undefined} credentials
+ * @param {object|null|undefined} log
+ */
+export function withRefreshAccountLog(credentials, log) {
+  if (!log) return log;
+  const account = resolveRefreshAccountLabel(credentials);
+  const rawId = credentials?.connectionId || credentials?.id || null;
+  const connectionId = rawId ? String(rawId).slice(0, 8) : null;
+  if (!account && !connectionId) return log;
+
+  const inject = (data) => {
+    if (data == null) {
+      return account
+        ? { account, ...(connectionId ? { connectionId } : {}) }
+        : { connectionId };
+    }
+    if (typeof data !== "object" || Array.isArray(data)) {
+      return {
+        detail: data,
+        ...(account ? { account } : {}),
+        ...(connectionId ? { connectionId } : {}),
+      };
+    }
+    return {
+      ...data,
+      ...(account && data.account == null ? { account } : {}),
+      ...(connectionId && data.connectionId == null ? { connectionId } : {}),
+    };
+  };
+
+  const wrap =
+    (fn) =>
+    (tag, message, data) => {
+      if (typeof fn !== "function") return;
+      if (tag === "TOKEN_REFRESH") {
+        return fn(tag, message, inject(data));
+      }
+      return fn(tag, message, data);
+    };
+
+  return {
+    ...log,
+    debug: wrap(log.debug?.bind?.(log) ?? log.debug),
+    info: wrap(log.info?.bind?.(log) ?? log.info),
+    warn: wrap(log.warn?.bind?.(log) ?? log.warn),
+    error: wrap(log.error?.bind?.(log) ?? log.error),
+  };
+}
+
+/**
  * Get access token for a specific provider (with in-flight dedup).
  * If a refresh is already in-flight for same provider+token, share the promise
  * to prevent parallel OAuth requests → Auth0 'refresh_token_reused' family revoke.
@@ -32,7 +110,11 @@ export async function getAccessToken(provider, credentials, log) {
     return null;
   }
   // Dedup is handled inside each refreshXxxToken function
-  return _getAccessTokenInternal(provider, credentials, log);
+  return _getAccessTokenInternal(
+    provider,
+    credentials,
+    withRefreshAccountLog(credentials, log),
+  );
 }
 
 async function _getAccessTokenInternal(provider, credentials, log) {
@@ -101,6 +183,7 @@ async function _getAccessTokenInternal(provider, credentials, log) {
  */
 export async function refreshTokenByProvider(provider, credentials, log) {
   if (!credentials.refreshToken) return null;
+  const refreshLog = withRefreshAccountLog(credentials, log);
 
   switch (provider) {
     case "gemini-cli":
@@ -109,44 +192,44 @@ export async function refreshTokenByProvider(provider, credentials, log) {
         credentials.refreshToken,
         PROVIDERS[provider].clientId,
         PROVIDERS[provider].clientSecret,
-        log,
+        refreshLog,
       );
     case "claude":
-      return refreshClaudeOAuthToken(credentials.refreshToken, log);
+      return refreshClaudeOAuthToken(credentials.refreshToken, refreshLog);
     case "codex":
-      return refreshCodexToken(credentials.refreshToken, log);
+      return refreshCodexToken(credentials.refreshToken, refreshLog);
     case "qwen":
-      return refreshQwenToken(credentials.refreshToken, log);
+      return refreshQwenToken(credentials.refreshToken, refreshLog);
     case "iflow":
-      return refreshIflowToken(credentials.refreshToken, log);
+      return refreshIflowToken(credentials.refreshToken, refreshLog);
     case "github":
-      return refreshGitHubToken(credentials.refreshToken, log);
+      return refreshGitHubToken(credentials.refreshToken, refreshLog);
     case "kiro":
       return refreshKiroToken(
         credentials.refreshToken,
         credentials.providerSpecificData,
-        log,
+        refreshLog,
       );
     case "xai":
-      return refreshXaiToken(credentials.refreshToken, log);
+      return refreshXaiToken(credentials.refreshToken, refreshLog);
     case "grok-cli":
     case "gcli":
       // Grok CLI shares xAI token endpoint. See upstream a11937cdd.
-      return refreshXaiToken(credentials.refreshToken, log);
+      return refreshXaiToken(credentials.refreshToken, refreshLog);
     case "codebuddy-cn":
-      return refreshCodebuddyToken(credentials.refreshToken, log);
+      return refreshCodebuddyToken(credentials.refreshToken, refreshLog);
     case "vertex":
     case "vertex-partner": {
       const saJson = parseVertexSaJson(credentials.apiKey);
       if (!saJson) return null;
-      return refreshVertexToken(saJson, log);
+      return refreshVertexToken(saJson, refreshLog);
     }
     default:
       return refreshAccessToken(
         provider,
         credentials.refreshToken,
         credentials,
-        log,
+        refreshLog,
       );
   }
 }

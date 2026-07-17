@@ -43,7 +43,10 @@ export async function handleComboChat({
 
   for (let i = 0; i < models.length; i++) {
     const modelStr = models[i];
-    log.info("COMBO", `Trying model ${i + 1}/${models.length}: ${modelStr}`);
+    log.info(
+      "COMBO",
+      `Trying model ${i + 1}/${models.length}: ${log.hlModel?.(modelStr) ?? modelStr}`,
+    );
 
     let result;
     try {

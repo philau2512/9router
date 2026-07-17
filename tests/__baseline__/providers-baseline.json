@@ -280,7 +280,37 @@
   "grok-cli": {
     "authType": "oauth",
     "baseUrl": "https://cli-chat-proxy.grok.com/v1/responses",
-    "format": "openai-responses"
+    "billingUrl": "https://cli-chat-proxy.grok.com/v1/billing",
+    "clientIdentifier": "grok-shell",
+    "clientVersion": "0.2.99",
+    "forceStream": true,
+    "format": "openai-responses",
+    "headers": {
+      "User-Agent": "grok-shell/0.2.99 (linux; x86_64)",
+      "x-grok-client-identifier": "grok-shell",
+      "x-grok-client-version": "0.2.99"
+    },
+    "modelsUrl": "https://cli-chat-proxy.grok.com/v1/models",
+    "retry": {
+      "429": {
+        "attempts": 2,
+        "delayMs": 2000
+      },
+      "502": {
+        "attempts": 2,
+        "delayMs": 1500
+      },
+      "503": {
+        "attempts": 2,
+        "delayMs": 1500
+      }
+    },
+    "tokenAuth": "xai-grok-cli",
+    "usage": {
+      "url": "https://cli-chat-proxy.grok.com/v1/billing?format=credits",
+      "userUrl": "https://cli-chat-proxy.grok.com/v1/user?include=subscription"
+    },
+    "userUrl": "https://cli-chat-proxy.grok.com/v1/user"
   },
   "grok-web": {
     "authType": "cookie",

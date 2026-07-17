@@ -102,6 +102,17 @@ export function checkFallbackError(status, errorText, backoffLevel = 0) {
       ).toLowerCase()
     : "";
 
+  // Client closed the request (nginx-style 499 / AbortError). Not a provider
+  // fault — do not lock modelLock_* or rotate accounts/combo models.
+  if (
+    status === 499 ||
+    lowerError.includes("request aborted") ||
+    lowerError.includes("client disconnected") ||
+    lowerError.includes("the user aborted a request")
+  ) {
+    return { shouldFallback: false, cooldownMs: 0 };
+  }
+
   if (
     lowerError.includes("model is not supported") ||
     lowerError.includes("invalid model id") ||

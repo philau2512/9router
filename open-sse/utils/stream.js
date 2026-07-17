@@ -91,14 +91,23 @@ export function createSSEStream(options = {}) {
   // Per-stream decoder with stream:true to correctly handle multi-byte chars split across chunks
   const decoder = new TextDecoder("utf-8", { fatal: false });
 
+  const resumedAfterAntigravityThought =
+    targetFormat === FORMATS.ANTIGRAVITY &&
+    Boolean(streamStateTracker?.accumulatedThinking);
   const state =
     mode === STREAM_MODE.TRANSLATE
-      ? { ...initState(sourceFormat), provider, toolNameMap, model }
+      ? {
+          ...initState(sourceFormat),
+          provider,
+          toolNameMap,
+          model,
+          geminiSawThought: resumedAfterAntigravityThought,
+        }
       : null;
 
   let totalContentLength = 0;
-  let accumulatedContent = "";
-  let accumulatedThinking = "";
+  let accumulatedContent = streamStateTracker?.accumulatedContent || "";
+  let accumulatedThinking = streamStateTracker?.accumulatedThinking || "";
   let ttftAt = null;
   let firstRawChunkLogged = false;
   let firstParsedEventLogged = false;
@@ -207,13 +216,14 @@ export function createSSEStream(options = {}) {
     }
 
     // Gemini format
-    if (parsed.candidates?.[0]?.content?.parts) {
-      for (const part of parsed.candidates[0].content.parts) {
+    const geminiResponse = parsed.response || parsed;
+    if (geminiResponse.candidates?.[0]?.content?.parts) {
+      for (const part of geminiResponse.candidates[0].content.parts) {
         if (part.text && typeof part.text === "string") {
           totalContentLength += part.text.length;
           if (part.thought === true) {
             accumulatedThinking += part.text;
-          } else {
+          } else if (targetFormat !== FORMATS.ANTIGRAVITY) {
             accumulatedContent += part.text;
           }
         }
@@ -284,6 +294,23 @@ export function createSSEStream(options = {}) {
       for (const item of translated) {
         if (item === null || item === undefined) continue;
         if (!hasValuableContent(item, sourceFormat)) continue;
+
+        // Antigravity's unmarked text after thought is ambiguous until the
+        // response translator decides whether to emit or discard it. Track
+        // only the translated visible content so stream resume never prefills
+        // private reasoning, while normal terminal responses keep their text.
+        const confirmedVisibleContent =
+          item.choices?.[0]?.delta?.content ||
+          (item.type === "content_block_delta" &&
+          item.delta?.type === "text_delta"
+            ? item.delta.text
+            : "") ||
+          (item.data?.type === "response.output_text.delta"
+            ? item.data.delta
+            : "");
+        if (targetFormat === FORMATS.ANTIGRAVITY && confirmedVisibleContent) {
+          accumulatedContent += confirmedVisibleContent;
+        }
 
         // Inject estimated usage if finish chunk has no valid usage
         const isFinishChunk =
@@ -669,31 +696,10 @@ export function createSSEStream(options = {}) {
         if (buffer.trim()) {
           const parsed = parseSSELine(buffer.trim());
           if (parsed && !parsed.done) {
-            const translated = translateResponse(
-              targetFormat,
-              sourceFormat,
-              parsed,
-              state,
-            );
-
-            if (translated?._openaiIntermediate) {
-              for (const item of translated._openaiIntermediate) {
-                const openaiOutput = formatSSE(item, FORMATS.OPENAI);
-                reqLogger?.appendOpenAIChunk?.(openaiOutput);
-              }
-            }
-
-            if (translated?.length > 0) {
-              for (const item of translated) {
-                if (item === null || item === undefined) continue;
-                const output = formatSSE(item, sourceFormat);
-                reqLogger?.appendConvertedChunk?.(output);
-                emitFirstChunkLog(output, {
-                  kind: item.type || "flush-translated",
-                });
-                controller.enqueue(sharedEncoder.encode(output));
-              }
-            }
+            // Use the normal translation path so terminal events without a
+            // trailing newline update confirmed content before resume/logging.
+            translateOneEvent(parsed, controller);
+            updateTracker();
           }
         }
 

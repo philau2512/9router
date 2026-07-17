@@ -113,7 +113,7 @@ export async function handleChat(request, clientRawRequest = null) {
       null;
     log.request(
       "POST",
-      `${url.pathname} | ${modelStr} | ${msgCount} msgs${toolCount ? ` | ${toolCount} tools` : ""}${effort ? ` | effort=${effort}` : ""}`,
+      `${url.pathname} | ${log.hlModel(modelStr)} | ${msgCount} msgs${toolCount ? ` | ${toolCount} tools` : ""}${effort ? ` | effort=${effort}` : ""}`,
     );
 
     // Log API key (masked)
@@ -170,7 +170,7 @@ export async function handleChat(request, clientRawRequest = null) {
       if (comboStrategy === "fusion") {
         log.info(
           "CHAT",
-          `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`,
+          `Combo "${log.hlModel(modelStr)}" with ${comboModels.length} models (strategy: fusion)`,
         );
         return handleFusionChat({
           body,
@@ -190,7 +190,7 @@ export async function handleChat(request, clientRawRequest = null) {
       const comboStickyLimit = settings.comboStickyRoundRobinLimit;
       log.info(
         "CHAT",
-        `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`,
+        `Combo "${log.hlModel(modelStr)}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`,
       );
       return handleComboChat({
         body,
@@ -249,7 +249,7 @@ async function handleSingleModelChat(
       if (comboStrategy === "fusion") {
         log.info(
           "CHAT",
-          `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`,
+          `Combo "${log.hlModel(modelStr)}" with ${comboModels.length} models (strategy: fusion)`,
         );
         return handleFusionChat({
           body,
@@ -269,7 +269,7 @@ async function handleSingleModelChat(
       const comboStickyLimit = chatSettings.comboStickyRoundRobinLimit;
       log.info(
         "CHAT",
-        `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`,
+        `Combo "${log.hlModel(modelStr)}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`,
       );
       return handleComboChat({
         body,
@@ -298,9 +298,15 @@ async function handleSingleModelChat(
 
   // Log model routing (alias → actual model)
   if (modelStr !== `${provider}/${model}`) {
-    log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
+    log.info(
+      "ROUTING",
+      `${log.hlModel(modelStr)} → ${log.hlModel(`${provider}/${model}`)}`,
+    );
   } else {
-    log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
+    log.info(
+      "ROUTING",
+      `Provider: ${provider}, Model: ${log.hlModel(model)}`,
+    );
   }
 
   // Extract userAgent from request

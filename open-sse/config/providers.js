@@ -1,5 +1,11 @@
 import { platform, arch } from "os";
 import { ANTIGRAVITY_BASE_URLS } from "../providers/antigravity-provider-metadata.js";
+import {
+  GROK_CLI_BASE_URL,
+  GROK_CLI_CLIENT_IDENTIFIER,
+  GROK_CLI_USER_AGENT,
+  GROK_CLI_VERSION,
+} from "./grokCli.js";
 
 // === OS/Arch helpers ===
 function mapStainlessOs() {
@@ -437,10 +443,31 @@ export const PROVIDERS = {
     format: "grok-web",
     authType: "cookie",
   },
-  // Grok CLI / Grok Build — device-code OAuth, Responses API. See upstream a11937cdd.
+  // Grok CLI / Grok Build — device-code OAuth, Responses API.
   "grok-cli": {
-    baseUrl: "https://cli-chat-proxy.grok.com/v1/responses",
+    baseUrl: `${GROK_CLI_BASE_URL}/responses`,
     format: "openai-responses",
+    forceStream: true,
+    modelsUrl: `${GROK_CLI_BASE_URL}/models`,
+    userUrl: `${GROK_CLI_BASE_URL}/user`,
+    billingUrl: `${GROK_CLI_BASE_URL}/billing`,
+    clientVersion: GROK_CLI_VERSION,
+    clientIdentifier: GROK_CLI_CLIENT_IDENTIFIER,
+    tokenAuth: "xai-grok-cli",
+    headers: {
+      "User-Agent": GROK_CLI_USER_AGENT,
+      "x-grok-client-identifier": GROK_CLI_CLIENT_IDENTIFIER,
+      "x-grok-client-version": GROK_CLI_VERSION,
+    },
+    usage: {
+      url: `${GROK_CLI_BASE_URL}/billing?format=credits`,
+      userUrl: `${GROK_CLI_BASE_URL}/user?include=subscription`,
+    },
+    retry: {
+      429: { attempts: 2, delayMs: 2000 },
+      502: { attempts: 2, delayMs: 1500 },
+      503: { attempts: 2, delayMs: 1500 },
+    },
     authType: "oauth",
   },
   "perplexity-web": {

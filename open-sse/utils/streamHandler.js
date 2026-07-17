@@ -11,6 +11,7 @@ import {
   createPassthroughStreamWithLogger,
 } from "./stream.js";
 import { needsTranslation } from "../translator/index.js";
+import { hlModel } from "../../src/sse/utils/logger.js";
 
 // Get HH:MM:SS timestamp
 function getTimeString() {
@@ -65,7 +66,7 @@ export function createStreamController({
     const duration = Date.now() - startTime;
     const p = provider?.toUpperCase() || "UNKNOWN";
     console.log(
-      `[${getTimeString()}] 🌊 [STREAM] ${p} | ${model || "unknown"} | ${duration}ms | ${status}`,
+      `[${getTimeString()}] 🌊 [STREAM] ${p} | ${hlModel(model || "unknown")} | ${duration}ms | ${status}`,
     );
   };
 

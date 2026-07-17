@@ -1,11 +1,48 @@
-# Unreleased
+# v0.5.35 (2026-07-16)
+
+## Features
+- **xAI**: Grok Imagine video generation (`/v1/videos`) + CLI
+- **CLI tools**: Grok Build setup — writes `[model.9router]` to `~/.grok/config.toml`
+- **GitHub Copilot**: route Claude models through Copilot's native `/v1/messages`
+- **Kiro**: add GPT-5.6 model family (#2596)
+- **RTK**: `X-9Router-Token-Saver` header to bypass token savers per request
+- **Providers**: quota visibility settings
+- **Translator**: drop temperature for all Claude models
+- **i18n**: Thai (th) + Persian (fa) translations / README
 
 ## Fixes
+- **Providers**: bulk-add API keys no longer overwrite existing keys (gap-fill `Key N`)
+- **Anthropic**: lowercase `anthropic-version` header to prevent duplication on `/v1/messages`
+- **Alicode-intl**: use DashScope compatible-mode endpoint so standard keys work
+- **Grok CLI**: align Grok Build with current subscription protocol (#2590)
+- **Grok CLI**: surface `expiresAt` so proactive token refresh fires (#2546)
+- **Kiro**: improve direct session cache reuse
+- **Models**: populate capabilities for live-catalog LLM models
+- **Models**: list compatible provider models in `/v1/models`
+- **Thinking**: send explicit `thinking:{type:adaptive}` alongside `output_config.effort`
+- **Translator**: strip `client_metadata` when converting openai-responses → openai
+
+## Improvements
+- **Perf**: skip inactive background services on startup
+
+## Docs
+- README: Persian YouTube tutorial
+
+
+# Unreleased
+
+## Features
+- **Log**: amber highlight for active model/combo names in terminal + dashboard console (`hlModel` in `src/sse/utils/logger.js`, pattern paint in Console Log UI)
+- **Log**: `TOKEN_REFRESH` lines include account label (`connectionName` / name / email) and short `connectionId` so multi-account refreshes are identifiable
+
+## Fixes
+- **Auth**: client abort (`499` / “Request aborted”) no longer writes `modelLock_*` or rotates account/combo fallback — stop is not a provider fault
 - **Kiro**: derive a deterministic conversationId on the Claude route (uuidv5 over the raw first-user-turn content, matching the OpenAI route) so repeat requests reuse the AWS Builder ID conversation context instead of opening a fresh one each turn and burning free-tier quota. The seed is captured before the dynamic timestamp/thinking prefix so a fresh single-turn request stays stable.
 
 ## Improvements
 - **Kiro**: send realistic client headers on streaming requests (`aws-sdk-js/1.0.34 … KiroIDE-<ver>` User-Agent, `x-amzn-kiro-agent-mode: vibe`) to reduce the risk of an upstream flagging free-tier accounts. Also sends `x-amzn-codewhisperer-optout: true` — a behavior change that opts telemetry/training data out. Auth branches (api_key/external_idp/idc/builder-id) and profileArn are unchanged.
 - **Kiro**: sanitize tool names that upstream would reject (MCP `mcp__server__tool` triples, names >64 chars, or with characters outside `[a-zA-Z0-9_-]`) before sending, and restore the client's original names in the streamed response. Already-valid names pass through byte-identical.
+- **Token refresh**: usage/quota credential builders pass account identity fields into refresh so labels work outside the chat path (`/api/usage/[connectionId]`, Kiro models, translator send)
 
 # v0.5.30 (2026-07-10)
 

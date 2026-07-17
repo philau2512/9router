@@ -56,5 +56,8 @@ export {
   getDetailedApiKeyUsage,
   buildApiKeyLimitPresentation,
   exportDb,
+  exportFullDbSnapshot,
+  getFullDbSnapshotUploadLimit,
   importDb,
+  importFullDbSnapshot,
 } from "@/lib/db/index.js";

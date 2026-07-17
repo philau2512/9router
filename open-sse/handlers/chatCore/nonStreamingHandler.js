@@ -42,15 +42,35 @@ export function translateNonStreamingResponse(
     const candidate = response.candidates[0];
     const content = candidate.content;
     const usage = response.usageMetadata || responseBody.usageMetadata;
+    const isAntigravity = targetFormat === FORMATS.ANTIGRAVITY;
+    const upstreamFinishReason = (candidate.finishReason || "stop").toLowerCase();
     let textContent = "",
+      pendingThoughtContinuation = "",
       reasoningContent = "";
+    let sawThought = false;
+    let signedToolCall = false;
     const toolCalls = [];
 
     if (content?.parts) {
       for (const part of content.parts) {
-        if (part.thought === true && part.text) reasoningContent += part.text;
-        else if (part.text !== undefined) textContent += part.text;
+        if (part.thought === true && part.text) {
+          reasoningContent += part.text;
+          sawThought = true;
+        } else if (part.text !== undefined) {
+          if (
+            isAntigravity &&
+            !part.thoughtSignature &&
+            !part.thought_signature
+          ) {
+            pendingThoughtContinuation += part.text;
+          } else {
+            textContent += part.text;
+          }
+        }
         if (part.functionCall) {
+          if (isAntigravity && (part.thoughtSignature || part.thought_signature)) {
+            signedToolCall = true;
+          }
           toolCalls.push({
             id: `call_${part.functionCall.name}_${Date.now()}_${toolCalls.length}`,
             type: "function",
@@ -68,6 +88,12 @@ export function translateNonStreamingResponse(
           textContent += `\n![image](data:${mimeType};base64,${inlineData.data})\n`;
         }
       }
+    }
+
+    if (
+      !(isAntigravity && (upstreamFinishReason === "max_tokens" || signedToolCall))
+    ) {
+      textContent += pendingThoughtContinuation;
     }
 
     const message = { role: "assistant" };

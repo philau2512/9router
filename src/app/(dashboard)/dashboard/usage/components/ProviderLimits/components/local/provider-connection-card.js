@@ -1,6 +1,7 @@
 "use client";
 
 import ProviderIcon from "@/shared/components/ProviderIcon";
+import Badge from "@/shared/components/Badge";
 import Card from "@/shared/components/Card";
 import Toggle from "@/shared/components/Toggle";
 import Tooltip from "@/shared/components/Tooltip";
@@ -29,6 +30,11 @@ export default function ProviderConnectionCard({
   quotaSortMode,
 }) {
   const isInactive = conn.isActive === false;
+  const plan = typeof quota?.plan === "string" ? quota.plan.trim() : "";
+  const codexPlan =
+    conn.provider === "codex" && plan && plan.toLowerCase() !== "unknown"
+      ? plan
+      : "";
   const rowBusy = deletingId === conn.id || togglingId === conn.id;
 
   return (
@@ -55,6 +61,11 @@ export default function ProviderConnectionCard({
                 <h3 className="text-sm font-semibold text-text-primary capitalize truncate">
                   {conn.provider}
                 </h3>
+                {codexPlan && (
+                  <Badge variant="primary" size="sm" className="capitalize">
+                    {codexPlan}
+                  </Badge>
+                )}
                 {conn.priority !== undefined &&
                   conn.priority !== null && (
                     <span

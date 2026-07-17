@@ -20,7 +20,7 @@
  */
 
 import { createHash, randomUUID } from "crypto";
-import { refreshKiroToken } from "./tokenRefresh.js";
+import { refreshKiroToken, withRefreshAccountLog } from "./tokenRefresh.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { buildKiroClientUserAgent } from "../config/kiroConstants.js";
 
@@ -282,7 +282,7 @@ export async function resolveKiroModels(credentials, options = {}) {
       const refreshed = await refreshKiroToken(
         credentials.refreshToken,
         credentials.providerSpecificData,
-        options.log,
+        withRefreshAccountLog(credentials, options.log),
         options.proxyOptions || null,
       );
       if (refreshed?.accessToken) {
@@ -331,7 +331,7 @@ export async function resolveKiroModels(credentials, options = {}) {
       const refreshed = await refreshKiroToken(
         credentials.refreshToken,
         credentials.providerSpecificData,
-        options.log,
+        withRefreshAccountLog(credentials, options.log),
         options.proxyOptions || null,
       );
       if (refreshed?.accessToken) {

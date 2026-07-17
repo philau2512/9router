@@ -38,6 +38,7 @@ export function openaiResponsesToOpenAIRequest(
   let currentAssistantMsg = null;
   let pendingToolResults = [];
   let pendingReasoning = "";
+  let pendingEncryptedContent = null;
 
   const inputItems = normalizeResponsesInput(body.input);
   if (!inputItems) return body;
@@ -100,6 +101,10 @@ export function openaiResponsesToOpenAIRequest(
       if (item.role === "assistant" && pendingReasoning) {
         msg.reasoning_content = pendingReasoning;
       }
+      if (item.role === "assistant" && pendingEncryptedContent) {
+        msg.encrypted_content = pendingEncryptedContent;
+      }
+      pendingEncryptedContent = null;
       pendingReasoning = "";
       result.messages.push(msg);
     } else if (itemType === "function_call") {
@@ -113,6 +118,10 @@ export function openaiResponsesToOpenAIRequest(
         if (pendingReasoning) {
           currentAssistantMsg.reasoning_content = pendingReasoning;
           pendingReasoning = "";
+        }
+        if (pendingEncryptedContent) {
+          currentAssistantMsg.encrypted_content = pendingEncryptedContent;
+          pendingEncryptedContent = null;
         }
       }
       // Skip items with empty/missing name — Codex/OpenAI reject nameless tool calls (#444)
@@ -153,12 +162,14 @@ export function openaiResponsesToOpenAIRequest(
             : JSON.stringify(item.output),
       });
     } else if (itemType === "reasoning") {
-      // Buffer reasoning text; attached to next assistant message/function_call
+      // Buffer reasoning text and encrypted continuity data for the next assistant turn.
       const txt = extractReasoningText(item);
       if (txt)
         pendingReasoning = pendingReasoning
           ? `${pendingReasoning}\n${txt}`
           : txt;
+      pendingEncryptedContent =
+        item.encrypted_content || item.reasoning_encrypted_content || null;
       continue;
     }
   }
@@ -215,6 +226,7 @@ export function openaiResponsesToOpenAIRequest(
   delete result.prompt_cache_key;
   delete result.store;
   delete result.reasoning;
+  delete result.client_metadata;
 
   return result;
 }
@@ -270,6 +282,21 @@ export function openaiToOpenAIResponsesRequest(
         result.input.push({
           type: "reasoning",
           summary: [{ type: "summary_text", text: msg.reasoning_content }],
+          ...(msg.encrypted_content || msg.reasoning_encrypted_content
+            ? {
+                encrypted_content:
+                  msg.encrypted_content || msg.reasoning_encrypted_content,
+              }
+            : {}),
+        });
+      } else if (
+        msg.role === "assistant" &&
+        (msg.encrypted_content || msg.reasoning_encrypted_content)
+      ) {
+        result.input.push({
+          type: "reasoning",
+          encrypted_content:
+            msg.encrypted_content || msg.reasoning_encrypted_content,
         });
       }
       const contentType = msg.role === "user" ? "input_text" : "output_text";

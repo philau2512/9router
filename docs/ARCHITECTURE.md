@@ -129,6 +129,8 @@ Main flow modules:
 - Format detection/provider config: `open-sse/services/provider.js`
 - Model parse/resolve: `src/sse/services/model.js`, `open-sse/services/model.js`
 - Account fallback logic: `open-sse/services/accountFallback.js`
+- Token refresh orchestration: `open-sse/services/refresh-orchestrator.js` (+ `refresh-providers.js`)
+- Local proactive refresh / persist: `src/sse/services/tokenRefresh.js`
 - Translation registry: `open-sse/translator/index.js`
 - Stream transformations: `open-sse/utils/stream.js`, `open-sse/utils/streamHandler.js`
 - Usage extraction/normalization: `open-sse/utils/usageTracking.js`
@@ -245,6 +247,10 @@ flowchart TD
 
 Fallback decisions are driven by `open-sse/services/accountFallback.js` using status codes and error-message heuristics.
 
+**Client abort is not a provider failure.** Status `499` / messages such as `Request aborted`, `Client disconnected`, or `The user aborted a request` return `shouldFallback: false` with no cooldown. Callers must not write `modelLock_${model}` or rotate accounts/combo members for those outcomes (`markAccountUnavailable` also early-returns on abort).
+
+Per-model unavailability is stored as flat connection fields `modelLock_${model}` (ISO expiry). Account-level lock uses `modelLock___all`. Successful requests clear the current model lock and any expired locks via `clearAccountError`.
+
 ## OAuth Onboarding and Token Refresh Lifecycle
 
 ```mermaid
@@ -278,6 +284,8 @@ sequenceDiagram
 Refresh during live traffic is executed inside `open-sse/handlers/chatCore.js` via executor `refreshCredentials()`.
 
 Usage tracking endpoints `/api/usage/[connectionId]` also trigger proactive token refreshes using `shouldRefreshCredentials` and `refreshProviderCredentials` (oauthCredentialManager) before calling upstream endpoints to prevent unauthenticated/expired token exceptions.
+
+`TOKEN_REFRESH` logs are account-aware: `open-sse/services/refresh-orchestrator.js` wraps the logger with `withRefreshAccountLog(credentials, log)` so success/failure lines include a human label (`connectionName` → `displayName` → `name` → `email`, else short id) plus a short `connectionId`. Credential builders that only had tokens must also pass those identity fields (usage route, Kiro model fetch, translator send) or the log falls back to the id prefix.
 
 ## Cloud Sync Lifecycle (Enable / Sync / Disable)
 
@@ -500,14 +508,16 @@ Translations are selected dynamically based on source payload shape and provider
 
 ## 1) Account/Provider Availability
 
-- provider account cooldown on transient/rate/auth errors
+- provider account cooldown on transient/rate/auth errors (per-model `modelLock_*` fields)
 - account fallback before failing request
 - combo model fallback when current model/provider path is exhausted
+- **not** locked / **not** rotated: client disconnect / abort (`499`, “Request aborted”)
 
 ## 2) Token Expiry
 
 - pre-check and refresh with retry for refreshable providers
 - 401/403 retry after refresh attempt in core path
+- proactive refresh from chat (`checkAndRefreshToken`) and usage/quota paths
 
 ## 3) Stream Safety
 
@@ -529,7 +539,9 @@ Translations are selected dynamically based on source payload shape and provider
 
 Runtime visibility sources:
 
-- console logs from `src/sse/utils/logger.js`
+- console logs from `src/sse/utils/logger.js` (level color on prefix; `hlModel()` amber-highlights model/combo names mid-line)
+- dashboard Console Log UI (`/dashboard/console-log`) re-highlights model/combo tokens after ANSI strip
+- `TOKEN_REFRESH` lines include `account=` / short `connectionId=` when credentials carry identity fields
 - per-request usage aggregates in `usage.json`
 - textual request status log in `log.txt`
 - optional deep request/translation logs under `logs/` when `ENABLE_REQUEST_LOGS=true`

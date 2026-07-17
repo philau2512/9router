@@ -37,6 +37,12 @@ function buildCredentialsFromConnection(connection) {
     expiresAt: connection.expiresAt || connection.tokenExpiresAt,
     lastRefreshAt: connection.lastRefreshAt,
     connectionId: connection.id,
+    // Account label for TOKEN_REFRESH logs (name / email)
+    connectionName:
+      connection.displayName || connection.name || connection.email || null,
+    name: connection.name || null,
+    email: connection.email || null,
+    displayName: connection.displayName || null,
     providerSpecificData: connection.providerSpecificData,
     // For GitHub
     copilotToken: connection.providerSpecificData?.copilotToken,

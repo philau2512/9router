@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { markAccountUnavailable } from "../../src/sse/services/auth.js";
-import { testSingleConnection } from "../../src/app/api/providers/[id]/test/testUtils.js";
+import { checkFallbackError } from "open-sse/services/accountFallback.js";
 import * as localDb from "@/lib/localDb";
 
 const originalFetch = global.fetch;
@@ -60,6 +60,46 @@ describe("Kiro Account Deactivation on Suspension", () => {
       // Assert return values
       expect(result.shouldFallback).toBe(true);
       expect(result.cooldownMs).toBe(5 * 60 * 60 * 1000); // 5 hours fallback cooldown
+    });
+
+    it("should not lock model on client abort (499 / Request aborted)", async () => {
+      const mockConnection = {
+        id: "conn-ag-1",
+        name: "user@gmail.com",
+        provider: "antigravity",
+        isActive: true,
+        backoffLevel: 0,
+      };
+      localDb.getProviderConnections.mockResolvedValue([mockConnection]);
+      localDb.updateProviderConnection.mockResolvedValue({});
+
+      const result = await markAccountUnavailable(
+        "conn-ag-1",
+        499,
+        "Request aborted",
+        "antigravity",
+        "gemini-3-flash-agent",
+      );
+
+      expect(result).toEqual({ shouldFallback: false, cooldownMs: 0 });
+      expect(localDb.updateProviderConnection).not.toHaveBeenCalled();
+      expect(localDb.getProviderConnections).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("checkFallbackError client abort", () => {
+    it("returns no fallback / no cooldown for 499 and abort messages", () => {
+      expect(checkFallbackError(499, "Request aborted")).toEqual({
+        shouldFallback: false,
+        cooldownMs: 0,
+      });
+      expect(checkFallbackError(499, "Client disconnected")).toEqual({
+        shouldFallback: false,
+        cooldownMs: 0,
+      });
+      expect(
+        checkFallbackError(0, "The user aborted a request."),
+      ).toEqual({ shouldFallback: false, cooldownMs: 0 });
     });
   });
 });

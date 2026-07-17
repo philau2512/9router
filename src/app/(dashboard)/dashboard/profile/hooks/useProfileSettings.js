@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "@/shared/hooks/useTheme";
 import { EMPTY_STATUS, DEFAULT_OIDC_FORM } from "../utils/profileConstants";
-import { downloadJsonFile } from "../utils/profileDownloadUtils";
 import {
   getOidcFormFromSettings,
   getOidcRedirectUri,
@@ -11,7 +10,9 @@ import {
 import {
   exportDatabaseBackup,
   fetchSettings,
+  getDatabaseBackupUrl,
   importDatabaseBackup,
+  importSqliteDatabaseBackup,
   patchSettings,
   testOidcSettings,
   testProxyUrl,
@@ -395,11 +396,34 @@ export function useProfileSettings() {
     setDbLoading(true);
     setDbStatus(EMPTY_STATUS);
     try {
+      if (includeUsageAnalytics) {
+        const anchor = document.createElement("a");
+        anchor.href = getDatabaseBackupUrl({ includeUsageAnalytics: true });
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        setDbStatus({
+          type: "success",
+          message: "SQLite backup download started",
+        });
+        return;
+      }
+
       const { ok, data } = await exportDatabaseBackup({
-        includeUsageAnalytics,
+        includeUsageAnalytics: false,
       });
       if (!ok) throw new Error(data.error || "Failed to export database");
-      downloadJsonFile(data);
+      const content = JSON.stringify(data, null, 2);
+      const blob = new Blob([content], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      const stamp = new Date().toISOString().replace(/[.:]/g, "-");
+      anchor.href = url;
+      anchor.download = `9router-backup-${stamp}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
       setDbStatus({ type: "success", message: "Database backup downloaded" });
     } catch (err) {
       setDbStatus({
@@ -419,6 +443,20 @@ export function useProfileSettings() {
     setDbStatus(EMPTY_STATUS);
 
     try {
+      const isSqliteSnapshot = /\.sqlite$/i.test(file.name) ||
+        file.type === "application/vnd.sqlite3";
+
+      if (isSqliteSnapshot) {
+        const { ok, data } = await importSqliteDatabaseBackup(file);
+        if (!ok) throw new Error(data.error || "Failed to import SQLite backup");
+        await reloadSettings();
+        setDbStatus({
+          type: "success",
+          message: "SQLite backup imported successfully",
+        });
+        return;
+      }
+
       const raw = await file.text();
       const payload = JSON.parse(raw);
       const analyticsIncluded = !!payload?.usageAnalytics;

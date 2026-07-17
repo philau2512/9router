@@ -4,13 +4,101 @@ import { useState, useEffect, useRef } from "react";
 import { Card, Button } from "@/shared/components";
 import { CONSOLE_LOG_CONFIG } from "@/shared/constants/config";
 
-const LOG_LEVEL_COLORS = {
-  LOG: "text-green-400",
-  INFO: "text-blue-400",
-  WARN: "text-yellow-400",
-  ERROR: "text-red-400",
-  DEBUG: "text-purple-400",
+// Amber-orange highlight for model/combo names (matches terminal hlModel).
+const MODEL_NAME_STYLE = {
+  color: "#fb923c",
+  fontWeight: 700,
 };
+
+/**
+ * Highlight model / combo tokens in common log patterns.
+ * Patterns stay narrow so unrelated words are not recolored.
+ */
+function highlightModelNames(text, baseColor) {
+  if (!text) return null;
+
+  // Ordered alternatives; each match paints one model/combo span amber.
+  // Also match: "POST /v1/responses | combo-name | 80 msgs"
+  const re =
+    /Combo\s+"([^"]+)"|Trying model\s+\d+\/\d+:\s+(\S+)|Model\s+(\S+)(\s+(?:succeeded|failed|transient|threw))|→\s+([a-z0-9._-]+\/[a-z0-9._-]+)|Model:\s+(\S+)|model=(\S+)|POST\s+(\S+)\s+→\s+(\S+)|(?:\/v1\/\S+\s+\|\s+)([^\s|]+)(\s+\|\s+\d+\s+msgs)|\|\s+([a-z0-9._/-]+)\s+\|\s+(\d+ms)/gi;
+
+  const nodes = [];
+  let last = 0;
+  let m;
+  let key = 0;
+
+  const pushBase = (s) => {
+    if (!s) return;
+    nodes.push(
+      <span key={key++} style={{ color: baseColor }}>
+        {s}
+      </span>,
+    );
+  };
+  const pushModel = (s) => {
+    if (!s) return;
+    nodes.push(
+      <span key={key++} style={MODEL_NAME_STYLE}>
+        {s}
+      </span>,
+    );
+  };
+
+  while ((m = re.exec(text)) !== null) {
+    pushBase(text.slice(last, m.index));
+    const full = m[0];
+
+    if (m[1] != null) {
+      // Combo "name"
+      pushBase('Combo "');
+      pushModel(m[1]);
+      pushBase('"');
+    } else if (m[2] != null) {
+      // Trying model n/n: name
+      pushBase(full.slice(0, full.length - m[2].length));
+      pushModel(m[2]);
+    } else if (m[3] != null) {
+      // Model name succeeded/failed...
+      pushBase("Model ");
+      pushModel(m[3]);
+      pushBase(m[4] || "");
+    } else if (m[5] != null) {
+      // → provider/model
+      pushBase("→ ");
+      pushModel(m[5]);
+    } else if (m[6] != null) {
+      pushBase("Model: ");
+      pushModel(m[6]);
+    } else if (m[7] != null) {
+      pushBase("model=");
+      pushModel(m[7]);
+    } else if (m[8] != null) {
+      // POST client → provider/model
+      pushBase("POST ");
+      pushModel(m[8]);
+      pushBase(" → ");
+      pushModel(m[9]);
+    } else if (m[10] != null) {
+      // /v1/... | combo-or-model | N msgs
+      const head = full.slice(0, full.indexOf(m[10]));
+      pushBase(head);
+      pushModel(m[10]);
+      pushBase(m[11] || "");
+    } else if (m[12] != null) {
+      // STREAM: | model | 123ms
+      pushBase("| ");
+      pushModel(m[12]);
+      pushBase(` | ${m[13]}`);
+    } else {
+      pushBase(full);
+    }
+
+    last = m.index + full.length;
+  }
+
+  pushBase(text.slice(last));
+  return nodes.length ? nodes : text;
+}
 
 function renderLine(line, onIdClick) {
   let color = "#cbd5e1"; // default fallback (slate-300 / light gray)
@@ -64,7 +152,7 @@ function renderLine(line, onIdClick) {
 
   // Parse ID pattern: [reqId] or [reqId:connId]
   const match = line.match(
-    /^(\[\d{2}:\d{2}:\d{2}\]\s+)?\[([a-z0-9]{6})(?::([a-z0-9]{6}))?\](.*)$/i,
+    /^(\[\d{2}:\d{2}:\d{2}\]\s+)?\[([a-z0-9]{6})(?::([a-z0-9]{6}))?](.*)$/i,
   );
   if (match) {
     const timeStr = match[1] || "";
@@ -94,12 +182,12 @@ function renderLine(line, onIdClick) {
           {reqId}
           {connId ? `:${connId}` : ""}
         </span>
-        {rest}
+        {highlightModelNames(rest, color)}
       </span>
     );
   }
 
-  return <span style={{ color }}>{line}</span>;
+  return <span style={{ color }}>{highlightModelNames(line, color)}</span>;
 }
 
 export default function ConsoleLogClient() {

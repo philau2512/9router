@@ -362,7 +362,7 @@ export function buildOnStreamComplete({
     const safeThinking = contentObj?.thinking || null;
 
     if (timing) {
-      log.ttft(`${provider.toUpperCase()} | ${model}`, {
+      log.ttft(`${provider.toUpperCase()} | ${log.hlModel(model)}`, {
         total,
         ttft: latency.ttft,
         parse: timing.requestParsedAt

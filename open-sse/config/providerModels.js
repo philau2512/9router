@@ -1119,6 +1119,12 @@ export const PROVIDER_MODELS = {
   ],
   // Grok CLI / Grok Build — device-code OAuth. See upstream a11937cdd.
   "grok-cli": [
+    {
+      id: "grok-build",
+      name: "Grok Build",
+      contextLength: 500000,
+      maxOutputTokens: 64000,
+    },
     { id: "grok-4.5", name: "Grok 4.5" },
     {
       id: "grok-4.5-high",
@@ -1559,7 +1565,10 @@ export function getModelType(aliasOrId, modelId) {
 }
 
 export function getModelUpstreamId(aliasOrId, modelId) {
-  const models = PROVIDER_MODELS[aliasOrId];
+  const alias =
+    PROVIDER_ID_TO_ALIAS[aliasOrId] ||
+    (aliasOrId === "gcli" ? "grok-cli" : aliasOrId);
+  const models = PROVIDER_MODELS[alias] || PROVIDER_MODELS[aliasOrId];
   const found = models?.find((m) => m.id === modelId);
   if (found?.upstreamModelId) return found.upstreamModelId;
   if (
@@ -1595,6 +1604,7 @@ const OAUTH_ALIASES = {
   clinepass: "cp",
   opencode: "oc",
   "mimo-free": "mmf",
+  "grok-cli": "gcli",
   vertex: "vertex",
   "vertex-partner": "vertex-partner",
 };

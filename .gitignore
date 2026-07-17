@@ -88,3 +88,14 @@ OmniRoute/
 .codex/
 release-manifest.json
 CLIProxyAPI/
+# Refactor backup reference (do not bundle/lint)
+open-sse.old/
+.graphifyignore
+graphify-out/*
+
+# Local-only working dirs (notes, vendored repos, scripts, skills)
+.docs/
+.repo/
+.script/
+.PR/
+.next-analyze/*
