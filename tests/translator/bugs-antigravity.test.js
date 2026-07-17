@@ -7,6 +7,7 @@ import {
 } from "../../open-sse/translator/index.js";
 import { translateNonStreamingResponse } from "../../open-sse/handlers/chatCore/nonStreamingHandler.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
+import { initState } from "../../open-sse/translator/index.js";
 
 const AG2O = (req) =>
   translateRequest(
@@ -404,6 +405,45 @@ describe("Antigravity → OpenAI", () => {
     expect(second[0].response.candidates[0].content.parts).toEqual([
       { text: "done" },
     ]);
+  });
+
+  it("assigns distinct Responses output indexes to reasoning, message, and tools", () => {
+    const state = initState(FORMATS.OPENAI_RESPONSES);
+    const translate = (delta, finish_reason = null) =>
+      translateResponse(
+        FORMATS.OPENAI,
+        FORMATS.OPENAI_RESPONSES,
+        {
+          id: "chatcmpl-indexes",
+          choices: [{ index: 0, delta, finish_reason }],
+        },
+        state,
+      );
+    const events = [
+      ...translate({ reasoning_content: "private reasoning" }),
+      ...translate({ content: "visible preamble" }),
+      ...translate({
+        tool_calls: [
+          { index: 0, id: "read-call", type: "function", function: { name: "Read", arguments: "{}" } },
+          { index: 1, id: "glob-call", type: "function", function: { name: "Glob", arguments: "{}" } },
+        ],
+      }),
+      ...translate({}, "tool_calls"),
+    ];
+    const added = events
+      .filter((event) => event.event === "response.output_item.added")
+      .map((event) => ({
+        type: event.data.item.type,
+        outputIndex: event.data.output_index,
+      }));
+
+    expect(added).toEqual([
+      { type: "reasoning", outputIndex: 0 },
+      { type: "message", outputIndex: 1 },
+      { type: "function_call", outputIndex: 2 },
+      { type: "function_call", outputIndex: 3 },
+    ]);
+    expect(new Set(added.map((item) => item.outputIndex)).size).toBe(added.length);
   });
 
   it("separates unsigned and signed thought text from visible signed text", () => {
