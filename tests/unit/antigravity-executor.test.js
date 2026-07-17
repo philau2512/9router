@@ -6,6 +6,8 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
 
 import { proxyAwareFetch } from "../../open-sse/utils/proxyFetch.js";
 import { AntigravityExecutor } from "../../open-sse/executors/antigravity.js";
+import { translateRequest } from "../../open-sse/translator/index.js";
+import { FORMATS } from "../../open-sse/translator/formats.js";
 import {
   ANTIGRAVITY_BASE_URLS,
 } from "../../open-sse/providers/antigravity-provider-metadata.js";
@@ -122,6 +124,93 @@ describe("AntigravityExecutor", () => {
     expect(chat.request.output_config).toBeUndefined();
     expect(chat.request.tools[0].functionDeclarations).toHaveLength(1);
     expect(chat.request.tools[0].functionDeclarations[0].name).toBe("bad_tool_");
+  });
+
+  it("preserves the medium, high, and auto thinking output floor", () => {
+    const executor = new AntigravityExecutor();
+    const transform = (thinkingConfig, maxOutputTokens) =>
+      executor.transformRequest(
+        "gemini-3-flash-agent",
+        {
+          request: {
+            contents: [{ role: "user", parts: [{ text: "think" }] }],
+            generationConfig: { thinkingConfig, maxOutputTokens },
+          },
+        },
+        true,
+        credentials,
+      );
+
+    expect(
+      transform({ thinkingBudget: 8192 }, 65535).request.generationConfig
+        .maxOutputTokens,
+    ).toBe(65535);
+    expect(
+      transform({ thinkingBudget: 24576 }, 65535).request.generationConfig
+        .maxOutputTokens,
+    ).toBe(65535);
+    expect(
+      transform({ thinkingBudget: -1 }, 99999).request.generationConfig
+        .maxOutputTokens,
+    ).toBe(65535);
+    expect(
+      transform({ thinkingLevel: "medium" }, 99999).request.generationConfig
+        .maxOutputTokens,
+    ).toBe(65535);
+    expect(
+      transform({ thinkingLevel: "high" }, 99999).request.generationConfig
+        .maxOutputTokens,
+    ).toBe(65535);
+  });
+
+  it("keeps Gemini 3 thinkingLevel requests at the extended ceiling", () => {
+    const executor = new AntigravityExecutor();
+    for (const effort of ["medium", "high", "auto"]) {
+      const translated = translateRequest(
+        FORMATS.OPENAI,
+        FORMATS.ANTIGRAVITY,
+        "gemini-3-flash-agent",
+        {
+          messages: [{ role: "user", content: "think" }],
+          reasoning_effort: effort,
+          max_tokens: 99999,
+        },
+        true,
+        credentials,
+      );
+      const transformed = executor.transformRequest(
+        "gemini-3-flash-agent",
+        translated,
+        true,
+        credentials,
+      );
+
+      expect(transformed.request.generationConfig.thinkingConfig.thinkingLevel).toBe(
+        effort === "auto" ? "high" : effort,
+      );
+      expect(transformed.request.generationConfig.maxOutputTokens).toBe(65535);
+    }
+  });
+
+  it("keeps low thinking at the normal output ceiling", () => {
+    const executor = new AntigravityExecutor();
+    const transform = (thinkingBudget) =>
+      executor.transformRequest(
+        "gemini-3-flash-agent",
+        {
+          request: {
+            contents: [{ role: "user", parts: [{ text: "think" }] }],
+            generationConfig: {
+              thinkingConfig: { thinkingBudget },
+              maxOutputTokens: 99999,
+            },
+          },
+        },
+        true,
+        credentials,
+      );
+
+    expect(transform(1024).request.generationConfig.maxOutputTokens).toBe(16384);
   });
 
   it("falls through production network failure and long-retry quota response", async () => {

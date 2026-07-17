@@ -24,6 +24,23 @@ function sanitizeFunctionName(name) {
 const MAX_RETRY_AFTER_MS = 10000;
 const ANTIGRAVITY_TRANSIENT_RETRY_MAX_MS = 15000;
 const MAX_ANTIGRAVITY_OUTPUT_TOKENS = 16384;
+const MAX_ANTIGRAVITY_THINKING_OUTPUT_TOKENS = 65535;
+const MEDIUM_THINKING_BUDGET = 8192;
+
+function getAntigravityOutputTokenLimit(generationConfig) {
+  const thinkingConfig = generationConfig?.thinkingConfig;
+  const thinkingBudget = thinkingConfig?.thinkingBudget;
+  const thinkingLevel = String(thinkingConfig?.thinkingLevel || "").toLowerCase();
+  const needsExtendedThinkingOutput =
+    thinkingBudget === -1 ||
+    (Number.isFinite(thinkingBudget) &&
+      thinkingBudget >= MEDIUM_THINKING_BUDGET) ||
+    thinkingLevel === "medium" ||
+    thinkingLevel === "high";
+  return needsExtendedThinkingOutput
+    ? MAX_ANTIGRAVITY_THINKING_OUTPUT_TOKENS
+    : MAX_ANTIGRAVITY_OUTPUT_TOKENS;
+}
 
 const ANTIGRAVITY_TRANSIENT_ERROR_PATTERNS = [
   /high\s+traffic/i,
@@ -223,8 +240,9 @@ export class AntigravityExecutor extends BaseExecutor {
     const generationConfig = {
       ...(requestWithoutTools.generationConfig || {}),
     };
-    if (generationConfig.maxOutputTokens > MAX_ANTIGRAVITY_OUTPUT_TOKENS) {
-      generationConfig.maxOutputTokens = MAX_ANTIGRAVITY_OUTPUT_TOKENS;
+    const maxOutputTokens = getAntigravityOutputTokenLimit(generationConfig);
+    if (generationConfig.maxOutputTokens > maxOutputTokens) {
+      generationConfig.maxOutputTokens = maxOutputTokens;
     }
 
     const transformedRequest = {

@@ -91,9 +91,19 @@ export function createSSEStream(options = {}) {
   // Per-stream decoder with stream:true to correctly handle multi-byte chars split across chunks
   const decoder = new TextDecoder("utf-8", { fatal: false });
 
+  const resumedAfterAntigravityThought =
+    targetFormat === FORMATS.ANTIGRAVITY &&
+    Boolean(streamStateTracker?.accumulatedThinking) &&
+    !streamStateTracker?.accumulatedContent;
   const state =
     mode === STREAM_MODE.TRANSLATE
-      ? { ...initState(sourceFormat), provider, toolNameMap, model }
+      ? {
+          ...initState(sourceFormat),
+          provider,
+          toolNameMap,
+          model,
+          geminiSawThought: resumedAfterAntigravityThought,
+        }
       : null;
 
   let totalContentLength = 0;

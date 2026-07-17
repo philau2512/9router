@@ -167,6 +167,10 @@ export function translateRequest(
 // Translate response chunk: target -> openai -> source
 export function translateResponse(targetFormat, sourceFormat, chunk, state) {
   ensureInitialized();
+  // The target format identifies the upstream provider while response
+  // translators share one state object across direct and pivot routes.
+  state.responseTargetFormat = targetFormat;
+
   // If same format, return as-is
   if (sourceFormat === targetFormat) {
     return chunk == null ? [] : [chunk];
