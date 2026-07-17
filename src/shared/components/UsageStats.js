@@ -4,10 +4,14 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { FREE_PROVIDERS, AI_PROVIDERS } from "@/shared/constants/providers";
 
-// Keep providers without serviceKinds (default LLM) or with "llm" in serviceKinds
+// Topology / usage graph only lists providers still registered in the dashboard.
+// Removed entries (e.g. iflow commented out of FREE_PROVIDERS) must not reappear
+// just because an old connection row still exists in the local DB.
+// Unknown id → false. Known LLM (default or serviceKinds includes "llm") → true.
 function isLLMProvider(id) {
   const p = AI_PROVIDERS[id];
-  if (!p?.serviceKinds) return true;
+  if (!p) return false;
+  if (!p.serviceKinds) return true;
   return p.serviceKinds.includes("llm");
 }
 import Badge from "./Badge";
