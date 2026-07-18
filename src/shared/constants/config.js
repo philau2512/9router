@@ -109,3 +109,33 @@ export const CLAUDE_AUTOPING_CONFIG = {
   pingMaxTokens: 1,
   pingText: "hi",
 };
+
+// Shared scheduler config. Every provider opt-in is evaluated by one loop so
+// Claude and Codex cannot independently send duplicate warm-up requests.
+export const QUOTA_AUTOPING_CONFIG = {
+  tickIntervalMs: 60_000,
+  pingLeadMs: 90_000,
+  refreshAheadMs: 300_000,
+  failureCooldownMs: 900_000,
+  providers: {
+    claude: {
+      settingsKey: "claudeAutoPing",
+      quotaKey: "session (5h)",
+      pingModel: "claude-haiku-4-5-20251001",
+      pingMaxTokens: 1,
+      pingText: "hi",
+    },
+    codex: {
+      settingsKey: "codexAutoPing",
+      quotaKey: "session",
+      pingWhenResetAtSlides: true,
+      resetAtDriftMs: 30_000,
+      minPingIntervalMs: 600_000,
+      skipWhenBlockingQuotaExhausted: true,
+      pingModel: "gpt-5.5",
+      pingText: "hi",
+      pingInstructions: "Reply with OK.",
+      pingReasoningEffort: "none",
+    },
+  },
+};

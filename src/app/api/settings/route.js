@@ -3,6 +3,7 @@ import { getSettings, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
 import { setDebugEnabled } from "@/sse/utils/logger";
+import { configureQuotaAutoPing } from "@/shared/services/quotaAutoPing";
 import bcrypt from "bcryptjs";
 
 export const dynamic = "force-dynamic";
@@ -107,6 +108,13 @@ export async function PATCH(request) {
       Object.prototype.hasOwnProperty.call(body, "outboundNoProxy")
     ) {
       applyOutboundProxyEnv(settings);
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(body, "claudeAutoPing") ||
+      Object.prototype.hasOwnProperty.call(body, "codexAutoPing")
+    ) {
+      configureQuotaAutoPing(settings);
     }
 
     // Invalidate combo rotation state when strategy settings change

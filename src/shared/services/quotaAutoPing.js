@@ -6,6 +6,7 @@ import { getClaudeUsage } from "open-sse/services/usage/claude.js";
 import { getCodexUsage } from "open-sse/services/usage/codex.js";
 import { getExecutor } from "open-sse/executors/index.js";
 import { CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
+import { getCachedClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { refreshAndUpdateCredentials } from "@/app/api/usage/[connectionId]/route.js";
@@ -108,6 +109,7 @@ async function sendClaudePing(connection, providerConfig, proxyOptions, deps) {
     method: "POST",
     headers: {
       ...CLAUDE_CLI_SPOOF_HEADERS,
+      ...(deps.getCachedClaudeHeaders?.() || {}),
       "Authorization": `Bearer ${connection.accessToken}`,
       "content-type": "application/json",
     },
@@ -254,6 +256,7 @@ function createDefaultDeps() {
     resolveConnectionProxyConfig,
     refreshAndUpdateCredentials,
     proxyAwareFetch,
+    getCachedClaudeHeaders,
     getExecutor,
   };
 }

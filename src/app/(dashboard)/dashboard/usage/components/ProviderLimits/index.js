@@ -1,7 +1,7 @@
 "use client";
 
 import Card from "@/shared/components/Card";
-import { EditConnectionModal } from "@/shared/components";
+import { ConfirmModal, EditConnectionModal } from "@/shared/components";
 import { useProviderLimits } from "./hooks/local/use-provider-limits";
 import ProviderLimitsHeader from "./components/local/provider-limits-header";
 import ProviderConnectionCard from "./components/local/provider-connection-card";
@@ -27,6 +27,12 @@ export default function ProviderLimits() {
     connectionsLoading,
     deletingId,
     togglingId,
+    resettingLimitId,
+    autoPingSavingId,
+    resetConfirmState,
+    setResetConfirmState,
+    autoPingMaps,
+    toggleAutoPing,
     resetCreditsState,
     setResetCreditsState,
     showEditModal,
@@ -57,6 +63,7 @@ export default function ProviderLimits() {
     refreshAll,
     refreshProvider,
     handleDeleteConnection,
+    handleResetCodexLimit,
     handleViewCodexResetCredits,
     handleToggleConnectionActive,
     handleUpdateConnection,
@@ -159,6 +166,13 @@ export default function ProviderLimits() {
               copied={copied}
               copy={copy}
               handleViewCodexResetCredits={handleViewCodexResetCredits}
+              onRequestCodexReset={(connection, resetCreditCount) =>
+                setResetConfirmState({ connection, resetCreditCount })
+              }
+              resettingLimitId={resettingLimitId}
+              autoPingSaving={autoPingSavingId === conn.id}
+              autoPingEnabled={autoPingMaps[conn.provider]?.[conn.id] === true}
+              onToggleAutoPing={toggleAutoPing}
               refreshProvider={refreshProvider}
               setSelectedConnection={setSelectedConnection}
               setShowEditModal={setShowEditModal}
@@ -316,6 +330,25 @@ export default function ProviderLimits() {
           </div>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={Boolean(resetConfirmState)}
+        onClose={() => {
+          if (!resettingLimitId) setResetConfirmState(null);
+        }}
+        onConfirm={async () => {
+          const connection = resetConfirmState?.connection;
+          if (!connection) return;
+          await handleResetCodexLimit(connection);
+          setResetConfirmState(null);
+        }}
+        title="Reset Codex limit?"
+        message={`Use 1 Codex reset credit for ${resetConfirmState?.connection?.email || resetConfirmState?.connection?.name || "this account"}. This cannot be undone. Remaining credits: ${resetConfirmState?.resetCreditCount ?? 0}.`}
+        confirmText="Reset limit"
+        cancelText="Cancel"
+        variant="danger"
+        loading={Boolean(resettingLimitId)}
+      />
 
       <CodexResetCreditsModal
         resetCreditsState={resetCreditsState}

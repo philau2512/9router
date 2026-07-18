@@ -33,7 +33,7 @@ import {
   startCodexProactiveRefreshTick,
   getCodexProactiveRefreshIntervalMs,
 } from "@/sse/services/tokenRefresh";
-import { startClaudeAutoPing } from "@/shared/services/claudeAutoPing";
+import { configureQuotaAutoPing } from "@/shared/services/quotaAutoPing";
 import {
   getMitmStatus,
   startMitm,
@@ -136,7 +136,7 @@ export async function initializeApp() {
 
     configureTunnelMonitoring(settings);
     startCodexProactiveRefreshMonitor();
-    startClaudeAutoPing();
+    configureQuotaAutoPing(settings);
     autoStartMitm();
   } catch (error) {
     console.error("[InitApp] Error:", error);

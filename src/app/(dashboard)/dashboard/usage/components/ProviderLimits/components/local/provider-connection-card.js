@@ -8,6 +8,7 @@ import Tooltip from "@/shared/components/Tooltip";
 import QuotaTable from "../../QuotaTable";
 import {
   getConnectionLabel,
+  getCodexResetCreditCount,
   kiroMethodLabel,
   kiroRegion,
 } from "./helpers";
@@ -22,6 +23,11 @@ export default function ProviderConnectionCard({
   copied,
   copy,
   handleViewCodexResetCredits,
+  onRequestCodexReset,
+  resettingLimitId,
+  autoPingSaving,
+  autoPingEnabled,
+  onToggleAutoPing,
   refreshProvider,
   setSelectedConnection,
   setShowEditModal,
@@ -35,7 +41,10 @@ export default function ProviderConnectionCard({
     conn.provider === "codex" && plan && plan.toLowerCase() !== "unknown"
       ? plan
       : "";
-  const rowBusy = deletingId === conn.id || togglingId === conn.id;
+  const isResettingLimit = resettingLimitId === conn.id;
+  const rowBusy =
+    deletingId === conn.id || togglingId === conn.id || isResettingLimit;
+  const resetCreditCount = getCodexResetCreditCount(quota);
 
   return (
     <Card
@@ -126,16 +135,54 @@ export default function ProviderConnectionCard({
 
           <div className="flex items-center gap-1 shrink-0">
             {conn.provider === "codex" && (
-              <Tooltip text="View Codex reset credit expiry">
+              <>
+                <Tooltip
+                  text={
+                    resetCreditCount > 0
+                      ? `Use one Codex reset credit. Available: ${resetCreditCount}`
+                      : "No Codex reset credits available"
+                  }
+                >
+                  <button
+                    type="button"
+                    onClick={() => onRequestCodexReset(conn, resetCreditCount)}
+                    disabled={resetCreditCount <= 0 || isLoading || rowBusy || isResettingLimit}
+                    aria-label={`Use one Codex reset credit. ${resetCreditCount} available.`}
+                    className="flex h-8 min-w-10 items-center justify-center gap-1 rounded-lg border border-primary/30 bg-primary/5 px-2 text-[11px] font-medium tabular-nums text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <span className={`material-symbols-outlined text-[15px] ${isResettingLimit ? "animate-spin" : ""}`}>
+                      {isResettingLimit ? "progress_activity" : "restart_alt"}
+                    </span>
+                    <span>{resetCreditCount}</span>
+                  </button>
+                </Tooltip>
+                <Tooltip text="View Codex reset credit expiry">
+                  <button
+                    type="button"
+                    onClick={() => handleViewCodexResetCredits(conn)}
+                    disabled={isLoading || rowBusy || isResettingLimit}
+                    aria-label="View Codex reset credit expiry"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-black/10 text-text-muted transition-colors hover:bg-black/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/5"
+                  >
+                    <span className="material-symbols-outlined text-[17px]">
+                      schedule
+                    </span>
+                  </button>
+                </Tooltip>
+              </>
+            )}
+            {(conn.provider === "claude" || conn.provider === "codex") &&
+              conn.authType === "oauth" && (
+              <Tooltip text={autoPingEnabled ? "Disable quota auto-ping" : "Enable quota auto-ping after reset"}>
                 <button
                   type="button"
-                  onClick={() => handleViewCodexResetCredits(conn)}
-                  disabled={isLoading || rowBusy}
-                  aria-label="View Codex reset credit expiry"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-black/10 text-text-muted transition-colors hover:bg-black/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/5"
+                  onClick={() => onToggleAutoPing(conn)}
+                  disabled={isLoading || rowBusy || isResettingLimit || autoPingSaving}
+                  aria-label="Toggle quota auto-ping"
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${autoPingEnabled ? "text-primary" : "text-text-muted"}`}
                 >
-                  <span className="material-symbols-outlined text-[17px]">
-                    schedule
+                  <span className={`material-symbols-outlined text-[18px] ${autoPingSaving ? "animate-spin" : ""}`}>
+                    {autoPingSaving ? "progress_activity" : "bolt"}
                   </span>
                 </button>
               </Tooltip>

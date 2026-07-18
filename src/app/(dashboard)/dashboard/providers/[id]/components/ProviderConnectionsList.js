@@ -19,6 +19,9 @@ export default function ProviderConnectionsList({
   warmupResults,
   handleWarmupSingle,
   onViewJson,
+  autoPingConnections,
+  savingAutoPingConnectionId,
+  onToggleAutoPing,
 }) {
   return (
     <div className="flex min-w-0 flex-col divide-y divide-black/[0.03] dark:divide-white/[0.03]">
@@ -65,6 +68,17 @@ export default function ProviderConnectionsList({
                 onWarmup={(options) => handleWarmupSingle(conn.id, options)}
                 warmupStatus={warmupResults[conn.id] || null}
                 onViewJson={() => onViewJson(conn.id)}
+                autoPing={
+                  (conn.provider === "claude" || conn.provider === "codex") &&
+                  conn.authType === "oauth"
+                    ? {
+                        on: autoPingConnections[conn.id] === true,
+                        onToggle: (enabled) => onToggleAutoPing(conn.id, enabled),
+                        saving: savingAutoPingConnectionId === conn.id,
+                        provider: conn.provider,
+                      }
+                    : null
+                }
               />
             </div>
           </div>
