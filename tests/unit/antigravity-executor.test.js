@@ -126,6 +126,30 @@ describe("AntigravityExecutor", () => {
     expect(chat.request.tools[0].functionDeclarations[0].name).toBe("bad_tool_");
   });
 
+  it("strips Claude adaptive thinking from the Google request envelope", () => {
+    // Reproduced from logs/openai-responses_antigravity_claude-sonnet-4-6_20260719_004054_961.
+    // The Antigravity v1internal endpoint rejects top-level `thinking` with:
+    // "Unknown name \"thinking\": Cannot find field."
+    const executor = new AntigravityExecutor();
+    const result = executor.transformRequest(
+      "claude-sonnet-4-6",
+      {
+        request: {
+          contents: [{ role: "user", parts: [{ text: "think" }] }],
+          generationConfig: { maxOutputTokens: 65535 },
+        },
+        thinking: { type: "adaptive" },
+        output_config: { effort: "high" },
+      },
+      true,
+      credentials,
+    );
+
+    expect(result.thinking).toBeUndefined();
+    expect(result.output_config).toBeUndefined();
+    expect(result.request.generationConfig.maxOutputTokens).toBe(16384);
+  });
+
   it("preserves the medium, high, and auto thinking output floor", () => {
     const executor = new AntigravityExecutor();
     const transform = (thinkingConfig, maxOutputTokens) =>

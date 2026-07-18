@@ -59,8 +59,10 @@ const ANTIGRAVITY_TRANSIENT_STATUSES = new Set([
   HTTP_STATUS.GATEWAY_TIMEOUT,
 ]);
 
-// Fields Google generateContent rejects (e.g. Claude adaptive output_config) — stripped from antigravity request envelope
-const ANTIGRAVITY_REQUEST_BLACKLIST = ["output_config"];
+// Fields Google generateContent rejects — stripped from the Antigravity request envelope.
+// `thinking` is Claude's adaptive-thinking shape; Antigravity's v1internal
+// Google envelope has no such top-level field and rejects it with HTTP 400.
+const ANTIGRAVITY_REQUEST_BLACKLIST = ["output_config", "thinking"];
 
 // Strip blacklisted fields from an object (used for both body.request and top-level body)
 const stripBlacklisted = (obj) => {
