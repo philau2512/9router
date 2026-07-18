@@ -11,6 +11,7 @@ import {
   getPaginationPageValue,
   getProviderOptions,
   getQuotaCache,
+  QUOTA_CACHE_KEY,
   filterQuotaStateByConnections,
   setQuotaCache,
   buildLoadingState,
@@ -35,6 +36,13 @@ export function useProviderLimits() {
   const [connectionsLoading, setConnectionsLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
+  const [resettingLimitId, setResettingLimitId] = useState(null);
+  const [autoPingSavingId, setAutoPingSavingId] = useState(null);
+  const [resetConfirmState, setResetConfirmState] = useState(null);
+  const [autoPingMaps, setAutoPingMaps] = useState({
+    claude: {},
+    codex: {},
+  });
   const [resetCreditsState, setResetCreditsState] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedConnection, setSelectedConnection] = useState(null);
@@ -237,6 +245,37 @@ export function useProviderLimits() {
     [fetchConnections, page],
   );
 
+  const handleResetCodexLimit = useCallback(
+    async (connection) => {
+      if (!connection || resettingLimitId) return;
+
+      setResettingLimitId(connection.id);
+      setErrors((prev) => ({ ...prev, [connection.id]: null }));
+      try {
+        const response = await fetch(
+          `/api/usage/${connection.id}/codex-reset-credits`,
+          { method: "POST" },
+        );
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(
+            result.message || result.error || result.code || "Failed to reset Codex limit",
+          );
+        }
+
+        await refreshProvider(connection.id, connection.provider);
+      } catch (error) {
+        setErrors((prev) => ({
+          ...prev,
+          [connection.id]: error.message || "Failed to reset Codex limit",
+        }));
+      } finally {
+        setResettingLimitId(null);
+      }
+    },
+    [refreshProvider, resettingLimitId],
+  );
+
   const handleViewCodexResetCredits = useCallback(async (connection) => {
     setResetCreditsState({
       connection,
@@ -282,6 +321,78 @@ export function useProviderLimits() {
       });
     }
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/settings", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((settings) => {
+        if (cancelled || !settings) return;
+        setAutoPingMaps({
+          claude: settings.claudeAutoPing?.connections || {},
+          codex: settings.codexAutoPing?.connections || {},
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggleAutoPing = useCallback(async (connection) => {
+    const provider = connection?.provider;
+    if (
+      (provider !== "claude" && provider !== "codex") ||
+      connection?.authType !== "oauth" ||
+      autoPingSavingId
+    ) {
+      return;
+    }
+
+    const settingsKey = provider === "claude" ? "claudeAutoPing" : "codexAutoPing";
+    const previousState = autoPingMaps;
+    setAutoPingSavingId(connection.id);
+    try {
+      const settingsResponse = await fetch("/api/settings", {
+        cache: "no-store",
+      });
+      if (!settingsResponse.ok) {
+        throw new Error("Failed to load auto-ping setting");
+      }
+
+      const settings = await settingsResponse.json();
+      const currentMap = settings[settingsKey]?.connections || {};
+      const nextMap = {
+        ...currentMap,
+        [connection.id]: !currentMap[connection.id],
+      };
+      const nextState = {
+        ...previousState,
+        [provider]: nextMap,
+      };
+
+      setAutoPingMaps(nextState);
+      const response = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          [settingsKey]: {
+            ...(settings[settingsKey] || {}),
+            connections: nextMap,
+          },
+        }),
+      });
+      if (!response.ok) throw new Error("Failed to save auto-ping setting");
+    } catch (error) {
+      setAutoPingMaps(previousState);
+      setErrors((prev) => ({
+        ...prev,
+        [connection.id]: error.message || "Failed to save auto-ping setting",
+      }));
+    } finally {
+      setAutoPingSavingId(null);
+    }
+  }, [autoPingMaps, autoPingSavingId]);
 
   const handleToggleConnectionActive = useCallback(
     async (id, isActive) => {
@@ -589,6 +700,12 @@ export function useProviderLimits() {
     connectionsLoading,
     deletingId,
     togglingId,
+    resettingLimitId,
+    autoPingSavingId,
+    resetConfirmState,
+    setResetConfirmState,
+    autoPingMaps,
+    toggleAutoPing,
     resetCreditsState,
     setResetCreditsState,
     showEditModal,
@@ -619,6 +736,7 @@ export function useProviderLimits() {
     refreshAll,
     refreshProvider,
     handleDeleteConnection,
+    handleResetCodexLimit,
     handleViewCodexResetCredits,
     handleToggleConnectionActive,
     handleUpdateConnection,

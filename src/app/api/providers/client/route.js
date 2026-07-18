@@ -86,9 +86,12 @@ function isUsageEligible(connection) {
   const isApikeyEligible =
     isApikeyAuth && USAGE_APIKEY_PROVIDERS.includes(connection.provider);
 
+  const isAccessTokenEligible =
+    connection.authType === "access_token" && connection.provider === "codex";
+
   return (
     USAGE_SUPPORTED_PROVIDERS.includes(connection.provider) &&
-    (isOAuth || isApikeyEligible)
+    (isOAuth || isApikeyEligible || isAccessTokenEligible)
   );
 }
 

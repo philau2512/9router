@@ -49,6 +49,12 @@ export function getConnectionLabel(connection) {
   return connection.name;
 }
 
+export function getCodexResetCreditCount(quota) {
+  const value = quota?.raw?.resetCredits?.availableCount;
+  const count = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(count) ? Math.max(0, count) : 0;
+}
+
 export function getConnectionQuotaRemaining(connection, quotaData) {
   const quota = quotaData[connection.id]?.quotas?.[0];
   if (!quota) return Number.POSITIVE_INFINITY;

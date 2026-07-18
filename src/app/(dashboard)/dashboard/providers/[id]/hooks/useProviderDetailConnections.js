@@ -25,6 +25,10 @@ import {
 } from "../utils/providerDetailPageApi";
 
 const ACCOUNT_STATUS_FILTER_OPTIONS = ["all", "active", "inactive"];
+const AUTO_PING_SETTINGS_KEYS = {
+  claude: "claudeAutoPing",
+  codex: "codexAutoPing",
+};
 
 function filterConnectionsByAccountStatus(connections, accountStatusFilter) {
   if (accountStatusFilter === "active") {
@@ -71,6 +75,9 @@ export function useProviderDetailConnections({
   const [warmupSummary, setWarmupSummary] = useState(null);
   const [activeJsonConnection, setActiveJsonConnection] = useState(null);
   const [loadingJson, setLoadingJson] = useState(false);
+  const [autoPingConnections, setAutoPingConnections] = useState({});
+  const [savingAutoPingConnectionId, setSavingAutoPingConnectionId] =
+    useState(null);
   const stopOneByOneRef = useRef(false);
   const lastClickedIndexRef = useRef(null);
   const connectionsRef = useRef([]);
@@ -123,6 +130,12 @@ export function useProviderDetailConnections({
       const thinkingCfg =
         (settingsData.providerThinking || {})[providerId] || {};
       onThinkingModeLoaded(thinkingCfg.mode || "auto");
+
+      const autoPingSettingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
+      const autoPingSettings = autoPingSettingsKey
+        ? settingsData[autoPingSettingsKey] || {}
+        : {};
+      setAutoPingConnections(autoPingSettings.connections || {});
 
       if (nodesRes.ok) {
         let node =
@@ -334,6 +347,62 @@ export function useProviderDetailConnections({
     }
   };
 
+  const handleToggleAutoPing = async (connectionId, enabled) => {
+    await setSelectedConnectionsAutoPing(enabled, [connectionId]);
+  };
+
+  const setSelectedConnectionsAutoPing = async (
+    enabled,
+    connectionIds = selectedConnectionIds,
+  ) => {
+    const settingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
+    if (!settingsKey || connectionIds.length === 0) return;
+
+    const eligibleIds = connectionsRef.current
+      .filter(
+        (connection) =>
+          connectionIds.includes(connection.id) &&
+          connection.authType === "oauth" &&
+          (connection.provider === "claude" || connection.provider === "codex"),
+      )
+      .map((connection) => connection.id);
+    if (eligibleIds.length === 0) return;
+
+    const previousConnections = autoPingConnections;
+    const nextConnections = Object.fromEntries(
+      eligibleIds.map((connectionId) => [connectionId, enabled]),
+    );
+    const updatedConnections = {
+      ...previousConnections,
+      ...nextConnections,
+    };
+
+    setAutoPingConnections(updatedConnections);
+    setSavingAutoPingConnectionId(
+      eligibleIds.length === 1 ? eligibleIds[0] : "bulk",
+    );
+    try {
+      const settings = await fetchProviderSettings();
+      const current = settings[settingsKey] || {};
+      const response = await patchProviderSettings({
+        [settingsKey]: {
+          ...current,
+          connections: {
+            ...(current.connections || {}),
+            ...nextConnections,
+          },
+        },
+      });
+      if (!response.ok) throw new Error("Failed to save auto-ping setting");
+    } catch (error) {
+      setAutoPingConnections(previousConnections);
+      console.log("Error saving auto-ping setting:", error);
+      alert("Failed to save auto-ping setting");
+    } finally {
+      setSavingAutoPingConnectionId(null);
+    }
+  };
+
   const handleSwapPriority = async (index1, index2) => {
     const newConnections = [...connections];
     [newConnections[index1], newConnections[index2]] = [
@@ -361,6 +430,25 @@ export function useProviderDetailConnections({
     connections,
     selectedConnectionIds,
   );
+  const autoPingSelection = useMemo(() => {
+    const eligibleConnections = selectedConnections.filter(
+      (connection) =>
+        connection.authType === "oauth" &&
+        (connection.provider === "claude" || connection.provider === "codex"),
+    );
+    const enabledCount = eligibleConnections.filter(
+      (connection) => autoPingConnections[connection.id] === true,
+    ).length;
+
+    return {
+      eligibleCount: eligibleConnections.length,
+      enabledCount,
+      allEnabled:
+        eligibleConnections.length > 0 &&
+        enabledCount === eligibleConnections.length,
+    };
+  }, [selectedConnections, autoPingConnections]);
+
   const displayedConnectionIds = displayedConnections.map((conn) => conn.id);
   const allSelected =
     displayedConnectionIds.length > 0 &&
@@ -1022,5 +1110,10 @@ export function useProviderDetailConnections({
     loadingJson,
     handleViewJson,
     setActiveJsonConnection,
+    autoPingConnections,
+    autoPingSelection,
+    savingAutoPingConnectionId,
+    handleToggleAutoPing,
+    setSelectedConnectionsAutoPing,
   };
 }

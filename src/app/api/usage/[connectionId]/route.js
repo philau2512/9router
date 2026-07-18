@@ -6,6 +6,7 @@ import {
   updateProviderConnection,
 } from "@/lib/localDb";
 import { getUsageForProvider } from "open-sse/services/usage.js";
+import { getCodexRateLimitResetCredits } from "open-sse/services/usage/codex.js";
 import { getExecutor } from "open-sse/executors/index.js";
 import {
   refreshProviderCredentials,
@@ -201,7 +202,10 @@ export async function GET(request, { params }) {
     const isApikeyEligible =
       isApikeyAuth && USAGE_APIKEY_PROVIDERS.includes(connection.provider);
 
-    if (!isOAuth && !isApikeyEligible) {
+    const isAccessTokenEligible =
+      connection.authType === "access_token" && connection.provider === "codex";
+
+    if (!isOAuth && !isApikeyEligible && !isAccessTokenEligible) {
       return Response.json({
         message: "Usage not available for this connection",
       });
@@ -219,7 +223,7 @@ export async function GET(request, { params }) {
       strictProxy: false,
     };
 
-    // Refresh credentials only for OAuth connections (apikey has no token refresh)
+    // Refresh credentials only for OAuth connections (apikey/access_token have no token refresh)
     if (isOAuth) {
       try {
         const result = await refreshAndUpdateCredentials(
@@ -257,6 +261,21 @@ export async function GET(request, { params }) {
         console.warn(
           `[Usage] ${connection.provider}: force refresh failed: ${retryError.message}`,
         );
+      }
+    }
+
+    if (connection.provider === "codex" && connection.accessToken) {
+      try {
+        usage = {
+          ...usage,
+          resetCredits: await getCodexRateLimitResetCredits(
+            connection.accessToken,
+            proxyOptions,
+            connection.providerSpecificData,
+          ),
+        };
+      } catch (error) {
+        console.warn(`[Usage] codex reset-credit inventory unavailable: ${error.message}`);
       }
     }
 

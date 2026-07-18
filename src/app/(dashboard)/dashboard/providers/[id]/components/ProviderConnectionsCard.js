@@ -71,7 +71,14 @@ export default function ProviderConnectionsCard({
   handleWarmupSelected,
   handleWarmupSingle,
   clearWarmupResults,
+  setSelectedConnectionsAutoPing,
+  autoPingSaving,
+  autoPingSelection,
+  onOpenCodexBulkImport,
   onViewJson,
+  autoPingConnections,
+  savingAutoPingConnectionId,
+  handleToggleAutoPing,
 }) {
   if (isFreeNoAuth) {
     return <NoAuthProxyCard providerId={providerId} />;
@@ -122,6 +129,9 @@ export default function ProviderConnectionsCard({
         warmupSummary={warmupSummary}
         handleWarmupSelected={handleWarmupSelected}
         clearWarmupResults={clearWarmupResults}
+        setSelectedConnectionsAutoPing={setSelectedConnectionsAutoPing}
+        autoPingSaving={autoPingSaving}
+        autoPingSelection={autoPingSelection}
       />
 
       <ProviderConnectionsSummary
@@ -178,6 +188,16 @@ export default function ProviderConnectionsCard({
                     onClick={onOpenIFlowCookieModal}
                   >
                     Cookie
+                  </Button>
+                )}
+                {providerId === "codex" && (
+                  <Button
+                    size="sm"
+                    icon="playlist_add"
+                    variant="secondary"
+                    onClick={onOpenCodexBulkImport}
+                  >
+                    Bulk Add
                   </Button>
                 )}
                 <Button size="sm" icon="add" onClick={onTriggerAddConnection}>
@@ -249,6 +269,9 @@ export default function ProviderConnectionsCard({
               warmupResults={warmupResults}
               handleWarmupSingle={handleWarmupSingle}
               onViewJson={onViewJson}
+              autoPingConnections={autoPingConnections}
+              savingAutoPingConnectionId={savingAutoPingConnectionId}
+              onToggleAutoPing={handleToggleAutoPing}
             />
           )}
 
@@ -287,14 +310,27 @@ export default function ProviderConnectionsCard({
                   </Button>
                 </>
               ) : (
-                <Button
-                  size="sm"
-                  icon="add"
-                  onClick={onTriggerAddConnection}
-                  className="w-full sm:w-auto"
-                >
-                  Add
-                </Button>
+                <>
+                  {providerId === "codex" && (
+                    <Button
+                      size="sm"
+                      icon="playlist_add"
+                      variant="secondary"
+                      onClick={onOpenCodexBulkImport}
+                      className="w-full sm:w-auto"
+                    >
+                      Bulk Add
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    icon="add"
+                    onClick={onTriggerAddConnection}
+                    className="w-full sm:w-auto"
+                  >
+                    Add
+                  </Button>
+                </>
               )}
             </div>
           )}

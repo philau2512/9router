@@ -48,6 +48,9 @@ export default function ProviderConnectionsToolbar({
   warmupSummary,
   handleWarmupSelected,
   clearWarmupResults,
+  setSelectedConnectionsAutoPing,
+  autoPingSaving,
+  autoPingSelection,
 }) {
   const hasConnections = connectionsCount > 0;
   const hasSelection = selectedConnectionIds.length > 0;
@@ -228,6 +231,18 @@ export default function ProviderConnectionsToolbar({
             >
               Turn off
             </Button>
+
+            {(providerId === "codex" || providerId === "claude") &&
+              autoPingSelection.eligibleCount > 0 && (
+                <Toggle
+                  size="sm"
+                  checked={autoPingSelection.allEnabled}
+                  onChange={setSelectedConnectionsAutoPing}
+                  disabled={autoPingSaving}
+                  label={`Auto-ping (${autoPingSelection.enabledCount}/${autoPingSelection.eligibleCount})`}
+                  className="gap-2"
+                />
+              )}
 
             {/* Copy Dropdown Menu */}
             <div className="relative" ref={copyDropdownRef}>

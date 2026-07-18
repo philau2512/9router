@@ -19,6 +19,7 @@ import { mergeProviderModels } from "@/shared/utils/mergeProviderModels";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import BulkProxyAssignmentModal from "./components/BulkProxyAssignmentModal";
+import BulkImportCodexModal from "./BulkImportCodexModal";
 import CompatibleProviderDetailsCard from "./components/CompatibleProviderDetailsCard";
 import ProviderConnectionsCard from "./components/ProviderConnectionsCard";
 import ProviderDetailModals from "./components/ProviderDetailModals";
@@ -58,6 +59,7 @@ export default function ProviderDetailPage() {
   const [showOAuthModal, setShowOAuthModal] = useState(false);
   const [showIFlowCookieModal, setShowIFlowCookieModal] = useState(false);
   const [showAddApiKeyModal, setShowAddApiKeyModal] = useState(false);
+  const [showBulkImportCodex, setShowBulkImportCodex] = useState(false);
   const [addConnectionError, setAddConnectionError] = useState("");
   const [showEditModal, setShowEditModal] = useState(false);
   const [showEditNodeModal, setShowEditNodeModal] = useState(false);
@@ -264,6 +266,11 @@ export default function ProviderDetailPage() {
     activeJsonConnection,
     handleViewJson,
     setActiveJsonConnection,
+    autoPingConnections,
+    autoPingSelection,
+    savingAutoPingConnectionId,
+    handleToggleAutoPing,
+    setSelectedConnectionsAutoPing,
   } = useProviderDetailConnections({
     providerId,
     isCompatible,
@@ -556,7 +563,14 @@ export default function ProviderDetailPage() {
         handleWarmupSelected={handleWarmupSelected}
         handleWarmupSingle={handleWarmupSingle}
         clearWarmupResults={clearWarmupResults}
+        onOpenCodexBulkImport={() => setShowBulkImportCodex(true)}
         onViewJson={handleViewJson}
+        autoPingConnections={autoPingConnections}
+        savingAutoPingConnectionId={savingAutoPingConnectionId}
+        handleToggleAutoPing={handleToggleAutoPing}
+        setSelectedConnectionsAutoPing={setSelectedConnectionsAutoPing}
+        autoPingSaving={savingAutoPingConnectionId === "bulk"}
+        autoPingSelection={autoPingSelection}
         handleAutoPriorityVisibleConnections={
           handleAutoPriorityVisibleConnections
         }
@@ -693,6 +707,14 @@ export default function ProviderDetailPage() {
         handleApplyOneToOne={handleApplyOneToOne}
         handleApplySinglePool={handleApplySinglePool}
       />
+
+      {providerId === "codex" && (
+        <BulkImportCodexModal
+          isOpen={showBulkImportCodex}
+          onClose={() => setShowBulkImportCodex(false)}
+          onSuccess={fetchConnections}
+        />
+      )}
 
       <ProviderDetailModals
         providerId={providerId}

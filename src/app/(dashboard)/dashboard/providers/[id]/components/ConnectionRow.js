@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
-import { Badge, Toggle } from "@/shared/components";
+import { Badge, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
 
 function parseValidExpiresAt(value) {
@@ -79,6 +79,7 @@ export default function ConnectionRow({
   onWarmup = null,
   warmupStatus = null,
   onViewJson = null,
+  autoPing = null,
 }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
@@ -125,6 +126,10 @@ export default function ConnectionRow({
     boundProxyPool?.noProxy ||
     connection.providerSpecificData?.connectionNoProxy ||
     "";
+  const autoPingTooltip =
+    autoPing?.provider === "codex"
+      ? "Auto-start the next Codex session after its reset with a tiny request."
+      : "Send a tiny request when the next quota window begins.";
 
   let proxyBadgeVariant = "default";
   if (boundProxyPool?.isActive === true) {
@@ -545,6 +550,21 @@ export default function ConnectionRow({
               )}
             </div>
           )}
+          {autoPing && (
+            <Tooltip text={autoPingTooltip}>
+              <button
+                type="button"
+                onClick={() => autoPing.onToggle(!autoPing.on)}
+                disabled={autoPing.saving}
+                className={`flex w-full flex-col items-center rounded px-2 py-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${autoPing.saving ? "cursor-not-allowed text-text-muted/30" : autoPing.on ? "text-primary" : "text-text-muted hover:text-primary"}`}
+              >
+                <span className="material-symbols-outlined text-[18px]">
+                  {autoPing.saving ? "progress_activity" : "bolt"}
+                </span>
+                <span className="text-[10px] leading-tight">Auto-ping</span>
+              </button>
+            </Tooltip>
+          )}
           <div ref={warmupDropdownRef} className="relative">
             <button
               onClick={() => {
@@ -707,4 +727,10 @@ ConnectionRow.propTypes = {
     error: PropTypes.string,
   }),
   onViewJson: PropTypes.func,
+  autoPing: PropTypes.shape({
+    on: PropTypes.bool,
+    onToggle: PropTypes.func,
+    saving: PropTypes.bool,
+    provider: PropTypes.string,
+  }),
 };

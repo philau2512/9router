@@ -85,6 +85,32 @@ function convertSystemToDeveloperRole(body) {
   }
 }
 
+// Strip input fields that the Codex backend does not accept.
+// Claude Code replays completed Responses output as input and includes `status`
+// on reasoning/function_call items. Codex rejects every such field with 400.
+// Reasoning encrypted_content is scoped to the account that produced it; sending
+// it after account fallback causes `invalid_encrypted_content`.
+// Codex also requires each function_call_output to follow a matching function_call
+// in the same input. Replayed histories can contain orphaned outputs after earlier
+// calls were omitted, which otherwise causes a 400 invalid_request_error.
+function sanitizeCodexInput(body) {
+  if (!Array.isArray(body.input)) return;
+  const seenCallIds = new Set();
+  body.input = body.input.filter((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return true;
+    delete item.status;
+    if (item.type === "reasoning") delete item.encrypted_content;
+    if (item.type === "function_call" && typeof item.call_id === "string") {
+      seenCallIds.add(item.call_id);
+      return true;
+    }
+    return (
+      item.type !== "function_call_output" ||
+      typeof item.call_id === "string" && seenCallIds.has(item.call_id)
+    );
+  });
+}
+
 // Strip server-generated item IDs (rs_/fc_/resp_/msg_) from input — avoids 404 with store=false
 function stripStoredItemReferences(body) {
   if (!Array.isArray(body.input)) return;
@@ -605,6 +631,8 @@ export class CodexExecutor extends BaseExecutor {
     convertSystemToDeveloperRole(body);
     // Strip server-generated item IDs (rs_/fc_/resp_/msg_) — Codex /responses can't resolve when store=false
     stripStoredItemReferences(body);
+    // Claude Code status fields and account-scoped reasoning ciphertext are not valid Codex input.
+    sanitizeCodexInput(body);
     // Flatten function tools + drop unsupported types
     normalizeCodexTools(body);
 
