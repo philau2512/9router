@@ -4,9 +4,23 @@ const isNode =
   process.versions?.node &&
   typeof window === "undefined";
 
-// Check if logging is enabled via environment variable (default: false)
-const LOGGING_ENABLED =
-  typeof process !== "undefined" && process.env?.ENABLE_REQUEST_LOGS === "true";
+// Runtime override from Settings UI; null → fall back to ENABLE_REQUEST_LOGS env
+let loggingEnabledOverride = null;
+
+/** Apply Settings "Request Logs" toggle immediately (no restart). */
+export function setRequestLogsEnabled(enabled) {
+  loggingEnabledOverride = !!enabled;
+  if (typeof process !== "undefined" && process.env) {
+    process.env.ENABLE_REQUEST_LOGS = enabled ? "true" : "false";
+  }
+}
+
+function isLoggingEnabled() {
+  if (loggingEnabledOverride !== null) return loggingEnabledOverride;
+  return (
+    typeof process !== "undefined" && process.env?.ENABLE_REQUEST_LOGS === "true"
+  );
+}
 
 let fs = null;
 let path = null;
@@ -14,7 +28,7 @@ let LOGS_DIR = null;
 
 // Lazy load Node.js modules (avoid top-level await)
 async function ensureNodeModules() {
-  if (!isNode || !LOGGING_ENABLED || fs) return;
+  if (!isNode || !isLoggingEnabled() || fs) return;
   try {
     fs = await import("fs");
     path = await import("path");
@@ -166,7 +180,7 @@ function createNoOpLogger() {
  */
 export async function createRequestLogger(sourceFormat, targetFormat, model) {
   // Return no-op logger if logging is disabled
-  if (!LOGGING_ENABLED) {
+  if (!isLoggingEnabled()) {
     return createNoOpLogger();
   }
 

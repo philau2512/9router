@@ -16,6 +16,7 @@ export function useEndpointSettings() {
   const [retryDelayMs, setRetryDelayMs] = useState(2000);
   const [midStreamResumeEnabled, setMidStreamResumeEnabled] = useState(true);
   const [debugLogEnabled, setDebugLogEnabled] = useState(false);
+  const [enableRequestLogs, setEnableRequestLogs] = useState(false);
 
   const applySettings = async () => {
     const { ok, data } = await fetchSettings();
@@ -32,6 +33,7 @@ export function useEndpointSettings() {
     setRetryDelayMs(data.retryDelayMs ?? 2000);
     setMidStreamResumeEnabled(data.midStreamResumeEnabled !== false);
     setDebugLogEnabled(!!data.debugLogEnabled);
+    setEnableRequestLogs(!!data.enableRequestLogs);
   };
 
   const handleTunnelDashboardAccess = async (value) => {
@@ -108,6 +110,15 @@ export function useEndpointSettings() {
     }
   };
 
+  const handleEnableRequestLogs = async (value) => {
+    try {
+      const { ok } = await patchSettings({ enableRequestLogs: value });
+      if (ok) setEnableRequestLogs(value);
+    } catch (error) {
+      console.log("Error updating enableRequestLogs:", error);
+    }
+  };
+
   const patchSetting = async (patch) => {
     try {
       await patchSettings(patch);
@@ -139,6 +150,7 @@ export function useEndpointSettings() {
     retryDelayMs,
     midStreamResumeEnabled,
     debugLogEnabled,
+    enableRequestLogs,
     applySettings,
     handleTunnelDashboardAccess,
     handleRequireApiKey,
@@ -148,6 +160,7 @@ export function useEndpointSettings() {
     handleRetryDelayMs,
     handleMidStreamResumeEnabled,
     handleDebugLogEnabled,
+    handleEnableRequestLogs,
     handleCavemanEnabled,
     handleCavemanLevel,
   };

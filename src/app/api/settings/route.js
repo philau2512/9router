@@ -3,6 +3,7 @@ import { getSettings, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
 import { setDebugEnabled } from "@/sse/utils/logger";
+import { setRequestLogsEnabled } from "open-sse/utils/requestLogger.js";
 import { configureQuotaAutoPing } from "@/shared/services/quotaAutoPing";
 import bcrypt from "bcryptjs";
 
@@ -26,13 +27,12 @@ export async function GET() {
       oidcClientSecret
     );
 
-    const enableRequestLogs = process.env.ENABLE_REQUEST_LOGS === "true";
     const enableTranslator = process.env.ENABLE_TRANSLATOR === "true";
 
     return NextResponse.json(
       {
         ...safeSettings,
-        enableRequestLogs,
+        // enableRequestLogs comes from persisted settings (seeded from env default)
         enableTranslator,
         hasPassword: !!password,
       },
@@ -99,6 +99,11 @@ export async function PATCH(request) {
     // Apply debug-log toggle immediately (no restart required)
     if (Object.prototype.hasOwnProperty.call(body, "debugLogEnabled")) {
       setDebugEnabled(!!body.debugLogEnabled);
+    }
+
+    // Apply deep request file-logs toggle immediately (no restart required)
+    if (Object.prototype.hasOwnProperty.call(body, "enableRequestLogs")) {
+      setRequestLogsEnabled(!!body.enableRequestLogs);
     }
 
     // Apply outbound proxy settings immediately (no restart required)
