@@ -425,12 +425,22 @@ export function createSSEStream(options = {}) {
           ) {
             const dataStr = trimmed.slice(5).trim();
             // ORDERING MATTERS: Azure fields must be checked before hasContent (R2-F8)
+            // OpenAI Responses API uses event/data pairs with types like
+            // response.output_text.delta / response.reasoning_summary_text.delta.
+            // Those payloads carry text in `delta`, not chat-completions
+            // `choices[].delta.content`. Treating them as "empty" drops the body
+            // while still forwarding bare `event:` lines — clients then only see
+            // rare tokens that accidentally match other heuristics (e.g. "usage").
+            const isOpenAIResponsesChunk =
+              dataStr.includes('"type":"response.') ||
+              dataStr.includes('"type": "response.');
             const needsFullParse =
               dataStr.includes('"finish_reason"') ||
               dataStr.includes('"prompt_filter_results"') ||
               dataStr.includes('"content_filter_results"') || // Azure — before hasContent (R2-F8)
               dataStr.includes('"usage"') ||
-              dataStr.includes('"id":"'); // tighter than '"id":' to avoid content false positives (R2-F7)
+              dataStr.includes('"id":"') || // tighter than '"id":' to avoid content false positives (R2-F7)
+              isOpenAIResponsesChunk;
 
             if (!needsFullParse) {
               const hasContent =
@@ -557,6 +567,23 @@ export function createSSEStream(options = {}) {
               if (reasoning && typeof reasoning === "string") {
                 totalContentLength += reasoning.length;
                 accumulatedThinking += reasoning;
+              }
+              // Responses API: stream text is top-level `delta` on *.delta events
+              if (
+                typeof parsed?.delta === "string" &&
+                typeof parsed?.type === "string" &&
+                parsed.type.startsWith("response.") &&
+                parsed.type.endsWith(".delta")
+              ) {
+                totalContentLength += parsed.delta.length;
+                if (parsed.type.includes("reasoning")) {
+                  accumulatedThinking += parsed.delta;
+                } else if (
+                  parsed.type.includes("output_text") ||
+                  parsed.type.includes("refusal")
+                ) {
+                  accumulatedContent += parsed.delta;
+                }
               }
 
               const extracted = extractUsage(parsed);

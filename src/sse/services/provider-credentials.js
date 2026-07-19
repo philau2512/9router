@@ -350,6 +350,7 @@ export async function markAccountUnavailable(
     lowerError.includes("monthly_request_count") ||
     lowerError.includes("individual quota reached") ||
     lowerError.includes("usage limit exceeded") ||
+    lowerError.includes("balance exhausted") ||
     lowerError.includes("out of credits");
 
   const isSuspended =

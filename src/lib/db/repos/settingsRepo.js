@@ -49,6 +49,8 @@ const DEFAULT_SETTINGS = {
   retryDelayMs: 2000,
   midStreamResumeEnabled: true,
   debugLogEnabled: false,
+  // Deep request/response file logs under logs/ (was ENABLE_REQUEST_LOGS only)
+  enableRequestLogs: process.env.ENABLE_REQUEST_LOGS === "true",
 };
 
 async function readRaw() {

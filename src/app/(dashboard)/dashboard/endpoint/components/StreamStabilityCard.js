@@ -9,11 +9,13 @@ export function StreamStabilityCard({
   retryDelayMs,
   midStreamResumeEnabled,
   debugLogEnabled,
+  enableRequestLogs,
   onAutoRetryOverloadedChange,
   onMaxRetryAttemptsChange,
   onRetryDelayMsChange,
   onMidStreamResumeEnabledChange,
   onDebugLogEnabledChange,
+  onEnableRequestLogsChange,
 }) {
   return (
     <Card id="stream-stability">
@@ -102,6 +104,22 @@ export function StreamStabilityCard({
           onChange={() => onDebugLogEnabledChange(!debugLogEnabled)}
         />
       </div>
+
+      <div className="flex items-center justify-between pt-4 border-t border-border gap-4">
+        <div className="min-w-0 flex-1">
+          <p className="font-medium">Request File Logs</p>
+          <p className="text-sm text-text-muted">
+            Ghi full request/response pipeline vào thư mục{" "}
+            <code className="text-xs">logs/</code> (client → OpenAI → provider).
+            Áp dụng ngay, không cần restart. Tốn disk — chỉ bật khi debug
+            translation.
+          </p>
+        </div>
+        <Toggle
+          checked={enableRequestLogs}
+          onChange={() => onEnableRequestLogsChange(!enableRequestLogs)}
+        />
+      </div>
     </Card>
   );
 }
@@ -112,9 +130,11 @@ StreamStabilityCard.propTypes = {
   retryDelayMs: PropTypes.number.isRequired,
   midStreamResumeEnabled: PropTypes.bool.isRequired,
   debugLogEnabled: PropTypes.bool.isRequired,
+  enableRequestLogs: PropTypes.bool.isRequired,
   onAutoRetryOverloadedChange: PropTypes.func.isRequired,
   onMaxRetryAttemptsChange: PropTypes.func.isRequired,
   onRetryDelayMsChange: PropTypes.func.isRequired,
   onMidStreamResumeEnabledChange: PropTypes.func.isRequired,
   onDebugLogEnabledChange: PropTypes.func.isRequired,
+  onEnableRequestLogsChange: PropTypes.func.isRequired,
 };
