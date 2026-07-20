@@ -18,6 +18,7 @@ vi.mock("../../src/sse/utils/logger.js", () => ({
   warn: vi.fn(),
   error: vi.fn(),
   debug: vi.fn(),
+  hlModel: (model) => model,
 }));
 
 vi.mock("../../open-sse/handlers/chatCore/requestDetail.js", async () => {

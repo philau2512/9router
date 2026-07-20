@@ -225,6 +225,9 @@ export function openaiResponsesToOpenAIRequest(
   delete result.include;
   delete result.prompt_cache_key;
   delete result.store;
+  if (typeof result.reasoning?.effort === "string") {
+    result.reasoning_effort = result.reasoning.effort;
+  }
   delete result.reasoning;
   delete result.client_metadata;
 
@@ -396,6 +399,11 @@ export function openaiToOpenAIResponsesRequest(
   if (body.temperature !== undefined) result.temperature = body.temperature;
   if (body.max_tokens !== undefined) result.max_tokens = body.max_tokens;
   if (body.top_p !== undefined) result.top_p = body.top_p;
+  if (body.reasoning !== undefined) result.reasoning = body.reasoning;
+  if (body.reasoning_effort !== undefined) {
+    result.reasoning = { effort: body.reasoning_effort, summary: "auto" };
+  }
+  if (body.service_tier !== undefined) result.service_tier = body.service_tier;
 
   return result;
 }

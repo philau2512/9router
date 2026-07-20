@@ -1,6 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { KiroExecutor } from "../../open-sse/executors/kiro.js";
 
+function crc32(bytes) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) {
+      crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
 // Build a valid AWS EventStream frame (same layout the parser consumes).
 function createMockFrame(eventType, payloadObj) {
   const enc = new TextEncoder();
@@ -27,7 +38,8 @@ function createMockFrame(eventType, payloadObj) {
   offset += headerValueBytes.length;
   buffer.set(payloadBytes, offset);
   offset += payloadBytes.length;
-  view.setUint32(offset, 0, false);
+  view.setUint32(8, crc32(buffer.subarray(0, 8)), false);
+  view.setUint32(offset, crc32(buffer.subarray(0, offset)), false);
   return buffer;
 }
 
@@ -131,7 +143,11 @@ describe("KiroExecutor buffer boundary invariance (Phase 2)", () => {
     expect(out).toContain("world from Kiro. ");
     expect(out).not.toContain("<thinking>");
     expect(out).not.toContain("</thinking>");
-    expect(out).toContain("reason A");
+    // Thinking body is re-emitted on the reasoning channel, not content.
+    expect(out).toContain('"reasoning_content":"reason A "');
+    expect(out).toContain('"reasoning_content":"reason B"');
+    expect(out).not.toMatch(/"content":"[^"]*reason A/);
+    expect(out).not.toMatch(/"content":"[^"]*reason B/);
     expect(out).toContain('"tool_calls"');
     expect(out.trim().endsWith("data: [DONE]")).toBe(true);
   });

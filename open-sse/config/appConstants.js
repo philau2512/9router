@@ -1,4 +1,6 @@
-import { platform, arch } from "os";
+import { platform, arch, hostname } from "os";
+import { PROVIDERS } from "./providers.js";
+import { createRequire } from "module";
 
 // === Gemini CLI ===
 export const GEMINI_CLI_VERSION = "0.34.0";
@@ -170,11 +172,12 @@ export const ANTIGRAVITY_DEFAULT_SYSTEM =
 
 // Proactive token refresh lead times per provider (ms)
 export const REFRESH_LEAD_MS = {
-  codex: 2 * 60 * 60 * 1000, // 2 hours
+  codex: 5 * 24 * 60 * 60 * 1000, // 5 days
   claude: 4 * 60 * 60 * 1000, // 4 hours
   iflow: 24 * 60 * 60 * 1000, // 24 hours
   qwen: 20 * 60 * 1000, // 20 minutes
-  "kimi-coding": 5 * 60 * 1000, // 5 minutes
+  kimi: 5 * 60 * 1000, // 5 minutes
+  "kimi-coding": 5 * 60 * 1000, // legacy alias
   antigravity: 5 * 60 * 1000, // 5 minutes
 };
 
@@ -185,20 +188,20 @@ export const OAUTH_ENDPOINTS = {
     auth: "https://accounts.google.com/o/oauth2/auth",
   },
   openai: {
-    token: "https://auth.openai.com/oauth/token",
+    token: PROVIDERS.codex.tokenUrl,
     auth: "https://auth.openai.com/oauth/authorize",
   },
   anthropic: {
-    token: "https://api.anthropic.com/v1/oauth/token",
+    token: PROVIDERS.claude.tokenUrl,
     auth: "https://api.anthropic.com/v1/oauth/authorize",
   },
   qwen: {
-    token: "https://qwen.ai/api/v1/oauth2/token",
-    auth: "https://qwen.ai/api/v1/oauth2/device/code",
+    token: PROVIDERS.qwen.tokenUrl,
+    auth: PROVIDERS.qwen.authUrl,
   },
   iflow: {
-    token: "https://iflow.cn/oauth/token",
-    auth: "https://iflow.cn/oauth",
+    token: PROVIDERS.iflow.tokenUrl,
+    auth: PROVIDERS.iflow.authUrl,
   },
   github: {
     token: "https://github.com/login/oauth/access_token",
@@ -207,15 +210,44 @@ export const OAUTH_ENDPOINTS = {
   },
 };
 
-// Generate Kimi OAuth custom headers
-export function buildKimiHeaders() {
+let _appVersion;
+function getAppPackageVersion() {
+  if (_appVersion) return _appVersion;
+  try {
+    const require = createRequire(import.meta.url);
+    _appVersion = require("../../package.json").version || "0.0.0";
+  } catch {
+    _appVersion = process.env.npm_package_version || "0.0.0";
+  }
+  return _appVersion;
+}
+
+// Kimi Code OAuth / API headers (CLIProxyAPI internal/auth/kimi commonHeaders parity).
+// deviceId must stay stable per connection for the whole OAuth session.
+export function buildKimiHeaders(deviceId) {
+  const osName = platform();
+  const architecture = arch();
+  let deviceModel = `${osName} ${architecture}`;
+  if (osName === "darwin") deviceModel = `macOS ${architecture}`;
+  else if (osName === "win32") deviceModel = `Windows ${architecture}`;
+  else if (osName === "linux") deviceModel = `Linux ${architecture}`;
+
+  let deviceName = "unknown";
+  try {
+    deviceName = hostname() || "unknown";
+  } catch {
+    deviceName = "unknown";
+  }
+
+  const resolvedId = (typeof deviceId === "string" && deviceId.trim())
+    ? deviceId.trim()
+    : `kimi-${Date.now()}`;
+
   return {
     "X-Msh-Platform": "9router",
-    "X-Msh-Version": "2.1.2",
-    "X-Msh-Device-Model":
-      typeof process !== "undefined"
-        ? `${process.platform} ${process.arch}`
-        : "unknown",
-    "X-Msh-Device-Id": `kimi-${Date.now()}`,
+    "X-Msh-Version": getAppPackageVersion(),
+    "X-Msh-Device-Name": deviceName,
+    "X-Msh-Device-Model": deviceModel,
+    "X-Msh-Device-Id": resolvedId,
   };
 }

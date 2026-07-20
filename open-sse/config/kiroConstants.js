@@ -8,8 +8,8 @@
  *   - `-agentic` model suffix detection + chunked-write system prompt
  *   - reasoning / thinking trigger detection (Anthropic-Beta header,
  *     Claude `thinking`, OpenAI `reasoning_effort`, AMP/Cursor magic tag)
- *   - the `<thinking_mode>enabled</thinking_mode>` system-prompt injection
- *     that turns Kiro reasoning on
+ *   - schema-specific native effort fields for supported GPT and Claude models
+ *   - legacy `<thinking_mode>` system-prompt injection for other models
  *
  * Kiro upstream does not advertise `-agentic` model IDs; they are a 9router
  * fiction. The suffix is stripped before the request leaves this process.
@@ -39,6 +39,8 @@ export const KIRO_CONVERSATION_NAMESPACE =
 // machineId MUST be identical, or the same account presents two conflicting
 // fingerprints on the same surface (the opposite of the ban-avoidance goal).
 import { createHash } from "crypto";
+import { extractThinking } from "../translator/concerns/thinkingUnified.js";
+import { effortToBudget } from "../translator/concerns/thinking.js";
 
 // aws-sdk sub-client versions — legitimately differ per service surface.
 export const KIRO_STREAMING_SDK_VERSION = "1.0.34"; // codewhispererstreaming
@@ -129,6 +131,9 @@ export const KIRO_DEFAULT_PROFILE_ARNS = {
   social: "arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK",
 };
 
+// Backward-compatible Builder ID default for legacy callers.
+export const KIRO_DEFAULT_PROFILE_ARN = KIRO_DEFAULT_PROFILE_ARNS["builder-id"];
+
 /** True when the resolved request URL targets the kiro.dev gateway surface. */
 export function isKiroDevEndpoint(url) {
   return typeof url === "string" && url.includes("kiro.dev");
@@ -183,17 +188,6 @@ export const KIRO_THINKING_BUDGET_DEFAULT = 16000;
 // Resolve the Kiro thinking budget from client intent.
 // Reuses extractThinking (unified parser) so every client shape maps consistently.
 // Returns a numeric budget to inject, or null when thinking is explicitly disabled.
-// Import lazily to avoid circular deps with translator layer.
-let _extractThinking, _effortToBudget;
-async function getThinkingHelpers() {
-  if (!_extractThinking) {
-    ({ extractThinking: _extractThinking } =
-      await import("../translator/concerns/thinkingUnified.js"));
-    ({ effortToBudget: _effortToBudget } =
-      await import("../translator/concerns/thinking.js"));
-  }
-  return { extractThinking: _extractThinking, effortToBudget: _effortToBudget };
-}
 
 /**
  * Resolve the Kiro thinking budget requested by a client.
@@ -206,13 +200,12 @@ async function getThinkingHelpers() {
  * @returns {number|null} budget to inject, or null when thinking is disabled
  */
 export function resolveKiroThinkingBudget(body, headers, model) {
-  // Inline extractThinking logic (sync, no registry deps needed)
-  const cfg = extractThinkingSync(body);
+  const cfg = extractThinking(body);
   if (cfg) {
     if (cfg.mode === "none") return null;
     if (cfg.mode === "budget") return cfg.budget;
     if (cfg.mode === "level")
-      return effortToBudgetSync(cfg.level) ?? KIRO_THINKING_BUDGET_DEFAULT;
+      return effortToBudget(cfg.level) ?? KIRO_THINKING_BUDGET_DEFAULT;
     return KIRO_THINKING_BUDGET_DEFAULT;
   }
 
@@ -237,47 +230,88 @@ export function resolveKiroThinkingBudget(body, headers, model) {
   return null;
 }
 
-// Inline sync helpers (avoid async import for sync call sites)
-const LEVEL_TO_BUDGET_INLINE = {
-  none: 0,
-  minimal: 512,
-  low: 1024,
-  medium: 8192,
-  high: 24576,
-  xhigh: 32768,
-  max: 128000,
-};
-function effortToBudgetSync(effort) {
+export function extractKiroEffortLevel(body) {
+  const effort =
+    body?.output_config?.effort ??
+    body?.reasoning_effort ??
+    (typeof body?.reasoning === "object" ? body.reasoning?.effort : null);
+  if (typeof effort !== "string") return null;
+  const normalized = effort.toLowerCase();
+  if (["none", "off", "disabled"].includes(normalized)) return null;
+  if (["xhigh", "max"].includes(normalized)) return "high";
+  return ["low", "medium", "high"].includes(normalized)
+    ? normalized
+    : null;
+}
+
+function extractKiroGptEffortLevel(body) {
+  const effort =
+    body?.output_config?.effort ??
+    body?.reasoning_effort ??
+    (typeof body?.reasoning === "object" ? body.reasoning?.effort : null);
+  if (typeof effort !== "string") return null;
+  const normalized = effort.toLowerCase();
+  if (normalized === "max") return "xhigh";
+  return ["low", "medium", "high", "xhigh"].includes(normalized)
+    ? normalized
+    : null;
+}
+
+export function buildKiroAdditionalModelRequestFields(
+  body,
+  effortPath = "output_config",
+) {
+  const effort =
+    effortPath === "reasoning"
+      ? extractKiroGptEffortLevel(body)
+      : extractKiroEffortLevel(body);
   if (!effort) return undefined;
-  return LEVEL_TO_BUDGET_INLINE[String(effort).toLowerCase()];
+  if (effortPath === "reasoning") {
+    return { reasoning: { effort } };
+  }
+  return {
+    thinking: { type: "adaptive", display: "summarized" },
+    output_config: { effort },
+  };
 }
 
-function extractThinkingSync(body) {
-  if (!body || typeof body !== "object") return null;
-  const oc = body.output_config?.effort;
-  if (typeof oc === "string" && oc) {
-    const e = oc.toLowerCase();
-    if (e === "none" || e === "off") return { mode: "none" };
-    if (e === "auto") return { mode: "auto" };
-    return { mode: "level", level: e };
+export function resolveKiroEffortPath(model) {
+  if (typeof model !== "string") return null;
+  const normalized = model.toLowerCase().replace(/-/g, ".");
+  if (/(?:^|[/.])gpt[/.]5[/.]6(?:[/.]|$)/.test(normalized)) {
+    return "reasoning";
   }
-  const t = body.thinking;
-  if (t && typeof t === "object") {
-    if (t.type === "disabled") return { mode: "none" };
-    if (t.type === "adaptive" || t.type === "enabled") return { mode: "auto" };
-    if (typeof t.budget === "number")
-      return { mode: "budget", budget: t.budget };
-  }
-  const re = body.reasoning_effort;
-  if (typeof re === "string" && re) {
-    const e = re.toLowerCase();
-    if (e === "none" || e === "off") return { mode: "none" };
-    if (e === "auto") return { mode: "auto" };
-    return { mode: "level", level: e };
-  }
-  return null;
+  if (!normalized.includes("claude")) return null;
+  const match = normalized.match(
+    /(?:^|[/.])claude(?:[/.][a-z]+)*[/.](\d+)(?:[/.](\d+))?(?:[/.]|$)/,
+  );
+  if (!match) return null;
+  const [, majorText, minorText] = match;
+  const major = Number(majorText);
+  const minor = minorText === undefined ? null : Number(minorText);
+  const dateSuffixMinor = minor !== null && minor >= 1000;
+  return major < 4 || (major === 4 && (minor === null || minor <= 5 || dateSuffixMinor))
+    ? null
+    : "output_config";
 }
 
+export function supportsKiroAdditionalModelRequestFields(model) {
+  return resolveKiroEffortPath(model) !== null;
+}
+
+export function usesKiroNativeGptEffort(body, model) {
+  return (
+    resolveKiroEffortPath(model) === "reasoning" &&
+    extractKiroGptEffortLevel(body) !== null
+  );
+}
+
+export function buildKiroAdditionalModelRequestFieldsForModel(body, model) {
+  const effortPath = resolveKiroEffortPath(model);
+  return effortPath
+    ? buildKiroAdditionalModelRequestFields(body, effortPath)
+    : undefined;
+}
 /**
  * Detect whether reasoning features are explicitly requested via body or model id.
  * Used to decide whether to inject thinking tags even without a -thinking suffix.
@@ -323,6 +357,16 @@ export function isReasoningRequested(body, headers, model) {
   }
 
   return false;
+}
+
+/**
+ * Detect whether an inbound request is asking for reasoning / thinking output.
+ *
+ * This remains a thin wrapper around the fork's unified budget parser so
+ * disabled/adaptive and model-suffix paths remain behaviorally aligned.
+ */
+export function isThinkingEnabled(body, headers, model) {
+  return resolveKiroThinkingBudget(body, headers, model) !== null;
 }
 
 /**

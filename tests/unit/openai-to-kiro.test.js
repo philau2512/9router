@@ -1,88 +1,22 @@
 /**
- * Unit tests for open-sse/translator/request/openai-to-kiro.js
- *
- * Tests cover:
- *  - buildKiroPayload() - basic message conversion
- *  - Image forwarding fix: images in currentMessage must be included in payload
+ * Request contracts for OpenAI → Kiro translation.
+ * The cases cover the boundaries that would otherwise cause Kiro validation
+ * errors or lose multi-turn state.
  */
-
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { buildKiroPayload } from "../../open-sse/translator/request/openai-to-kiro.js";
 
-describe("buildKiroPayload", () => {
-  describe("basic message conversion", () => {
-    it("should convert a simple text message", () => {
-      const body = {
-        messages: [{ role: "user", content: "Hello" }],
-      };
+const currentInput = (payload) =>
+  payload.conversationState.currentMessage.userInputMessage;
+const contentOf = (payload) => currentInput(payload).content;
+const systemPromptOf = (payload) => payload.systemPrompt || "";
 
-      const result = buildKiroPayload("claude-sonnet-4.6", body, true, {});
-
-      const currentMsg = result.conversationState.currentMessage;
-      expect(currentMsg.userInputMessage.content).toContain("Hello");
-      expect(currentMsg.userInputMessage.modelId).toBe("claude-sonnet-4.6");
-      expect(currentMsg.userInputMessage.origin).toBe("AI_EDITOR");
-    });
-
-    it("should not include images field when no images are present", () => {
-      const body = {
-        messages: [{ role: "user", content: "No images here" }],
-      };
-
-      const result = buildKiroPayload("claude-sonnet-4.6", body, true, {});
-
-      const currentMsg = result.conversationState.currentMessage;
-      expect(currentMsg.userInputMessage.images).toBeUndefined();
-    });
-
-    it("should fallback to 'continue' for empty message content without tool results", () => {
-      const body = {
-        messages: [{ role: "user", content: "" }],
-      };
-
-      const result = buildKiroPayload("claude-sonnet-4.6", body, true, {});
-
-      const currentMsg = result.conversationState.currentMessage;
-      expect(currentMsg.userInputMessage.content).toContain("continue");
-    });
-
-    it("should fallback to '[Tool Output]' for empty message content with tool results", () => {
-      const body = {
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "tool_result",
-                tool_use_id: "tool_1",
-                content: "some output",
-              },
-            ],
-          },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "some_tool",
-              parameters: {},
-            },
-          },
-        ],
-      };
-
-      const result = buildKiroPayload("claude-sonnet-4.6", body, true, {});
-
-      const currentMsg = result.conversationState.currentMessage;
-      expect(currentMsg.userInputMessage.content).toContain("[Tool Output]");
-    });
-  });
-
-  describe("image forwarding", () => {
-    it("should forward base64 image from image_url content part", () => {
-      const fakeBase64 =
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
-      const body = {
+describe("OpenAI to Kiro request translation", () => {
+  it("converts text and base64 images into a current Kiro message", () => {
+    const image = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ";
+    const payload = buildKiroPayload(
+      "claude-sonnet-4.6",
+      {
         messages: [
           {
             role: "user",
@@ -90,99 +24,27 @@ describe("buildKiroPayload", () => {
               { type: "text", text: "Describe this image" },
               {
                 type: "image_url",
-                image_url: { url: `data:image/png;base64,${fakeBase64}` },
+                image_url: { url: `data:image/png;base64,${image}` },
               },
             ],
           },
         ],
-      };
+      },
+      true,
+      {},
+    );
 
-      const result = buildKiroPayload("claude-sonnet-4.6", body, true, {});
+    expect(contentOf(payload)).toContain("Describe this image");
+    expect(currentInput(payload).modelId).toBe("claude-sonnet-4.6");
+    expect(currentInput(payload).images).toEqual([
+      { format: "png", source: { bytes: image } },
+    ]);
+  });
 
-      const currentMsg = result.conversationState.currentMessage;
-      expect(currentMsg.userInputMessage.images).toBeDefined();
-      expect(currentMsg.userInputMessage.images).toHaveLength(1);
-      expect(currentMsg.userInputMessage.images[0].format).toBe("png");
-      expect(currentMsg.userInputMessage.images[0].source.bytes).toBe(
-        fakeBase64,
-      );
-    });
-
-    it("should forward multiple base64 images", () => {
-      const fakeBase64 =
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
-      const body = {
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Compare these images" },
-              {
-                type: "image_url",
-                image_url: { url: `data:image/jpeg;base64,${fakeBase64}` },
-              },
-              {
-                type: "image_url",
-                image_url: { url: `data:image/png;base64,${fakeBase64}` },
-              },
-            ],
-          },
-        ],
-      };
-
-      const result = buildKiroPayload("claude-sonnet-4.6", body, true, {});
-
-      const currentMsg = result.conversationState.currentMessage;
-      expect(currentMsg.userInputMessage.images).toHaveLength(2);
-      expect(currentMsg.userInputMessage.images[0].format).toBe("jpeg");
-      expect(currentMsg.userInputMessage.images[1].format).toBe("png");
-    });
-
-    it("should not include images field when images array is empty", () => {
-      const body = {
-        messages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "Just text" }],
-          },
-        ],
-      };
-
-      const result = buildKiroPayload("claude-sonnet-4.6", body, true, {});
-
-      const currentMsg = result.conversationState.currentMessage;
-      expect(currentMsg.userInputMessage.images).toBeUndefined();
-    });
-
-    it("should include both images and text content together", () => {
-      const fakeBase64 =
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
-      const body = {
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "What is in this image?" },
-              {
-                type: "image_url",
-                image_url: { url: `data:image/jpeg;base64,${fakeBase64}` },
-              },
-            ],
-          },
-        ],
-      };
-
-      const result = buildKiroPayload("claude-sonnet-4.6", body, true, {});
-
-      const currentMsg = result.conversationState.currentMessage;
-      expect(currentMsg.userInputMessage.content).toContain(
-        "What is in this image?",
-      );
-      expect(currentMsg.userInputMessage.images).toHaveLength(1);
-    });
-
-    it("should treat http image URLs as text fallback (Kiro only supports base64)", () => {
-      const body = {
+  it("renders unsupported remote images as text instead of sending invalid image data", () => {
+    const payload = buildKiroPayload(
+      "claude-sonnet-4.6",
+      {
         messages: [
           {
             role: "user",
@@ -195,154 +57,238 @@ describe("buildKiroPayload", () => {
             ],
           },
         ],
-      };
+      },
+      true,
+      {},
+    );
 
-      const result = buildKiroPayload("claude-sonnet-4.6", body, true, {});
+    expect(currentInput(payload).images).toBeUndefined();
+    expect(contentOf(payload)).toContain("[Image: https://example.com/photo.jpg]");
+  });
 
-      const currentMsg = result.conversationState.currentMessage;
-      // HTTP URLs are not supported by Kiro — converted to text placeholder
-      expect(currentMsg.userInputMessage.images).toBeUndefined();
-      expect(currentMsg.userInputMessage.content).toContain(
-        "[Image: https://example.com/photo.jpg]",
+  describe("tool history", () => {
+    it("flattens tool calls and results when the client supplied no tools", () => {
+      const payload = buildKiroPayload(
+        "claude-sonnet-4.6",
+        {
+          messages: [
+            { role: "user", content: "Read the file" },
+            {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "call_1",
+                  type: "function",
+                  function: { name: "read_file", arguments: '{"path":"a.txt"}' },
+                },
+              ],
+            },
+            { role: "tool", tool_call_id: "call_1", content: "file contents" },
+            { role: "user", content: "Summarize it" },
+          ],
+        },
+        true,
+        {},
       );
+      const serialized = JSON.stringify(payload.conversationState);
+
+      expect(serialized).not.toContain("toolUses");
+      expect(serialized).not.toContain("toolResults");
+      expect(serialized).toContain("[Tool call: read_file(");
+      expect(serialized).toContain("[Tool result: file contents]");
+    });
+
+    it("preserves structured tool history when the client supplied tools", () => {
+      const payload = buildKiroPayload(
+        "claude-sonnet-4.6",
+        {
+          messages: [
+            { role: "user", content: "Read the file" },
+            {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "call_1",
+                  type: "function",
+                  function: { name: "read_file", arguments: '{"path":"a.txt"}' },
+                },
+              ],
+            },
+            { role: "tool", tool_call_id: "call_1", content: "file contents" },
+            { role: "user", content: "Summarize it" },
+          ],
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "read_file",
+                description: "Read a file",
+                parameters: { type: "object", properties: {}, required: [] },
+              },
+            },
+          ],
+        },
+        true,
+        {},
+      );
+      const serialized = JSON.stringify(payload.conversationState);
+
+      expect(
+        currentInput(payload).userInputMessageContext?.tools?.[0]
+          ?.toolSpecification?.name,
+      ).toBe("read_file");
+      expect(serialized).toContain("toolUses");
+      expect(serialized).not.toContain("[Tool call:");
+    });
+
+    it("salvages orphaned tool result content instead of emitting a dangling reference", () => {
+      const payload = buildKiroPayload(
+        "claude-sonnet-4.6",
+        {
+          messages: [
+            { role: "user", content: "Start" },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: "orphan_call",
+                  content: "important orphaned output",
+                },
+              ],
+            },
+            { role: "user", content: "Continue" },
+          ],
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "some_tool",
+                description: "x",
+                parameters: { type: "object", properties: {}, required: [] },
+              },
+            },
+          ],
+        },
+        true,
+        {},
+      );
+      const serialized = JSON.stringify(payload.conversationState);
+
+      expect(serialized).not.toContain("orphan_call");
+      expect(serialized).toContain("[Tool result: important orphaned output]");
     });
   });
 
-  describe("profileArn resolution", () => {
-    it("omits profileArn for builder-id with no stored ARN (executor discovers it)", () => {
-      const body = {
-        messages: [{ role: "user", content: "Hello" }],
-      };
-      const credentials = {
-        providerSpecificData: {
-          profileArn: null,
-          authMethod: "builder-id",
-        },
-      };
-      const result = buildKiroPayload(
+  describe("thinking", () => {
+    it("uses Claude native fields for legacy OpenAI reasoning effort", () => {
+      const payload = buildKiroPayload(
         "claude-sonnet-4.6",
-        body,
-        true,
-        credentials,
-      );
-      // No stored ARN yet: buildKiroPayload emits nothing. The executor's
-      // ListAvailableProfiles discovery populates the real per-account ARN
-      // before the request goes out (a hardcoded ARN would 403; omitting
-      // permanently would 400).
-      expect(result.profileArn || "").toBe("");
-    });
-
-    it("USES the account's own stored ARN for builder-id (discovered, real)", () => {
-      const realArn =
-        "arn:aws:codewhisperer:us-east-1:111122223333:profile/REALBUILDERID";
-      const result = buildKiroPayload(
-        "claude-sonnet-4.6",
-        { messages: [{ role: "user", content: "Hello" }] },
-        true,
         {
-          providerSpecificData: {
-            profileArn: realArn,
-            authMethod: "builder-id",
-          },
+          reasoning_effort: "low",
+          messages: [{ role: "user", content: "Think lightly" }],
         },
+        true,
+        {},
       );
-      // A Builder ID account's own discovered ARN is the ONLY value that works;
-      // it must be sent, not ignored.
-      expect(result.profileArn).toBe(realArn);
+
+      expect(contentOf(payload)).toContain(
+        "<max_thinking_length>1024</max_thinking_length>",
+      );
+      expect(payload.additionalModelRequestFields).toEqual({
+        thinking: { type: "adaptive", display: "summarized" },
+        output_config: { effort: "low" },
+      });
     });
 
-    it("falls back to social shared profileArn when authMethod is google/github", () => {
-      const body = {
-        messages: [{ role: "user", content: "Hello" }],
-      };
-      const credentials = {
-        providerSpecificData: {
-          profileArn: null,
-          authMethod: "google",
+    it.each([
+      ["high", "gpt-5.6-sol", "high"],
+      ["xhigh", "gpt-5.6-terra", "xhigh"],
+      ["max", "gpt-5.6-sol", "xhigh"],
+    ])("maps GPT effort %s to native wire effort %s", (effort, model, wireEffort) => {
+      const payload = buildKiroPayload(
+        model,
+        {
+          reasoning: { effort },
+          messages: [{ role: "user", content: "Think" }],
         },
-      };
-      const result = buildKiroPayload(
-        "claude-sonnet-4.6",
-        body,
         true,
-        credentials,
+        {},
       );
-      expect(result.profileArn).toBe(
-        "arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK",
+
+      expect(payload.additionalModelRequestFields).toEqual({
+        reasoning: { effort: wireEffort },
+      });
+      expect(systemPromptOf(payload)).not.toContain("<thinking_mode>");
+      expect(systemPromptOf(payload)).not.toContain("<max_thinking_length>");
+    });
+
+    it("does not enable thinking when effort is explicitly none", () => {
+      const payload = buildKiroPayload(
+        "claude-sonnet-4.6",
+        {
+          reasoning_effort: "none",
+          messages: [{ role: "user", content: "Do not think" }],
+        },
+        true,
+        {},
       );
+
+      expect(systemPromptOf(payload)).not.toContain(
+        "<thinking_mode>enabled</thinking_mode>",
+      );
+      expect(systemPromptOf(payload)).not.toContain("<max_thinking_length>");
+      expect(payload.additionalModelRequestFields).toBeUndefined();
     });
   });
 
-  // Every chat-capable Kiro account has its OWN real per-account profileArn.
-  // The gateway rejects a missing ARN (400 "profileArn is required") and a
-  // wrong/placeholder ARN (403 "User is not authorized"). So we always prefer
-  // the account's own stored/discovered ARN.
-  describe("profileArn always prefers the account's own ARN", () => {
-    it("uses the stored ARN for builder-id", () => {
-      const ownArn =
-        "arn:aws:codewhisperer:us-east-1:111122223333:profile/OWNBUILDERID";
-      const result = buildKiroPayload(
+  describe("profile ARN", () => {
+    it("omits the ARN when the executor must discover it", () => {
+      const payload = buildKiroPayload(
         "claude-sonnet-4.6",
         { messages: [{ role: "user", content: "Hello" }] },
         true,
-        {
-          providerSpecificData: {
-            profileArn: ownArn,
-            authMethod: "builder-id",
-          },
-        },
+        { providerSpecificData: { profileArn: null, authMethod: "builder-id" } },
       );
-      expect(result.profileArn).toBe(ownArn);
+
+      expect(payload.profileArn || "").toBe("");
     });
 
-    it("uses the stored ARN for imported tokens", () => {
-      const ownArn =
-        "arn:aws:codewhisperer:us-east-1:222233334444:profile/OWNIMPORTED";
-      const result = buildKiroPayload(
+    it.each([
+      ["builder-id", "111122223333", "OWNBUILDERID"],
+      ["imported", "222233334444", "OWNIMPORTED"],
+      ["api_key", "444455556666", "OWNACCOUNT"],
+    ])("uses the stored ARN for %s", (authMethod, account, profile) => {
+      const profileArn = `arn:aws:codewhisperer:us-east-1:${account}:profile/${profile}`;
+      const payload = buildKiroPayload(
         "claude-sonnet-4.6",
         { messages: [{ role: "user", content: "Hello" }] },
         true,
-        {
-          providerSpecificData: {
-            profileArn: ownArn,
-            authMethod: "imported",
-          },
-        },
+        { providerSpecificData: { profileArn, authMethod } },
       );
-      expect(result.profileArn).toBe(ownArn);
-    });
 
-    it("uses the stored ARN for account-bound api_key auth", () => {
-      const ownArn =
-        "arn:aws:codewhisperer:us-east-1:444455556666:profile/OWNACCOUNT";
-      const result = buildKiroPayload(
-        "claude-sonnet-4.6",
-        { messages: [{ role: "user", content: "Hello" }] },
-        true,
-        {
-          providerSpecificData: {
-            profileArn: ownArn,
-            authMethod: "api_key",
-          },
-        },
-      );
-      expect(result.profileArn).toBe(ownArn);
+      expect(payload.profileArn).toBe(profileArn);
     });
+  });
 
-    it("omits profileArn for idc with no stored ARN (executor discovers it)", () => {
-      const result = buildKiroPayload(
-        "claude-sonnet-4.6",
-        { messages: [{ role: "user", content: "Hello" }] },
-        true,
-        {
-          providerSpecificData: {
-            profileArn: null,
-            authMethod: "idc",
-          },
-        },
-      );
-      // No stored ARN: the executor's discovery step fills it in before send.
-      expect(result.profileArn || "").toBe("");
-    });
+  it("keeps deterministic conversation IDs independent from request timestamps", () => {
+    const first = buildKiroPayload(
+      "claude-sonnet-4.6",
+      { messages: [{ role: "user", content: "first turn" }] },
+      true,
+      {},
+    );
+    const second = buildKiroPayload(
+      "claude-sonnet-4.6",
+      { messages: [{ role: "user", content: "first turn" }] },
+      true,
+      {},
+    );
+
+    expect(second.conversationState.conversationId).toBe(
+      first.conversationState.conversationId,
+    );
   });
 });

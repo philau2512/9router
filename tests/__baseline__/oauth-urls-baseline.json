@@ -22,8 +22,8 @@
       "token": "https://auth.openai.com/oauth/token"
     },
     "qwen": {
-      "auth": "https://qwen.ai/api/v1/oauth2/device/code",
-      "token": "https://qwen.ai/api/v1/oauth2/token"
+      "auth": "https://chat.qwen.ai/api/v1/oauth2/device/code",
+      "token": "https://chat.qwen.ai/api/v1/oauth2/token"
     }
   },
   "providerEndpoints": {

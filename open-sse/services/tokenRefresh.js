@@ -9,7 +9,6 @@
  *   - ./refresh-orchestrator.js (routing, formatting, retry)
  */
 
-// ── Dedup, constants, error checks ──────────────────────────────────
 export {
   TOKEN_EXPIRY_BUFFER_MS,
   isUnrecoverableRefreshError,
@@ -17,10 +16,10 @@ export {
   classifyOAuthRefreshError,
 } from "./refresh-dedup.js";
 
-// ── Provider-specific refresh functions ─────────────────────────────
 export {
   refreshXaiToken,
   refreshAccessToken,
+  refreshKimiToken,
   refreshClaudeOAuthToken,
   refreshGoogleToken,
   refreshQwenToken,
@@ -30,12 +29,10 @@ export {
   refreshGitHubToken,
   refreshCopilotToken,
   refreshCodebuddyToken,
-} from "./refresh-providers.js";
+} from "./tokenRefresh/providers.js";
 
-// ── Vertex AI ───────────────────────────────────────────────────────
 export { parseVertexSaJson, refreshVertexToken } from "./refresh-vertex.js";
 
-// ── Orchestration, formatting, retry ────────────────────────────────
 export {
   getAccessToken,
   refreshTokenByProvider,

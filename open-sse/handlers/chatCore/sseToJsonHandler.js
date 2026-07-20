@@ -40,6 +40,7 @@ function pickAssistantMessageForChatCompletion(output) {
  */
 export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
   const chunks = [];
+  let streamError = null;
 
   for (const line of String(rawSSE || "").split("\n")) {
     const trimmed = line.trim();
@@ -47,12 +48,15 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
     const payload = trimmed.slice(5).trim();
     if (!payload || payload === "[DONE]") continue;
     try {
-      chunks.push(JSON.parse(payload));
+      const chunk = JSON.parse(payload);
+      if (chunk?.error) streamError = chunk.error;
+      else chunks.push(chunk);
     } catch {
       /* ignore malformed lines */
     }
   }
 
+  if (streamError) return { error: streamError };
   if (chunks.length === 0) return null;
 
   const first = chunks[0];
@@ -311,11 +315,18 @@ export async function handleForcedSSEToJson({
   try {
     const sseText = await providerResponse.text();
     const parsed = parseSSEToOpenAIResponse(sseText, model);
-    if (!parsed)
+    if (!parsed) {
       return createErrorResult(
         HTTP_STATUS.BAD_GATEWAY,
         "Invalid SSE response for non-streaming request",
       );
+    }
+    if (parsed.error) {
+      return createErrorResult(
+        HTTP_STATUS.BAD_GATEWAY,
+        parsed.error.message || "Upstream SSE stream failed",
+      );
+    }
 
     if (onRequestSuccess) await onRequestSuccess();
 

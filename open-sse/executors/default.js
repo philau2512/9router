@@ -283,8 +283,8 @@ export class DefaultExecutor extends BaseExecutor {
       cline: () => this.refreshCline(credentials.refreshToken, proxyOptions),
       clinepass: () =>
         this.refreshCline(credentials.refreshToken, proxyOptions),
-      "kimi-coding": () =>
-        this.refreshKimiCoding(credentials.refreshToken, proxyOptions),
+      kimi: () => this.refreshKimi(credentials, proxyOptions),
+      "kimi-coding": () => this.refreshKimi(credentials, proxyOptions),
       kilocode: () =>
         this.refreshKilocode(credentials.refreshToken, proxyOptions),
     };
@@ -501,21 +501,24 @@ export class DefaultExecutor extends BaseExecutor {
     };
   }
 
-  async refreshKimiCoding(refreshToken, proxyOptions = null) {
-    const kimiHeaders = buildKimiHeaders();
+  async refreshKimi(credentials, proxyOptions = null) {
+    const refreshToken = credentials.refreshToken;
+    const cfg = PROVIDERS.kimi || PROVIDERS["kimi-coding"];
+    if (!cfg?.refreshUrl || !cfg?.clientId) return null;
+
     const response = await proxyAwareFetch(
-      "https://auth.kimi.com/api/oauth/token",
+      cfg.refreshUrl,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
           Accept: "application/json",
-          ...kimiHeaders,
+          ...buildKimiHeaders(credentials?.providerSpecificData?.deviceId),
         },
         body: new URLSearchParams({
           grant_type: "refresh_token",
           refresh_token: refreshToken,
-          client_id: "17e5f671-d194-4dfb-9706-5516cb48c098",
+          client_id: cfg.clientId,
         }),
       },
       proxyOptions,

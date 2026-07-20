@@ -64,8 +64,55 @@ export default function ModelSelectModal({
   // null = live not settled yet (show static); object after settle (fail-open empty {})
   const [liveModelsByProviderId, setLiveModelsByProviderId] = useState(null);
   const [liveModelsLoading, setLiveModelsLoading] = useState(false);
+  const [cursorModels, setCursorModels] = useState([]);
   // vision/reasoning badges (eye/brain) for each model chip
   const { getCaps } = useModelCaps();
+
+  const cursorConnectionIds = useMemo(
+    () =>
+      activeProviders
+        .filter((provider) => provider.provider === "cursor" && provider.id)
+        .map((provider) => provider.id),
+    [activeProviders],
+  );
+
+  useEffect(() => {
+    if (!isOpen || cursorConnectionIds.length === 0) {
+      setCursorModels([]);
+      return undefined;
+    }
+
+    let cancelled = false;
+    Promise.all(
+      cursorConnectionIds.map(async (connectionId) => {
+        const response = await fetch(`/api/providers/${connectionId}/models`, {
+          cache: "no-store",
+        });
+        if (!response.ok) return [];
+        const data = await response.json();
+        return Array.isArray(data.models) ? data.models : [];
+      }),
+    )
+      .then((modelLists) => {
+        if (cancelled) return;
+        const seen = new Set();
+        setCursorModels(
+          modelLists.flat().filter((model) => {
+            if (!model?.id || seen.has(model.id)) return false;
+            seen.add(model.id);
+            return true;
+          }),
+        );
+      })
+      .catch((error) => {
+        console.warn("Unable to load Cursor models for selector:", error);
+        if (!cancelled) setCursorModels([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, cursorConnectionIds]);
 
   const fetchCombos = useCallback(async () => {
     try {
@@ -436,7 +483,9 @@ export default function ModelSelectModal({
           hasModels: modelsToShow.some((m) => !m.isPlaceholder),
         };
       } else {
-        const hardcodedModels = getModelsByProviderId(providerId);
+        const hardcodedModels = providerId === "cursor" && cursorModels.length > 0
+          ? cursorModels
+          : getModelsByProviderId(providerId);
         const hardcodedIds = new Set(hardcodedModels.map((m) => m.id));
 
         // Custom models: if no hardcoded models (e.g. openrouter), show all aliases for this provider
@@ -561,6 +610,7 @@ export default function ModelSelectModal({
     kindFilter,
     activeProviders,
     liveModelsByProviderId,
+    cursorModels,
   ]);
 
   // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)

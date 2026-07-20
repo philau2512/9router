@@ -184,31 +184,24 @@ export default function ModelsCard({
   const [testingModelId, setTestingModelId] = useState(null);
   const [testError, setTestError] = useState("");
   const [showAddCustomModel, setShowAddCustomModel] = useState(false);
-  const [connections, setConnections] = useState([]);
 
   const providerAlias = providerAliasOverride || getProviderAlias(providerId);
   const effectiveType = kindFilter || "llm";
 
   const fetchData = useCallback(async () => {
     try {
-      const [aliasRes, connRes, customRes] = await Promise.all([
+      const [aliasRes, customRes] = await Promise.all([
         fetch("/api/models/alias"),
-        fetch("/api/providers", { cache: "no-store" }),
         fetch("/api/models/custom", { cache: "no-store" }),
       ]);
       const aliasData = await aliasRes.json();
-      const connData = await connRes.json();
       const customData = await customRes.json();
       if (aliasRes.ok) setModelAliases(aliasData.aliases || {});
-      if (connRes.ok)
-        setConnections(
-          (connData.connections || []).filter((c) => c.provider === providerId),
-        );
       if (customRes.ok) setCustomModels(customData.models || []);
-    } catch (e) {
-      console.log("ModelsCard fetch error:", e);
+    } catch (error) {
+      console.log("ModelsCard fetch error:", error);
     }
-  }, [providerId]);
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -357,11 +350,7 @@ export default function ModelsCard({
                 onSetAlias={(alias) => handleSetAlias(model.id, alias)}
                 onDeleteAlias={() => handleDeleteAlias(existingAlias)}
                 testStatus={modelTestResults[model.id]}
-                onTest={
-                  connections.length > 0
-                    ? () => handleTestModel(model.id)
-                    : undefined
-                }
+                onTest={() => handleTestModel(model.id)}
                 isTesting={testingModelId === model.id}
                 isFree={model.isFree}
               />
@@ -378,11 +367,7 @@ export default function ModelsCard({
               onSetAlias={() => {}}
               onDeleteAlias={() => handleDeleteCustomModel(model.id)}
               testStatus={modelTestResults[model.id]}
-              onTest={
-                connections.length > 0
-                  ? () => handleTestModel(model.id)
-                  : undefined
-              }
+              onTest={() => handleTestModel(model.id)}
               isTesting={testingModelId === model.id}
               isCustom
             />

@@ -48,6 +48,29 @@ export default function OpenCodeToolCard({
     selectedModelsRef.current = selectedModels;
   }, [selectedModels]);
 
+  useEffect(() => {
+    if (apiKeys?.length > 0 && !selectedApiKey) {
+      setSelectedApiKey(apiKeys[0].key);
+    }
+  }, [apiKeys, selectedApiKey]);
+
+  useEffect(() => {
+    if (initialStatus) setStatus(initialStatus);
+  }, [initialStatus]);
+
+  useEffect(() => {
+    if (!isExpanded) return;
+    if (!status) void checkStatus();
+    void fetchModelAliases();
+  }, [isExpanded, status]);
+
+  useEffect(() => {
+    if (status?.opencode?.models) setSelectedModels(status.opencode.models);
+    if (status?.opencode?.activeModel) setActiveModel(status.opencode.activeModel);
+    if (status?.config?.agent?.explorer?.model?.startsWith("9router/")) {
+      setSubagentModel(status.config.agent.explorer.model.replace("9router/", ""));
+    }
+  }, [status]);
   const fetchModelAliases = async () => {
     try {
       const res = await fetch("/api/models/alias");
@@ -287,8 +310,10 @@ export default function OpenCodeToolCard({
               className="size-8 object-contain rounded-lg"
               sizes="32px"
               onError={(e) => {
-                e.target.style.display = "none";
+                e.currentTarget.style.display = "none";
               }}
+              loading="lazy"
+              decoding="async"
             />
           </div>
           <div className="min-w-0">
@@ -677,11 +702,9 @@ export default function OpenCodeToolCard({
           }
         }}
         onDeselect={(model) => {
-          const remaining = selectedModels.filter((m) => m !== model.value);
+          const remaining = selectedModels.filter((item) => item !== model.value);
           setSelectedModels(remaining);
-          if (activeModel === model.value) {
-            setActiveModel(remaining[0] || "");
-          }
+          if (activeModel === model.value) setActiveModel(remaining[0] || "");
         }}
         selectedModel={null}
         activeProviders={activeProviders}

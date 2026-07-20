@@ -814,7 +814,7 @@ async function startServer(latestVersionPromise) {
   function spawnServer() {
     serverStartTime = Date.now();
     crashLog = [];
-    const child = spawn(RUNTIME, ["--max-old-space-size=6144", serverPath], {
+    const child = spawn(RUNTIME, ["--dns-result-order=ipv4first", "--max-old-space-size=6144", serverPath], {
       cwd: standaloneDir,
       stdio: showLog ? "inherit" : ["ignore", "ignore", "pipe"],
       detached: true,
@@ -996,7 +996,14 @@ async function startServer(latestVersionPromise) {
 
           const bgProcess = spawn(
             process.execPath,
-            [__filename, "--tray", "--skip-update", "-p", port.toString()],
+            [
+              "--dns-result-order=ipv4first",
+              __filename,
+              "--tray",
+              "--skip-update",
+              "-p",
+              port.toString(),
+            ],
             {
               detached: true,
               stdio: "ignore",

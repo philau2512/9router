@@ -554,8 +554,8 @@ export async function handleChatCore({
   // Execute request
   let providerResponse, providerUrl, providerHeaders, finalBody;
   let providerObjectStream = null;
-  // Reusable executor invocation (same credential) — used for the initial call,
-  // the 401/403 refresh-retry, and the Phase 2 soft-rate-limit instant-retry.
+  let providerResponseFormat = targetFormat;
+  // All retry paths must keep executor-specific output metadata in sync.
   const runExecutor = () =>
     executor.execute({
       model,
@@ -578,6 +578,7 @@ export async function handleChatCore({
     providerHeaders = result.headers;
     finalBody = result.transformedBody;
     providerObjectStream = result.kiroObjectStream || null;
+    providerResponseFormat = result.responseFormat || targetFormat;
     reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
   } catch (error) {
     trackPendingRequest(model, provider, connectionId, false, true);
@@ -645,21 +646,14 @@ export async function handleChatCore({
           }
         }
         try {
-          const retryResult = await executor.execute({
-            model,
-            body: translatedBody,
-            stream,
-            credentials,
-            signal: streamController.signal,
-            log,
-            proxyOptions,
-            emitObjects: wantKiroObjects,
-            onProfileArnDiscovered,
-          });
+          const retryResult = await runExecutor();
           if (retryResult.response.ok) {
             providerResponse = retryResult.response;
             providerUrl = retryResult.url;
+            providerHeaders = retryResult.headers;
+            finalBody = retryResult.transformedBody;
             providerObjectStream = retryResult.kiroObjectStream || null;
+            providerResponseFormat = retryResult.responseFormat || targetFormat;
           }
         } catch {
           log?.warn?.(
@@ -719,6 +713,7 @@ export async function handleChatCore({
         providerHeaders = r.headers;
         finalBody = r.transformedBody;
         providerObjectStream = r.kiroObjectStream || null;
+        providerResponseFormat = r.responseFormat || targetFormat;
       } catch (e) {
         log?.warn?.(
           "RATELIMIT",
@@ -811,7 +806,7 @@ export async function handleChatCore({
       ...sharedCtx,
       providerResponse,
       sourceFormat,
-      targetFormat,
+      targetFormat: providerResponseFormat,
       reqLogger,
       toolNameMap,
       trackDone,
@@ -822,30 +817,27 @@ export async function handleChatCore({
   }
 
   // Streaming response
-  const { onStreamComplete: _baseOnStreamComplete, streamDetailId } =
+  const { onStreamComplete: baseOnStreamComplete, streamDetailId } =
     buildOnStreamComplete({
       ...sharedCtx,
       timing,
     });
-  const _agReplayKey =
+  const antigravityReplayKey =
     provider === "antigravity" ? getAntigravitySessionKey(model, body) : null;
-  const onStreamComplete = _agReplayKey
-    ? (contentObj, usage, ttftAt, streamDetailId) => {
-        if (contentObj?.thinking)
-          setCachedThinking(_agReplayKey, contentObj.thinking);
-        return _baseOnStreamComplete?.(
-          contentObj,
-          usage,
-          ttftAt,
-          streamDetailId,
-        );
+  const onStreamComplete = antigravityReplayKey
+    ? (contentObj, usage, ttftAt, detailId) => {
+        if (contentObj?.thinking) {
+          setCachedThinking(antigravityReplayKey, contentObj.thinking);
+        }
+        return baseOnStreamComplete?.(contentObj, usage, ttftAt, detailId);
       }
-    : _baseOnStreamComplete;
+    : baseOnStreamComplete;
+
   return handleStreamingResponse({
     ...sharedCtx,
     providerResponse,
     sourceFormat,
-    targetFormat,
+    targetFormat: providerResponseFormat,
     userAgent,
     reqLogger,
     toolNameMap,
@@ -854,7 +846,6 @@ export async function handleChatCore({
     credentials,
     timing,
     streamDetailId,
-    // Phase 3 (option c): non-null only for streaming Kiro+translate (fused path).
     kiroObjectStream: providerObjectStream,
   });
 }

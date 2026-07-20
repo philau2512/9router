@@ -228,14 +228,18 @@ export const CURSOR_CONFIG = {
   },
 };
 
-// Kimi Coding OAuth Configuration (Device Code Flow)
-export const KIMI_CODING_CONFIG = {
+// Kimi Code OAuth is now canonicalized as `kimi`; retain the old export for callers
+// that still import the historical name.
+export const KIMI_CONFIG = {
   clientId:
     process.env.KIMI_CODING_OAUTH_CLIENT_ID ||
+    process.env.KIMI_OAUTH_CLIENT_ID ||
     "17e5f671-d194-4dfb-9706-5516cb48c098",
   deviceCodeUrl: "https://auth.kimi.com/api/oauth/device_authorization",
   tokenUrl: "https://auth.kimi.com/api/oauth/token",
 };
+// Back-compat alias for any remaining KIMI_CODING_CONFIG imports
+export const KIMI_CODING_CONFIG = KIMI_CONFIG;
 
 // KiloCode OAuth Configuration (Custom Device Auth Flow)
 export const KILOCODE_CONFIG = {
@@ -281,6 +285,14 @@ export const CODEBUDDY_CONFIG = {
   pollInterval: 5000,
 };
 
+export const KIMCHI_CONFIG = {
+  webAppUrl: "https://app.kimchi.dev",
+  validationUrl: "https://api.cast.ai/v1/llm/openai/supported-providers",
+  meUrl: "https://app.kimchi.dev/api/v1/me",
+  callbackPath: "/oauth/callback",
+  callbackTimeoutMs: 5 * 60 * 1000,
+};
+
 // OAuth timeout (5 minutes)
 export const OAUTH_TIMEOUT = 300000;
 
@@ -310,7 +322,8 @@ export const PROVIDERS = {
   GITHUB: "github",
   KIRO: "kiro",
   CURSOR: "cursor",
-  KIMI_CODING: "kimi-coding",
+  KIMI: "kimi",
+  KIMI_CODING: "kimi",
   KILOCODE: "kilocode",
   CLINE: "cline",
   CLINEPASS: "clinepass",

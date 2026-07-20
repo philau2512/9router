@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Card, ModelSelectModal } from "@/shared/components";
+import { getProviderIconSrc, markProviderIconMissing } from "@/shared/utils/providerIcon";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import Image from "next/image";
 import ApiKeySelect from "./ApiKeySelect";
@@ -256,9 +257,10 @@ export default function DefaultToolCard({
           width={32}
           height={32}
           className="size-8 object-contain rounded-lg"
-          sizes="32px"
+          loading="lazy"
+          decoding="async"
           onError={(e) => {
-            e.target.style.display = "none";
+            e.currentTarget.style.display = "none";
           }}
         />
       );
@@ -273,17 +275,24 @@ export default function DefaultToolCard({
         </span>
       );
     }
+    const iconSrc = getProviderIconSrc(toolId);
+    if (!iconSrc) {
+      return <span className="text-xs font-bold" style={{ color: tool.color }}>{(toolId || "?").slice(0, 2).toUpperCase()}</span>;
+    }
     return (
       <Image
-        src={`/providers/${toolId}.png`}
+        src={iconSrc}
         alt={tool.name}
         width={32}
         height={32}
         className="size-8 object-contain rounded-lg"
         sizes="32px"
         onError={(e) => {
-          e.target.style.display = "none";
+          markProviderIconMissing(toolId);
+          e.currentTarget.style.display = "none";
         }}
+        loading="lazy"
+        decoding="async"
       />
     );
   };
@@ -318,14 +327,16 @@ export default function DefaultToolCard({
         </div>
       )}
 
-      <ModelSelectModal
-        isOpen={showModelModal}
-        onClose={() => setShowModelModal(false)}
-        onSelect={handleSelectModel}
-        selectedModel={modelValue}
-        activeProviders={activeProviders}
-        title="Select Model"
-      />
+      {showModelModal && (
+        <ModelSelectModal
+          isOpen={showModelModal}
+          onClose={() => setShowModelModal(false)}
+          onSelect={handleSelectModel}
+          selectedModel={modelValue}
+          activeProviders={activeProviders}
+          title="Select Model"
+        />
+      )}
     </Card>
   );
 }

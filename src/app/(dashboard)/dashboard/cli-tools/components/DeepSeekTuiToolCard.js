@@ -217,8 +217,10 @@ model = "${selectedModel || "provider/model-id"}"
               className="size-8 object-contain rounded-lg"
               sizes="32px"
               onError={(e) => {
-                e.target.style.display = "none";
+                e.currentTarget.style.display = "none";
               }}
+              loading="lazy"
+              decoding="async"
             />
           </div>
           <div className="min-w-0">
@@ -468,15 +470,17 @@ model = "${selectedModel || "provider/model-id"}"
         </div>
       )}
 
-      <ModelSelectModal
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onSelect={handleModelSelect}
-        selectedModel={selectedModel}
-        activeProviders={activeProviders}
-        modelAliases={modelAliases}
-        title="Select Model for DeepSeek TUI"
-      />
+      {modalOpen && (
+        <ModelSelectModal
+          isOpen={modalOpen}
+          onClose={() => setModalOpen(false)}
+          onSelect={handleModelSelect}
+          selectedModel={selectedModel}
+          activeProviders={activeProviders}
+          modelAliases={modelAliases}
+          title="Select Model for DeepSeek TUI"
+        />
+      )}
 
       <ManualConfigModal
         isOpen={showManualConfigModal}

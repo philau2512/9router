@@ -193,8 +193,10 @@ export default function McpMarketplaceModal({
                         alt=""
                         className="size-7 rounded shrink-0 object-contain"
                         onError={(e) => {
-                          e.target.style.display = "none";
+                          e.currentTarget.style.display = "none";
                         }}
+                        loading="lazy"
+                        decoding="async"
                       />
                     ) : (
                       <div className="size-7 rounded bg-surface shrink-0" />

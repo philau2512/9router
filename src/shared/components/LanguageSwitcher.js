@@ -39,6 +39,7 @@ const getLocaleInfo = (locale) => {
     tl: { name: "Tagalog", flag: "🇵🇭" },
     id: { name: "Indonesia", flag: "🇮🇩" },
     th: { name: "ไทย", flag: "🇹🇭" },
+    km: { name: "ខ្មែរ", flag: "🇰🇭" },
     hi: { name: "हिन्दी", flag: "🇮🇳" },
     bn: { name: "বাংলা", flag: "🇧🇩" },
     ur: { name: "اردو", flag: "🇵🇰" },
@@ -68,6 +69,13 @@ export default function LanguageSwitcher({
 
   const isControlled = typeof controlledOpen === "boolean";
   const isOpen = isControlled ? controlledOpen : internalOpen;
+  const setIsOpen = (value, nextLocale = locale) => {
+    if (isControlled) {
+      if (!value && onClose) onClose(nextLocale);
+    } else {
+      setInternalOpen(value);
+    }
+  };
 
   const refreshLocale = useCallback(() => {
     const nextLocale = getLocaleFromCookie();
@@ -123,13 +131,6 @@ export default function LanguageSwitcher({
     if (nextLocale === locale || isPending) return;
 
     setIsPending(true);
-
-    if (isControlled) {
-      if (onClose) onClose(locale);
-    } else {
-      setInternalOpen(false);
-    }
-
     try {
       await fetch("/api/locale", {
         method: "POST",
@@ -139,6 +140,7 @@ export default function LanguageSwitcher({
 
       await reloadTranslations();
       setLocale(nextLocale);
+      setIsOpen(false, nextLocale);
     } catch (err) {
       console.error("Failed to set locale:", err);
       refreshLocale();

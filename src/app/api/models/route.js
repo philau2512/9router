@@ -11,21 +11,30 @@ export async function GET() {
     const modelAliases = await getModelAliases();
     const disabled = await getDisabledModels();
 
-    const models = AI_MODELS.filter((m) => {
-      const alias = getProviderAlias(m.provider) || m.provider;
-      const list = disabled[alias] || disabled[m.provider] || [];
-      return !list.includes(m.model);
-    }).map((m) => {
-      const fullModel = `${m.provider}/${m.model}`;
-      // Slim payload for dashboard badges (eye/brain); search kept for future UI
-      const c = getCapabilitiesForModel(m.provider, m.model);
-      return {
-        ...m,
-        fullModel,
-        alias: modelAliases[fullModel] || m.model,
-        caps: { vision: c.vision, search: c.search, reasoning: c.reasoning },
-      };
-    });
+    const models = AI_MODELS
+      .filter((m) => {
+        const alias = getProviderAlias(m.provider) || m.provider;
+        const list = disabled[alias] || disabled[m.provider] || [];
+        return !list.includes(m.model);
+      })
+      .map((m) => {
+        const fullModel = `${m.provider}/${m.model}`;
+        const providerAlias = getProviderAlias(m.provider) || m.provider;
+        const c = getCapabilitiesForModel(m.provider, m.model);
+        return {
+          ...m,
+          fullModel,
+          routedModel: `${providerAlias}/${m.model}`,
+          alias: modelAliases[fullModel] || m.model,
+          caps: {
+            vision: c.vision,
+            search: c.search,
+            reasoning: c.reasoning,
+            contextWindow: c.contextWindow,
+            maxOutput: c.maxOutput,
+          },
+        };
+      });
 
     return NextResponse.json({ models });
   } catch (error) {

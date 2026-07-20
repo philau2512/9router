@@ -47,6 +47,7 @@ export default function ClaudeToolCard({
   const [showManualConfigModal, setShowManualConfigModal] = useState(false);
   const [customBaseUrl, setCustomBaseUrl] = useState("");
   const [ccFilterNaming, setCcFilterNaming] = useState(false);
+  const [exaMcpEnabled, setExaMcpEnabled] = useState(false);
   const hasInitializedModels = useRef(false);
 
   const getConfigStatus = () => {
@@ -67,11 +68,28 @@ export default function ClaudeToolCard({
   const configStatus = getConfigStatus();
 
   useEffect(() => {
+    if (apiKeys?.length > 0 && !selectedApiKey) {
+      setSelectedApiKey(apiKeys[0].key);
+    }
+  }, [apiKeys, selectedApiKey]);
+
+  useEffect(() => {
+    if (initialStatus) {
+      setClaudeStatus(initialStatus);
+      setExaMcpEnabled(!!initialStatus.exaMcpEnabled);
+    }
+  }, [initialStatus]);
+
+  useEffect(() => {
+    if (!isExpanded) return;
+    if (!claudeStatus) void checkClaudeStatus();
+    void fetchModelAliases();
+  }, [claudeStatus, isExpanded]);
+
+  useEffect(() => {
     fetch("/api/settings")
-      .then((r) => r.json())
-      .then((data) => {
-        setCcFilterNaming(!!data.ccFilterNaming);
-      })
+      .then((response) => response.json())
+      .then((data) => setCcFilterNaming(!!data.ccFilterNaming))
       .catch(() => {});
   }, []);
 
@@ -123,6 +141,7 @@ export default function ClaudeToolCard({
       const data = await res.json();
       setClaudeStatus(data);
       initializeStatusModels(data);
+      setExaMcpEnabled(!!data.exaMcpEnabled);
     } catch (error) {
       setClaudeStatus({ installed: false, error: error.message });
     } finally {
@@ -177,7 +196,7 @@ export default function ClaudeToolCard({
       const res = await fetch("/api/cli-tools/claude-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ env }),
+        body: JSON.stringify({ env, exaMcpEnabled }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -186,6 +205,7 @@ export default function ClaudeToolCard({
           ...prev,
           hasBackup: true,
           settings: { ...prev?.settings, env },
+          exaMcpEnabled,
         }));
       } else {
         setMessage({
@@ -214,6 +234,7 @@ export default function ClaudeToolCard({
           onModelMappingChange(model.alias, model.defaultValue || ""),
         );
         setSelectedApiKey("");
+        setExaMcpEnabled(false);
       } else {
         setMessage({
           type: "error",
@@ -277,8 +298,10 @@ export default function ClaudeToolCard({
               height={32}
               className="size-8 object-contain rounded-lg"
               sizes="32px"
+              loading="lazy"
+              decoding="async"
               onError={(e) => {
-                e.target.style.display = "none";
+                e.currentTarget.style.display = "none";
               }}
             />
           </div>
@@ -511,6 +534,19 @@ export default function ClaudeToolCard({
                       info
                     </span>
                   </Tooltip>
+                </div>
+
+                {/* Exa MCP — ~/.claude.json mcpServers (not settings.json) */}
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
+                  <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Web Search</span>
+                  <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <input type="checkbox" checked={exaMcpEnabled} onChange={(e) => setExaMcpEnabled(e.target.checked)} className="w-3.5 h-3.5 accent-primary cursor-pointer" />
+                    <span className="text-xs text-text-muted">Exa MCP</span>
+                    <Tooltip text="Injects Exa MCP into ~/.claude.json so non-Claude models gain web search. Restart Claude Code after Apply.">
+                      <span className="material-symbols-outlined text-text-muted text-[14px] cursor-help">info</span>
+                    </Tooltip>
+                  </label>
                 </div>
               </div>
 
