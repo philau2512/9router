@@ -42,6 +42,17 @@ function getAntigravityOutputTokenLimit(generationConfig) {
     : MAX_ANTIGRAVITY_OUTPUT_TOKENS;
 }
 
+/** Keep thought parts on tool continuations when Gemini thinking is active. */
+function shouldPreserveThoughtParts(generationConfig) {
+  const tc = generationConfig?.thinkingConfig;
+  if (!tc || typeof tc !== "object") return false;
+  if (tc.includeThoughts === true) return true;
+  if (tc.thinkingBudget === -1) return true;
+  if (Number.isFinite(tc.thinkingBudget) && tc.thinkingBudget > 0) return true;
+  const level = String(tc.thinkingLevel || "").toLowerCase();
+  return level === "low" || level === "medium" || level === "high";
+}
+
 const ANTIGRAVITY_TRANSIENT_ERROR_PATTERNS = [
   /high\s+traffic/i,
   /agent\s+(execution\s+)?terminated\s+due\s+to\s+error/i,
@@ -177,15 +188,20 @@ export class AntigravityExecutor extends BaseExecutor {
 
     // ─── Standard (non-image) request ───
     // Fix contents for Claude models via Antigravity
+    const keepThoughtParts = shouldPreserveThoughtParts(
+      body.request?.generationConfig,
+    );
     const contents = body.request?.contents?.map((c) => {
       let role = c.role;
       // functionResponse must be role "user" for Claude models
       if (c.parts?.some((p) => p.functionResponse)) {
         role = "user";
       }
-      // Strip thought-only parts, keep thoughtSignature on functionCall parts (Gemini 3+ requires it)
+      // Default: strip thought-only parts (Claude-via-AG / non-thinking).
+      // When thinking is active, keep thought text for tool continuity; still
+      // drop orphan signature-only parts (no text / no functionCall).
       const parts = c.parts?.filter((p) => {
-        if (p.thought && !p.functionCall) return false;
+        if (p.thought && !p.functionCall && !keepThoughtParts) return false;
         if (p.thoughtSignature && !p.functionCall && !p.text) return false;
         return true;
       });

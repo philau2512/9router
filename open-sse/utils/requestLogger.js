@@ -101,8 +101,23 @@ const SENSITIVE_KEY_PARTS = [
   "password",
 ];
 
+// Usage / generation limit fields contain "token" but are not credentials.
+// Without this, maxOutputTokens / max_output_tokens become "[REDACTED]" in logs.
+function isTokenQuotaOrLimitKey(lowerKey) {
+  return (
+    lowerKey === "max_tokens" ||
+    lowerKey === "maxoutputtokens" ||
+    /max[_-]?output[_-]?tokens?/.test(lowerKey) ||
+    lowerKey.endsWith("_tokens") ||
+    lowerKey.endsWith("tokencount") ||
+    lowerKey.includes("token_count") ||
+    lowerKey.includes("tokencount")
+  );
+}
+
 function isSensitiveKey(key) {
   const lowerKey = String(key).toLowerCase();
+  if (isTokenQuotaOrLimitKey(lowerKey)) return false;
   return SENSITIVE_KEY_PARTS.some((part) => lowerKey.includes(part));
 }
 
