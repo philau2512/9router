@@ -39,6 +39,7 @@ export function geminiToOpenAIResponse(chunk, state) {
   }
 
   const emitVisibleText = (text) => {
+    if (text) state.geminiEmittedVisible = true;
     results.push({
       id: `chatcmpl-${state.messageId}`,
       object: "chat.completion.chunk",
@@ -326,6 +327,35 @@ export function geminiToOpenAIResponse(chunk, state) {
       flushPendingContent();
     }
     flushPendingToolCalls();
+
+    // Empty STOP: provider returned no text/tools/thoughts (seen with AG tool
+    // continuations). Mark state so callers can retry; do not present as a
+    // successful empty completion that makes agent UIs exit.
+    const parts = content?.parts || [];
+    const partHasSubstance = parts.some(
+      (p) =>
+        !!p.functionCall ||
+        !!p.inlineData ||
+        (typeof p.text === "string" && p.text.length > 0),
+    );
+    const streamHadOutput =
+      state.geminiToolCallCount > 0 ||
+      state.geminiSawThought === true ||
+      state.geminiEmittedVisible === true ||
+      !!(state.geminiPendingContent && state.geminiPendingContent.length > 0);
+    const usageEmpty =
+      !state.usage ||
+      !Number(state.usage.completion_tokens) ||
+      Number(state.usage.completion_tokens) <= 0;
+    if (
+      finishReason === "stop" &&
+      !partHasSubstance &&
+      !streamHadOutput &&
+      usageEmpty
+    ) {
+      state.emptyProviderResponse = true;
+      finishReason = "error";
+    }
 
     const finalChunk = {
       id: `chatcmpl-${state.messageId}`,
