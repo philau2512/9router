@@ -217,6 +217,70 @@ function encodeSSEError(code, message, details) {
   } })}\n\ndata: [DONE]\n\n`);
 }
 
+// Live Kiro streams open/close tags split across frames ("<thinking" then ">…").
+// Carry partial tag prefixes and surface the body as reasoning_content.
+const KIRO_THINKING_OPEN = "<thinking>";
+const KIRO_THINKING_CLOSE = "</thinking>";
+
+function longestTagPrefixLen(text, tag) {
+  const max = Math.min(text.length, tag.length - 1);
+  for (let len = max; len > 0; len--) {
+    if (tag.startsWith(text.slice(text.length - len))) return len;
+  }
+  return 0;
+}
+
+/**
+ * Split assistantResponseEvent text into visible content vs reasoning.
+ * Mutates tagState: { inThinking: boolean, pending: string }.
+ * @returns {{ content: string, reasoning: string }}
+ */
+export function splitKiroThinkingText(tagState, incoming) {
+  let s = `${tagState.pending || ""}${incoming ?? ""}`;
+  tagState.pending = "";
+  let content = "";
+  let reasoning = "";
+
+  while (s.length > 0) {
+    if (tagState.inThinking) {
+      const closeIdx = s.indexOf(KIRO_THINKING_CLOSE);
+      if (closeIdx >= 0) {
+        reasoning += s.slice(0, closeIdx);
+        tagState.inThinking = false;
+        s = s.slice(closeIdx + KIRO_THINKING_CLOSE.length);
+        if (s.startsWith("\n")) s = s.slice(1);
+      } else {
+        const partial = longestTagPrefixLen(s, KIRO_THINKING_CLOSE);
+        if (partial > 0) {
+          reasoning += s.slice(0, s.length - partial);
+          tagState.pending = s.slice(s.length - partial);
+        } else {
+          reasoning += s;
+        }
+        s = "";
+      }
+    } else {
+      const openIdx = s.indexOf(KIRO_THINKING_OPEN);
+      if (openIdx >= 0) {
+        content += s.slice(0, openIdx);
+        tagState.inThinking = true;
+        s = s.slice(openIdx + KIRO_THINKING_OPEN.length);
+      } else {
+        const partial = longestTagPrefixLen(s, KIRO_THINKING_OPEN);
+        if (partial > 0) {
+          content += s.slice(0, s.length - partial);
+          tagState.pending = s.slice(s.length - partial);
+        } else {
+          content += s;
+        }
+        s = "";
+      }
+    }
+  }
+
+  return { content, reasoning };
+}
+
 function inspectSSEChunk(chunk, state) {
   for (const line of decoder.decode(chunk).split("\n")) {
     if (!line.startsWith("data: ")) continue;
@@ -524,7 +588,7 @@ export class KiroExecutor extends BaseExecutor {
       hasText: false, hasReasoning: false, hasCode: false, hasToolCalls: false, sawToolUse: false,
       explicitStop: false, stopReason: null, terminalProvenance: null, transportState: "consuming_response",
       totalContentLength: 0, contextUsagePercentage: 0, hasContextUsage: false, hasMetering: false,
-      usage: null, inThinking: false, toolValidationError: null, validatedFrames: 0, finished: false
+      usage: null, inThinking: false, thinkingTagPending: "", toolValidationError: null, validatedFrames: 0, finished: false
     };
     const diagnostics = (overrides = {}) => ({
       terminal_provenance: state.terminalProvenance || "clean_eventstream_eof",
@@ -627,30 +691,23 @@ export class KiroExecutor extends BaseExecutor {
       const eventCountKey = KIRO_EVENT_TYPES.has(eventType) ? eventType : "other";
       eventCounts[eventCountKey] = (eventCounts[eventCountKey] || 0) + 1;
       if (eventType === "assistantResponseEvent" && typeof event.payload?.content === "string") {
-        let content = event.payload.content;
-        if (state.inThinking) {
-          const end = content.indexOf("</thinking>");
-          if (end < 0) content = "";
-          else {
-            state.inThinking = false;
-            content = content.slice(end + 11).replace(/^\n/u, "");
-          }
-        } else {
-          const start = content.indexOf("<thinking>");
-          if (start >= 0) {
-            const end = content.indexOf("</thinking>", start + 10);
-            if (end < 0) {
-              state.inThinking = true;
-              content = content.slice(0, start);
-            } else {
-              content = content.slice(0, start) + content.slice(end + 11).replace(/^\n/u, "");
-            }
-          }
+        const tagState = {
+          inThinking: state.inThinking,
+          pending: state.thinkingTagPending || "",
+        };
+        const parts = splitKiroThinkingText(tagState, event.payload.content);
+        state.inThinking = tagState.inThinking;
+        state.thinkingTagPending = tagState.pending;
+        if (parts.reasoning) {
+          state.hasReasoning = true;
+          state.totalContentLength += parts.reasoning.length;
+          emitDelta(controller, { reasoning_content: parts.reasoning });
         }
-        if (content || !state.hasReasoning) {
-          state.hasText ||= content.length > 0;
-          state.totalContentLength += content.length;
-          emitDelta(controller, { content });
+        // Only emit non-empty visible text (no empty-content flood while thinking).
+        if (parts.content) {
+          state.hasText = true;
+          state.totalContentLength += parts.content.length;
+          emitDelta(controller, { content: parts.content });
         }
       } else if (eventType === "reasoningContentEvent") {
         const value = event.payload?.reasoningContentEvent || event.payload || {};
@@ -779,12 +836,28 @@ export class KiroExecutor extends BaseExecutor {
       }
       return true;
     };
+    const flushThinkingCarry = (controller) => {
+      const leftover = state.thinkingTagPending || "";
+      if (!leftover) return;
+      state.thinkingTagPending = "";
+      if (state.inThinking) {
+        state.hasReasoning = true;
+        state.totalContentLength += leftover.length;
+        emitDelta(controller, { reasoning_content: leftover });
+      } else {
+        state.hasText = true;
+        state.totalContentLength += leftover.length;
+        emitDelta(controller, { content: leftover });
+      }
+    };
     const finish = (controller) => {
       if (state.finished) return;
       if (state.buffer.byteLength) {
         fail(controller, "incomplete_eventstream_frame", "kiro_missing_terminal", "Kiro EventStream ended with a truncated frame", { transport_state: "incomplete_frame" });
         return;
       }
+      // Emit any incomplete tag carry before terminal checks (fail-open as text/reasoning).
+      flushThinkingCarry(controller);
       state.transportState = "clean_eof";
       const declaredDisposition = stopDisposition(state.stopReason, state.sawToolUse);
       if (["retryable_protocol_failure", "terminal_incomplete", "terminal_refusal", "unknown_failure"].includes(declaredDisposition)) {

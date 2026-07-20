@@ -68,6 +68,20 @@ async function readNextWithTimeout(reader) {
   ]);
 }
 
+function parseChunks(output) {
+  return output
+    .split("\n")
+    .filter((line) => line.startsWith("data: ") && !line.includes("[DONE]"))
+    .map((line) => JSON.parse(line.slice(6)));
+}
+
+function joinDelta(chunks, key) {
+  return chunks
+    .filter((c) => c.choices[0].delta[key])
+    .map((c) => c.choices[0].delta[key])
+    .join("");
+}
+
 describe("KiroExecutor thinking tag stripping", () => {
   it("strips <thinking> tags and re-emits as reasoning_content", async () => {
     const executor = new KiroExecutor();
@@ -80,44 +94,29 @@ describe("KiroExecutor thinking tag stripping", () => {
     });
     const fStop = createMockFrame("messageStopEvent", {});
 
-    const readableStream = new ReadableStream({
-      start(controller) {
-        controller.enqueue(f1);
-        controller.enqueue(f2);
-        controller.enqueue(fStop);
-        controller.close();
-      },
-    });
-
-    const mockResponse = { body: readableStream };
     const transformedResponse = executor.transformEventStreamToSSE(
-      mockResponse,
+      {
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(f1);
+            controller.enqueue(f2);
+            controller.enqueue(fStop);
+            controller.close();
+          },
+        }),
+      },
       "claude-test",
     );
 
     const output = await readAllSSE(transformedResponse.body);
-
-    // <thinking> tags must be stripped
     expect(output).not.toContain("<thinking>");
     expect(output).not.toContain("</thinking>");
 
-    const dataLines = output
-      .split("\n")
-      .filter((line) => line.startsWith("data: ") && !line.includes("[DONE]"));
-    const chunks = dataLines.map((line) => JSON.parse(line.slice(6)));
-
-    // Embedded tags are transport artifacts: they must never reach clients.
-    const reasoningText = chunks
-      .filter((c) => c.choices[0].delta.reasoning_content)
-      .map((c) => c.choices[0].delta.reasoning_content)
-      .join("");
-    expect(reasoningText).toBe("");
-
-    // Regular content must NOT contain thinking text
-    const regularText = chunks
-      .filter((c) => c.choices[0].delta.content)
-      .map((c) => c.choices[0].delta.content)
-      .join("");
+    const chunks = parseChunks(output);
+    expect(joinDelta(chunks, "reasoning_content")).toBe(
+      "Let me think...still thinking...",
+    );
+    const regularText = joinDelta(chunks, "content");
     expect(regularText).not.toContain("Let me think...");
     expect(regularText).not.toContain("still thinking...");
     expect(regularText).toBe("Here is my answer.  Yes, 42.");
@@ -134,35 +133,25 @@ describe("KiroExecutor thinking tag stripping", () => {
     });
     const fStop = createMockFrame("messageStopEvent", {});
 
-    const readableStream = new ReadableStream({
-      start(controller) {
-        controller.enqueue(f0);
-        controller.enqueue(f1);
-        controller.enqueue(fStop);
-        controller.close();
-      },
-    });
-
-    const mockResponse = { body: readableStream };
     const transformedResponse = executor.transformEventStreamToSSE(
-      mockResponse,
+      {
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(f0);
+            controller.enqueue(f1);
+            controller.enqueue(fStop);
+            controller.close();
+          },
+        }),
+      },
       "claude-test",
     );
 
-    const output = await readAllSSE(transformedResponse.body);
+    const objects = parseChunks(await readAllSSE(transformedResponse.body));
+    const reasoningText = joinDelta(objects, "reasoning_content");
+    expect(reasoningText).toContain("I am reasoning");
+    expect(reasoningText).toContain("purely thinking...");
 
-    const dataLines = output
-      .split("\n")
-      .filter((line) => line.startsWith("data: ") && !line.includes("[DONE]"));
-    const objects = dataLines.map((line) => JSON.parse(line.slice(6)));
-
-    // reasoning_content chunks must be present (from reasoningContentEvent + stripped thinking tag)
-    const reasoningChunks = objects.filter(
-      (obj) => obj.choices[0].delta.reasoning_content,
-    );
-    expect(reasoningChunks.length).toBeGreaterThan(0);
-
-    // No empty content chunks
     const emptyContentChunks = objects.filter(
       (obj) =>
         obj.choices[0].delta.content !== undefined &&
@@ -179,41 +168,23 @@ describe("KiroExecutor thinking tag stripping", () => {
     });
     const fStop = createMockFrame("messageStopEvent", {});
 
-    const readableStream = new ReadableStream({
-      start(controller) {
-        controller.enqueue(f1);
-        controller.enqueue(fStop);
-        controller.close();
-      },
-    });
-
-    const mockResponse = { body: readableStream };
     const transformedResponse = executor.transformEventStreamToSSE(
-      mockResponse,
+      {
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(f1);
+            controller.enqueue(fStop);
+            controller.close();
+          },
+        }),
+      },
       "claude-sonnet-4-5",
     );
 
     const output = await readAllSSE(transformedResponse.body);
-    const dataLines = output
-      .split("\n")
-      .filter((line) => line.startsWith("data: ") && !line.includes("[DONE]"));
-    const chunks = dataLines.map((line) => JSON.parse(line.slice(6)));
-
-    // Embedded tags are transport artifacts, not native reasoning events.
-    const reasoningText = chunks
-      .filter((c) => c.choices[0].delta.reasoning_content)
-      .map((c) => c.choices[0].delta.reasoning_content)
-      .join("");
-    expect(reasoningText).toBe("");
-
-    // Regular content preserved
-    const regularText = chunks
-      .filter((c) => c.choices[0].delta.content)
-      .map((c) => c.choices[0].delta.content)
-      .join("");
-    expect(regularText).toBe("Answer here.");
-
-    // Tags stripped
+    const chunks = parseChunks(output);
+    expect(joinDelta(chunks, "reasoning_content")).toBe("Reasoning here...");
+    expect(joinDelta(chunks, "content")).toBe("Answer here.");
     expect(output).not.toContain("<thinking>");
     expect(output).not.toContain("</thinking>");
   });
@@ -232,44 +203,71 @@ describe("KiroExecutor thinking tag stripping", () => {
     });
     const fStop = createMockFrame("messageStopEvent", {});
 
-    const readableStream = new ReadableStream({
-      start(controller) {
-        controller.enqueue(f1);
-        controller.enqueue(f2);
-        controller.enqueue(f3);
-        controller.enqueue(fStop);
-        controller.close();
-      },
-    });
-
-    const mockResponse = { body: readableStream };
     const transformedResponse = executor.transformEventStreamToSSE(
-      mockResponse,
+      {
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(f1);
+            controller.enqueue(f2);
+            controller.enqueue(f3);
+            controller.enqueue(fStop);
+            controller.close();
+          },
+        }),
+      },
       "claude-opus-4-5-agentic",
     );
 
     const output = await readAllSSE(transformedResponse.body);
-    const dataLines = output
-      .split("\n")
-      .filter((line) => line.startsWith("data: ") && !line.includes("[DONE]"));
-    const chunks = dataLines.map((line) => JSON.parse(line.slice(6)));
-
-    // Embedded tags are stripped across frame boundaries.
-    const reasoningText = chunks
-      .filter((c) => c.choices[0].delta.reasoning_content)
-      .map((c) => c.choices[0].delta.reasoning_content)
-      .join("");
-    expect(reasoningText).toBe("");
-
-    // Only final answer in regular content
-    const regularText = chunks
-      .filter((c) => c.choices[0].delta.content)
-      .map((c) => c.choices[0].delta.content)
-      .join("");
-    expect(regularText).toBe("Final answer.");
-
+    const chunks = parseChunks(output);
+    expect(joinDelta(chunks, "reasoning_content")).toBe(
+      "Part 1 of thinking...Part 2 of thinking...Part 3 of thinking.",
+    );
+    expect(joinDelta(chunks, "content")).toBe("Final answer.");
     expect(output).not.toContain("<thinking>");
     expect(output).not.toContain("</thinking>");
+  });
+
+  // LIVE EVIDENCE 2026-07-20: open tag split as "<thinking" then ">…".
+  it("maps split <thinking> open-tag across frames to reasoning_content (live Kiro shape)", async () => {
+    const executor = new KiroExecutor();
+
+    const f1 = createMockFrame("assistantResponseEvent", {
+      content: "<thinking",
+    });
+    const f2 = createMockFrame("assistantResponseEvent", {
+      content: ">\nsecret thought body",
+    });
+    const f3 = createMockFrame("assistantResponseEvent", {
+      content: " more.</thinking>\nFinal answer 3",
+    });
+    const fStop = createMockFrame("messageStopEvent", {});
+
+    const transformedResponse = executor.transformEventStreamToSSE(
+      {
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(f1);
+            controller.enqueue(f2);
+            controller.enqueue(f3);
+            controller.enqueue(fStop);
+            controller.close();
+          },
+        }),
+      },
+      "claude-sonnet-4.5-thinking",
+    );
+
+    const output = await readAllSSE(transformedResponse.body);
+    const chunks = parseChunks(output);
+    const reasoningText = joinDelta(chunks, "reasoning_content");
+    const regularText = joinDelta(chunks, "content");
+
+    expect(reasoningText).toContain("secret thought body");
+    expect(regularText).toBe("Final answer 3");
+    expect(regularText).not.toContain("<thinking");
+    expect(regularText).not.toContain("</thinking>");
+    expect(output).not.toContain("<thinking");
   });
 
   it("waits for clean EOF before emitting stop after messageStop", async () => {
@@ -284,46 +282,51 @@ describe("KiroExecutor thinking tag stripping", () => {
         upstreamController = controller;
         controller.enqueue(f1);
         controller.enqueue(f2);
-      }
+      },
     });
 
-    const transformedResponse = executor.transformEventStreamToSSE({ body: readableStream }, "claude-test");
+    const transformedResponse = executor.transformEventStreamToSSE(
+      { body: readableStream },
+      "claude-test",
+    );
     const reader = transformedResponse.body.getReader();
     const decoder = new TextDecoder();
     let output = "";
     const { value } = await readNextWithTimeout(reader);
     output += decoder.decode(value, { stream: true });
-    expect(output).not.toContain("\"finish_reason\":\"stop\"");
+    expect(output).not.toContain('"finish_reason":"stop"');
 
     upstreamController.close();
-    while (!output.includes("\"finish_reason\":\"stop\"")) {
+    while (!output.includes('"finish_reason":"stop"')) {
       const { value: nextValue, done } = await readNextWithTimeout(reader);
       if (done) break;
       output += decoder.decode(nextValue, { stream: true });
     }
 
-    expect(output).toContain("\"finish_reason\":\"stop\"");
+    expect(output).toContain('"finish_reason":"stop"');
   });
 
   it("uses tool_calls finish reason for tool streams without messageStop", async () => {
     const executor = new KiroExecutor();
 
-    const f1 = createMockFrame("toolUseEvent", { toolUseId: "tool-1", name: "read_file", input: { path: "a.txt" } });
-
-    const readableStream = new ReadableStream({
-      start(controller) {
-        controller.enqueue(f1);
-        controller.close();
-      }
+    const f1 = createMockFrame("toolUseEvent", {
+      toolUseId: "tool-1",
+      name: "read_file",
+      input: { path: "a.txt" },
     });
 
-    const transformedResponse = executor.transformEventStreamToSSE({ body: readableStream }, "claude-test");
-    const output = await readAllSSE(transformedResponse.body);
-    const objects = output
-      .split("\n")
-      .filter(line => line.startsWith("data: ") && !line.includes("[DONE]"))
-      .map(line => JSON.parse(line.slice(6)));
-
+    const transformedResponse = executor.transformEventStreamToSSE(
+      {
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(f1);
+            controller.close();
+          },
+        }),
+      },
+      "claude-test",
+    );
+    const objects = parseChunks(await readAllSSE(transformedResponse.body));
     const finalChunk = objects.at(-1);
     expect(finalChunk.choices[0].finish_reason).toBe("tool_calls");
   });

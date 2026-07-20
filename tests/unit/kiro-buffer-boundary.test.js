@@ -143,8 +143,11 @@ describe("KiroExecutor buffer boundary invariance (Phase 2)", () => {
     expect(out).toContain("world from Kiro. ");
     expect(out).not.toContain("<thinking>");
     expect(out).not.toContain("</thinking>");
-    expect(out).not.toContain("reason A");
-    expect(out).not.toContain("reason B");
+    // Thinking body is re-emitted on the reasoning channel, not content.
+    expect(out).toContain('"reasoning_content":"reason A "');
+    expect(out).toContain('"reasoning_content":"reason B"');
+    expect(out).not.toMatch(/"content":"[^"]*reason A/);
+    expect(out).not.toMatch(/"content":"[^"]*reason B/);
     expect(out).toContain('"tool_calls"');
     expect(out.trim().endsWith("data: [DONE]")).toBe(true);
   });
