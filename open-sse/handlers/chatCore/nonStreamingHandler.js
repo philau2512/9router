@@ -242,6 +242,13 @@ export async function handleNonStreamingResponse({
         "Invalid SSE response for non-streaming request",
       );
     }
+    if (parsed.error) {
+      appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+      return createErrorResult(
+        HTTP_STATUS.BAD_GATEWAY,
+        parsed.error.message || "Upstream SSE stream failed",
+      );
+    }
     responseBody = parsed;
   } else {
     try {

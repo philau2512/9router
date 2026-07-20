@@ -16,11 +16,15 @@ import {
 } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
+import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
+import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveOpenCodeModels } from "open-sse/services/opencodeModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
 import { resolveCodexModels } from "open-sse/services/codexModels.js";
 import { resolveAntigravityModels } from "open-sse/services/antigravityModels.js";
+import { resolveGrokCliModels } from "open-sse/services/grokCliModels.js";
+import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { PROVIDERS } from "open-sse/config/providers.js";
@@ -54,6 +58,48 @@ const LIVE_MODEL_RESOLVERS = {
             if (refreshed.refreshToken)
               conn.refreshToken = refreshed.refreshToken;
           }
+        },
+      },
+    );
+    return result?.models?.length ? { models: result.models } : null;
+  },
+  qoder: async (conn) => {
+    const result = await resolveQoderModels({
+      accessToken: conn.accessToken,
+      refreshToken: conn.refreshToken,
+      email: conn.email,
+      displayName: conn.displayName,
+      providerSpecificData: conn.providerSpecificData || {},
+    });
+    return result?.models?.length
+      ? { models: result.models.map((model) => ({ id: model.id, name: model.name })) }
+      : null;
+  },
+  kimchi: async (conn) => {
+    const result = await resolveKimchiModels(
+      {
+        accessToken: conn.accessToken,
+        apiKey: conn.apiKey,
+        providerSpecificData: conn.providerSpecificData || {},
+      },
+      { log: console },
+    );
+    return result?.models?.length ? { models: result.models } : null;
+  },
+  "grok-cli": async (conn) => {
+    const proxyOptions = await resolveConnectionProxyConfig(
+      conn.providerSpecificData || {},
+    );
+    const result = await resolveGrokCliModels(
+      { ...conn, connectionId: conn.id },
+      {
+        log: console,
+        proxyOptions,
+        onCredentialsRefreshed: async (refreshed) => {
+          await updateProviderCredentials(conn.id, {
+            ...refreshed,
+            existingProviderSpecificData: conn.providerSpecificData || {},
+          });
         },
       },
     );
@@ -121,6 +167,13 @@ const LIVE_MODEL_RESOLVERS = {
     );
     return result?.models?.length ? { models: result.models } : null;
   },
+  cursor: async (conn) => {
+    const result = await resolveCursorModels({
+      accessToken: conn.accessToken,
+      providerSpecificData: conn.providerSpecificData || {},
+    }, { log: console });
+    return result?.models?.length ? { models: result.models } : null;
+  }
 };
 
 const parseOpenAIStyleModels = (data) => {

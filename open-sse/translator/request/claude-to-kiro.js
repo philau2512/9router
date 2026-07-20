@@ -32,6 +32,8 @@ import {
   KIRO_AGENTIC_SYSTEM_PROMPT,
   resolveKiroRequestProfileArn,
   KIRO_CONVERSATION_NAMESPACE,
+  buildKiroAdditionalModelRequestFieldsForModel,
+  usesKiroNativeGptEffort,
 } from "../../config/kiroConstants.js";
 import { DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { ROLE, CLAUDE_BLOCK } from "../schema/index.js";
@@ -393,6 +395,11 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
     credentials?.rawHeaders,
     model,
   );
+  const nativeModelFields = buildKiroAdditionalModelRequestFieldsForModel(
+    body,
+    upstreamModel,
+  );
+  const usesNativeGptEffort = usesKiroNativeGptEffort(body, upstreamModel);
 
   // Guard 1: no client tools → flatten all tool interactions to text.
   if (!clientProvidedTools) {
@@ -477,11 +484,11 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
     if (systemText) finalContent = `${systemText}\n\n${finalContent}`;
   }
 
-  // Prefix order: thinking_mode tag, timestamp marker, then agentic prompt.
-  const timestamp = new Date().toISOString();
   const prefixParts = [];
-  if (thinkingBudget !== null)
+  const timestamp = new Date().toISOString();
+  if (thinkingBudget !== null && !usesNativeGptEffort) {
     prefixParts.push(buildThinkingSystemPrefix(thinkingBudget));
+  }
   prefixParts.push(`[Context: Current time is ${timestamp}]`);
   if (agentic) prefixParts.push(KIRO_AGENTIC_SYSTEM_PROMPT);
   finalContent = `${prefixParts.join("\n\n")}\n\n${finalContent}`;
@@ -509,6 +516,9 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
   };
 
   if (profileArn) payload.profileArn = profileArn;
+  if (nativeModelFields) {
+    payload.additionalModelRequestFields = nativeModelFields;
+  }
 
   if (maxTokens || temperature !== undefined || topP !== undefined) {
     payload.inferenceConfig = {};

@@ -31,8 +31,20 @@ function createMockFrame(eventType, payloadObj) {
   offset += headerValueBytes.length;
   buffer.set(payloadBytes, offset);
   offset += payloadBytes.length;
-  view.setUint32(offset, 0, false);
+  view.setUint32(8, crc32(buffer.subarray(0, 8)), false);
+  view.setUint32(offset, crc32(buffer.subarray(0, offset)), false);
   return buffer;
+}
+
+function crc32(bytes) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) {
+      crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 function concat(frames) {
@@ -75,9 +87,8 @@ function normalizeClaude(sse) {
 const FRAMES = [
   createMockFrame("assistantResponseEvent", { content: "Hello " }),
   createMockFrame("assistantResponseEvent", { content: "world. " }),
-  createMockFrame("assistantResponseEvent", {
-    content: "<thinking>reasoning here</thinking> done.",
-  }),
+  createMockFrame("reasoningContentEvent", { text: "reasoning here" }),
+  createMockFrame("assistantResponseEvent", { content: " done." }),
   createMockFrame("toolUseEvent", {
     toolUseId: "call_1",
     name: "get_x",

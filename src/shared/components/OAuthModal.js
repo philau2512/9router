@@ -194,6 +194,7 @@ export default function OAuthModal({
         "github",
         "qwen",
         "kiro",
+        "kimi",
         "kimi-coding",
         "kilocode",
         "codebuddy-cn",
@@ -225,7 +226,6 @@ export default function OAuthModal({
           data.verification_uri_complete || data.verification_uri;
         if (verifyUrl) window.open(verifyUrl, "_blank", "noopener,noreferrer");
 
-        // Pass extraData for Kiro (contains _clientId, _clientSecret)
         const extraData =
           provider === "kiro"
             ? {
@@ -235,7 +235,15 @@ export default function OAuthModal({
                 _authMethod: data._authMethod,
                 _startUrl: data._startUrl,
               }
-            : null;
+            : provider === "qoder"
+              ? {
+                  _qoderNonce: data._qoderNonce,
+                  _qoderMachineId: data._qoderMachineId,
+                  _qoderVerifier: data.codeVerifier,
+                }
+              : provider === "kimi" || provider === "kimi-coding"
+                ? { _kimiDeviceId: data._kimiDeviceId }
+                : null;
         startPolling(
           data.device_code,
           data.codeVerifier,

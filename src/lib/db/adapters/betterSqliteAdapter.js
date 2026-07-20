@@ -58,19 +58,18 @@ export function createBetterSqliteAdapter(filePath) {
   return {
     driver: "better-sqlite3",
     run(sql, params = []) {
-      return prepare(sql).run(params);
+      return prepare(sql).run(...params);
     },
     get(sql, params = []) {
-      return prepare(sql).get(params);
+      return prepare(sql).get(...params);
     },
     all(sql, params = []) {
-      return prepare(sql).all(params);
+      return prepare(sql).all(...params);
     },
     exec(sql) {
       return db.exec(sql);
     },
     transaction(fn) {
-      // Robust retry mechanism for synchronous transactions on SQLITE_BUSY
       const maxRetries = 5;
       let delay = 50;
       for (let i = 0; i < maxRetries; i++) {
@@ -79,12 +78,15 @@ export function createBetterSqliteAdapter(filePath) {
         } catch (err) {
           const isBusy =
             err.code === "SQLITE_BUSY" ||
-            (err.message && err.message.includes("database is locked"));
+            err.message?.includes("database is locked");
           if (isBusy && i < maxRetries - 1) {
-            const sleepMs = delay + Math.random() * 50;
-            const start = Date.now();
-            while (Date.now() - start < sleepMs) {} // Synchronous sleep block
-            delay *= 2; // Exponential backoff
+            Atomics.wait(
+              new Int32Array(new SharedArrayBuffer(4)),
+              0,
+              0,
+              delay + Math.random() * 50,
+            );
+            delay *= 2;
             continue;
           }
           throw err;

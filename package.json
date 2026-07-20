@@ -1,6 +1,6 @@
 {
   "name": "@philau2512/9router-app",
-  "version": "0.5.35",
+  "version": "0.5.40",
   "description": "9Router web dashboard (private app package; publish CLI from cli/ as @philau2512/9router)",
   "private": true,
   "scripts": {

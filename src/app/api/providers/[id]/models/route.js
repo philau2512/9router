@@ -14,10 +14,21 @@ import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveCodexModels } from "open-sse/services/codexModels.js";
 import { resolveAntigravityModels } from "open-sse/services/antigravityModels.js";
+import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
+import { resolveQoderModels } from "open-sse/services/qoderModels.js";
+import { resolveGrokCliModels } from "open-sse/services/grokCliModels.js";
+import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { fetchWithTimeout } from "@/app/api/provider-nodes/validate/route";
 
 const GEMINI_CLI_MODELS_URL =
   "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
+
+// The /codex/models endpoint gates each entry by minimal_client_version against this
+// value, and codex CLI's own manifest (openai/codex codex-rs/models-manager/models.json)
+// already requires 0.144.0 for its newest models, so a stale client_version here comes
+// back 200 with those entries quietly missing instead of erroring.
+const CODEX_CLIENT_VERSION = "0.144.6";
+const CODEX_MODELS_URL = `https://chatgpt.com/backend-api/codex/models?client_version=${CODEX_CLIENT_VERSION}`;
 
 const parseOpenAIStyleModels = (data) => {
   if (Array.isArray(data)) return data;
@@ -184,7 +195,6 @@ const PROVIDER_MODELS_CONFIG = {
           { log: console, proxyOptions: resolvedProxy },
         );
         if (result?.models?.length) {
-          // Keep parity with the old inline config: expose -review variants too.
           return { models: appendCodexReviewModels(result.models) };
         }
         warning = "Codex returned no models; falling back to static catalog.";
@@ -282,6 +292,14 @@ const PROVIDER_MODELS_CONFIG = {
     authPrefix: "Bearer ",
     parseResponse: (data) => data.data || [],
   },
+  "alims-intl": {
+    url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/models",
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    parseResponse: (data) => data.data || [],
+  },
   "volcengine-ark": createOpenAIModelsConfig(
     "https://ark.cn-beijing.volces.com/api/coding/v3/models",
   ),
@@ -317,6 +335,84 @@ const PROVIDER_MODELS_CONFIG = {
   "vercel-ai-gateway": createOpenAIModelsConfig(
     "https://ai-gateway.vercel.sh/v1/models",
   ),
+  kimchi: {
+    customResolver: async (connection) => {
+      const result = await resolveKimchiModels(
+        {
+          accessToken: connection.accessToken,
+          apiKey: connection.apiKey,
+          providerSpecificData: connection.providerSpecificData || {},
+        },
+        { forceRefresh: true, log: console },
+      );
+      return result?.models?.length
+        ? { models: result.models }
+        : {
+            models: [],
+            warning: "Kimchi returned no live models; falling back to static catalog.",
+          };
+    },
+  },
+  qoder: {
+    customResolver: async (connection) => {
+      const result = await resolveQoderModels({
+        accessToken: connection.accessToken,
+        refreshToken: connection.refreshToken,
+        email: connection.email,
+        displayName: connection.displayName,
+        providerSpecificData: connection.providerSpecificData || {},
+      });
+      return result?.models?.length
+        ? { models: result.models.map((model) => ({ id: model.id, name: model.name })) }
+        : {
+            models: [],
+            warning: "Qoder returned no live models; falling back to static catalog.",
+          };
+    },
+  },
+  "grok-cli": {
+    customResolver: async (connection) => {
+      const proxyOptions = await resolveConnectionProxyConfig(
+        connection.providerSpecificData || {},
+      );
+      const result = await resolveGrokCliModels(
+        { ...connection, connectionId: connection.id },
+        {
+          log: console,
+          proxyOptions,
+          onCredentialsRefreshed: async (refreshed) => {
+            await updateProviderCredentials(connection.id, {
+              ...refreshed,
+              existingProviderSpecificData: connection.providerSpecificData || {},
+            });
+          },
+        },
+      );
+      return result?.models?.length
+        ? { models: result.models }
+        : {
+            models: [],
+            warning: "Grok CLI returned no live models; falling back to static catalog.",
+          };
+    },
+  },
+  cursor: {
+    customResolver: async (connection) => {
+      const result = await resolveCursorModels(
+        {
+          accessToken: connection.accessToken,
+          providerSpecificData: connection.providerSpecificData || {},
+        },
+        { forceRefresh: true, log: console },
+      );
+      return result?.models?.length
+        ? { models: result.models }
+        : {
+            models: [],
+            warning: "Cursor returned no live models; falling back to static catalog.",
+          };
+    },
+  },
 
   // Custom resolvers (non-OpenAI-shaped APIs / token-refresh flows)
   kiro: {

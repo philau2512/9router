@@ -13,6 +13,8 @@ import {
   KIRO_AGENTIC_SYSTEM_PROMPT,
   resolveKiroRequestProfileArn,
   KIRO_CONVERSATION_NAMESPACE,
+  buildKiroAdditionalModelRequestFieldsForModel,
+  usesKiroNativeGptEffort,
 } from "../../config/kiroConstants.js";
 
 /** Render a single tool call as a readable text line. */
@@ -564,12 +566,10 @@ function convertMessages(messages, tools, model) {
  *    Kiro's 2-3 minute server timeout. The suffix is stripped before being
  *    sent upstream.
  *
- * 2. Thinking / reasoning. Kiro does not accept `thinking.type` or
- *    `reasoning_effort` natively. The only way to enable reasoning is to
- *    inject `<thinking_mode>enabled</thinking_mode>` into the user content
- *    sent upstream. Detection covers Anthropic-Beta header, Claude API
+ * 2. Thinking / reasoning. Detection covers Anthropic-Beta header, Claude API
  *    `thinking`, OpenAI `reasoning_effort`, AMP/Cursor magic tags, and model
- *    name hints.
+ *    name hints. Supported models receive Kiro's schema-specific effort fields;
+ *    legacy prompt tags remain only for models that need them.
  */
 export function buildKiroPayload(model, body, stream, credentials) {
   // Normalize model name: Claude Code sends dashes (claude-sonnet-4-6),
@@ -579,67 +579,29 @@ export function buildKiroPayload(model, body, stream, credentials) {
     "$1.$2",
   );
   const messages = body.messages || [];
-  let tools = body.tools || [];
+  const tools = body.tools || [];
   const maxTokens = body.max_tokens ?? body.max_completion_tokens ?? 32000;
   const temperature = body.temperature;
   const topP = body.top_p;
-
-  // Kiro rejects history that references toolUses/toolResults without a tools
-  // schema in userInputMessageContext. When callers omit body.tools but the
-  // message history still contains assistant.tool_calls / role=tool turns,
-  // synthesize a minimal tool schema from the tool names present in history
-  // so Kiro accepts the request instead of returning `Improperly formed
-  // request`. This preserves tool-call history and is a no-op when body.tools
-  // is already populated.
-  if (tools.length === 0) {
-    const seen = new Set();
-    const synthesized = [];
-    const pushName = (name) => {
-      if (typeof name === "string" && name && !seen.has(name)) {
-        seen.add(name);
-        synthesized.push({
-          type: "function",
-          function: {
-            name,
-            description: `Tool: ${name}`,
-            parameters: { type: "object", properties: {}, required: [] },
-          },
-        });
-      }
-    };
-    for (const msg of messages) {
-      if (msg?.role !== "assistant") continue;
-      if (Array.isArray(msg.tool_calls)) {
-        for (const tc of msg.tool_calls) {
-          pushName(tc?.function?.name || tc?.name);
-        }
-      }
-      // Anthropic-style assistant blocks: content:[{type:"tool_use", name, ...}]
-      if (Array.isArray(msg.content)) {
-        for (const block of msg.content) {
-          if (block?.type === "tool_use") {
-            pushName(block.name);
-          }
-        }
-      }
-    }
-    if (synthesized.length > 0) {
-      tools = synthesized;
-    }
-  }
 
   const {
     upstream: upstreamModel,
     agentic,
     thinking: modelImpliesThinking,
   } = resolveKiroModel(normalizedModel);
-  // Resolve thinking budget from client intent; null means disabled
+  const nativeModelFields = buildKiroAdditionalModelRequestFieldsForModel(
+    body,
+    upstreamModel,
+  );
+  const usesNativeGptEffort = usesKiroNativeGptEffort(body, upstreamModel);
   const thinkingBudget =
-    resolveKiroThinkingBudget(body, null, normalizedModel) ??
-    (modelImpliesThinking ? undefined : null);
-  const thinkingEnabled = thinkingBudget !== null;
+    resolveKiroThinkingBudget(
+      body,
+      credentials?.rawHeaders,
+      normalizedModel,
+    ) ?? (modelImpliesThinking ? undefined : null);
 
-  const { history, currentMessage, toolsAttached } = convertMessages(
+  const { history, currentMessage } = convertMessages(
     messages,
     tools,
     upstreamModel,
@@ -655,11 +617,8 @@ export function buildKiroPayload(model, body, stream, credentials) {
   let finalContent = currentMessage?.userInputMessage?.content || "";
   const timestamp = new Date().toISOString();
 
-  // Build the system-prompt prefix that goes ABOVE the user message body.
-  // Order: thinking_mode tag first (so Kiro sees it before any user text),
-  // then context/timestamp marker, then optional agentic chunked-write prompt.
   const prefixParts = [];
-  if (thinkingEnabled) {
+  if (thinkingBudget !== null && !usesNativeGptEffort) {
     prefixParts.push(buildThinkingSystemPrefix(thinkingBudget));
   }
   prefixParts.push(`[Context: Current time is ${timestamp}]`);
@@ -740,6 +699,9 @@ export function buildKiroPayload(model, body, stream, credentials) {
 
   if (profileArn) {
     payload.profileArn = profileArn;
+  }
+  if (nativeModelFields) {
+    payload.additionalModelRequestFields = nativeModelFields;
   }
 
   if (maxTokens || temperature !== undefined || topP !== undefined) {

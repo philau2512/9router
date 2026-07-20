@@ -268,8 +268,10 @@ export default function DroidToolCard({
               className="size-8 object-contain rounded-lg"
               sizes="32px"
               onError={(e) => {
-                e.target.style.display = "none";
+                e.currentTarget.style.display = "none";
               }}
+              loading="lazy"
+              decoding="async"
             />
           </div>
           <div className="min-w-0">
@@ -564,15 +566,17 @@ export default function DroidToolCard({
         </div>
       )}
 
-      <ModelSelectModal
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onSelect={handleModelSelect}
-        selectedModel={null}
-        activeProviders={activeProviders}
-        modelAliases={modelAliases}
-        title="Select Model for Factory Droid"
-      />
+      {modalOpen && (
+        <ModelSelectModal
+          isOpen={modalOpen}
+          onClose={() => setModalOpen(false)}
+          onSelect={handleModelSelect}
+          selectedModel={null}
+          activeProviders={activeProviders}
+          modelAliases={modelAliases}
+          title="Select Model for Factory Droid"
+        />
+      )}
 
       <ManualConfigModal
         isOpen={showManualConfigModal}

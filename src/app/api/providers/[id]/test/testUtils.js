@@ -113,7 +113,15 @@ const OAUTH_TEST_CONFIG = {
   },
   qwen: { checkExpiry: true, refreshable: true },
   kiro: { checkExpiry: true, refreshable: true },
-  "kimi-coding": { checkExpiry: true, refreshable: false },
+  qoder: {
+    url: "https://openapi.qoder.sh/api/v1/userinfo",
+    method: "GET",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    refreshable: false,
+  },
+  kimi: { checkExpiry: true, refreshable: true },
+  "kimi-coding": { checkExpiry: true, refreshable: true },
   cursor: { tokenExists: true },
   kilocode: {
     url: `${KILOCODE_CONFIG.apiBaseUrl}/api/profile`,
@@ -737,12 +745,14 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         return { valid, error: valid ? null : "Invalid API key" };
       }
       case "alicode":
-      case "alicode-intl": {
-        // Aliyun Coding Plan uses OpenAI-compatible API
+      case "alicode-intl":
+      case "alims-intl": {
         const aliBaseUrl =
           connection.provider === "alicode-intl"
             ? "https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions"
-            : "https://coding.dashscope.aliyuncs.com/v1/chat/completions";
+            : connection.provider === "alims-intl"
+              ? "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"
+              : "https://coding.dashscope.aliyuncs.com/v1/chat/completions";
         const res = await fetchWithConnectionProxy(
           aliBaseUrl,
           {

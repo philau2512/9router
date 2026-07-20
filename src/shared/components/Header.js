@@ -14,6 +14,7 @@ import {
   MEDIA_PROVIDER_KINDS,
   AI_PROVIDERS,
 } from "@/shared/constants/providers";
+import { getProviderIconSrc } from "@/shared/utils/providerIcon";
 import { translate } from "@/i18n/runtime";
 
 const getPageInfo = (pathname) => {
@@ -42,7 +43,7 @@ const getPageInfo = (pathname) => {
         },
         {
           label: provider?.name || providerId,
-          image: `/providers/${providerId}.png`,
+          image: getProviderIconSrc(providerId),
         },
       ],
     };
@@ -75,7 +76,7 @@ const getPageInfo = (pathname) => {
           { label: "Providers", href: "/dashboard/providers" },
           {
             label: providerInfo.name,
-            image: `/providers/${providerInfo.id}.png`,
+            image: getProviderIconSrc(providerInfo.id),
           },
         ],
       };

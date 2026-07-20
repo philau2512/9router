@@ -9,14 +9,14 @@ import {
 } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 
-const C2K = (body) =>
+const C2K = (body, credentials = null, model = "claude-sonnet-4.5") =>
   translateRequest(
     FORMATS.CLAUDE,
     FORMATS.KIRO,
-    "claude-sonnet-4.5",
+    model,
     body,
     true,
-    null,
+    credentials,
     "kiro",
   );
 
@@ -110,6 +110,41 @@ describe("Claude → Kiro (direct route)", () => {
     expect(
       out.conversationState.currentMessage.userInputMessage.content,
     ).toContain("<max_thinking_length>24576</max_thinking_length>");
+    expect(out.additionalModelRequestFields).toBeUndefined();
+
+    const effortModel = C2K(
+      {
+        output_config: { effort: "high" },
+        messages: [{ role: "user", content: "use native effort" }],
+      },
+      null,
+      "claude-sonnet-4.6",
+    );
+    expect(effortModel.additionalModelRequestFields).toEqual({
+      thinking: { type: "adaptive", display: "summarized" },
+      output_config: { effort: "high" },
+    });
+    expect(
+      effortModel.conversationState.currentMessage.userInputMessage.content,
+    ).toContain("<max_thinking_length>24576</max_thinking_length>");
+
+    const gpt = C2K(
+      {
+        output_config: { effort: "xhigh" },
+        messages: [{ role: "user", content: "use GPT effort" }],
+      },
+      null,
+      "gpt-5.6-sol",
+    );
+    expect(gpt.additionalModelRequestFields).toEqual({
+      reasoning: { effort: "xhigh" },
+    });
+    expect(
+      gpt.conversationState.currentMessage.userInputMessage.content,
+    ).not.toContain("<thinking_mode>");
+    expect(
+      gpt.conversationState.currentMessage.userInputMessage.content,
+    ).not.toContain("<max_thinking_length>");
   });
 });
 

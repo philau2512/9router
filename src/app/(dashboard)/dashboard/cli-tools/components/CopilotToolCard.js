@@ -50,6 +50,27 @@ export default function CopilotToolCard({
     selectedModelsRef.current = selectedModels;
   }, [selectedModels]);
 
+  useEffect(() => {
+    if (apiKeys?.length > 0 && !selectedApiKey) {
+      setSelectedApiKey(apiKeys[0].key);
+    }
+  }, [apiKeys, selectedApiKey]);
+
+  useEffect(() => {
+    if (initialStatus) setStatus(initialStatus);
+  }, [initialStatus]);
+
+  useEffect(() => {
+    if (!isExpanded) return;
+    if (!status) void checkStatus();
+    void fetchModelAliases();
+  }, [isExpanded, status]);
+
+  useEffect(() => {
+    if (!status?.config || !Array.isArray(status.config) || selectedModels.length > 0) return;
+    const entry = status.config.find((item) => item.name === "9Router");
+    if (entry?.models?.length > 0) setSelectedModels(entry.models.map((model) => model.id));
+  }, [selectedModels.length, status]);
   const fetchModelAliases = async () => {
     try {
       const res = await fetch("/api/models/alias");
@@ -263,8 +284,10 @@ export default function CopilotToolCard({
               className="size-8 object-contain rounded-lg"
               sizes="32px"
               onError={(e) => {
-                e.target.style.display = "none";
+                e.currentTarget.style.display = "none";
               }}
+              loading="lazy"
+              decoding="async"
             />
           </div>
           <div className="min-w-0">
@@ -466,27 +489,29 @@ export default function CopilotToolCard({
         </div>
       )}
 
-      <ModelSelectModal
-        isOpen={modalOpen}
-        onClose={() => {
-          setModalOpen(false);
-          saveModels(selectedModelsRef.current);
-        }}
-        onSelect={(model) => {
-          if (!selectedModels.includes(model.value)) {
-            setSelectedModels([...selectedModels, model.value]);
-          }
-        }}
-        onDeselect={(model) => {
-          setSelectedModels(selectedModels.filter((m) => m !== model.value));
-        }}
-        selectedModel={null}
-        activeProviders={activeProviders}
-        modelAliases={modelAliases}
-        addedModelValues={selectedModels}
-        closeOnSelect={false}
-        title="Add Model for GitHub Copilot"
-      />
+      {modalOpen && (
+        <ModelSelectModal
+          isOpen={modalOpen}
+          onClose={() => {
+            setModalOpen(false);
+            saveModels(selectedModelsRef.current);
+          }}
+          onSelect={(model) => {
+            if (!selectedModels.includes(model.value)) {
+              setSelectedModels([...selectedModels, model.value]);
+            }
+          }}
+          onDeselect={(model) => {
+            setSelectedModels(selectedModels.filter((m) => m !== model.value));
+          }}
+          selectedModel={null}
+          activeProviders={activeProviders}
+          modelAliases={modelAliases}
+          addedModelValues={selectedModels}
+          closeOnSelect={false}
+          title="Add Model for GitHub Copilot"
+        />
+      )}
 
       <ManualConfigModal
         isOpen={showManualConfigModal}
