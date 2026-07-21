@@ -138,7 +138,22 @@ try {
 // Step 2: Clean old app/cli/app if exists
 console.log("2️⃣  Cleaning old app/cli/app...");
 if (fs.existsSync(cliAppDir)) {
-  fs.rmSync(cliAppDir, { recursive: true, force: true });
+  try {
+    fs.rmSync(cliAppDir, {
+      recursive: true,
+      force: true,
+      maxRetries: 1,
+      retryDelay: 200,
+    });
+  } catch (err) {
+    console.error(`❌ Cannot delete old directory ${cliAppDir}: ${err.message}`);
+    console.error("💡 Common causes on Windows:");
+    console.error("  1. 9router (or node) background process is currently running.");
+    console.error("  2. A Terminal / PowerShell / VS Code prompt is inside 'cli/app'.");
+    console.error("  3. An antivirus or file indexing process is holding a file lock.");
+    console.error("👉 Please stop 9router processes and close terminals inside cli/app, then try again.\n");
+    process.exit(1);
+  }
 }
 console.log("✅ Cleaned\n");
 
