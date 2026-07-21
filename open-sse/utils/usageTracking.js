@@ -501,7 +501,10 @@ export function logUsage(
     usage.cached_tokens ||
     usage.prompt_tokens_details?.cached_tokens;
   if (cacheRead) {
-    const cacheReadPercent = inTokens > 0 ? Math.round((cacheRead / inTokens) * 100) : 0;
+    const cacheReadPercent =
+      inTokens > 0
+        ? Number(((cacheRead / inTokens) * 100).toFixed(2))
+        : 0;
     msg += ` | cache_read=${cacheRead} (${cacheReadPercent}%)`;
   }
 
