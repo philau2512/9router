@@ -139,6 +139,68 @@ describe("Codex Refresh Token", () => {
       ).toBe(false);
     });
 
+    it("usage gate ignores chat 5-day lead and 8-day lastRefresh stale", async () => {
+      const {
+        shouldRefreshCredentials,
+        shouldRefreshCredentialsForUsage,
+      } = await import("../../open-sse/services/oauthCredentialManager.js");
+
+      // Token expires in 3 days — chat path refreshes (5-day lead), usage must not.
+      const expiresIn3d = new Date(
+        Date.now() + 3 * 24 * 60 * 60 * 1000,
+      ).toISOString();
+      const recentRefresh = new Date(
+        Date.now() - 1 * 24 * 60 * 60 * 1000,
+      ).toISOString();
+      const farFuture = new Date(
+        Date.now() + 9 * 24 * 60 * 60 * 1000,
+      ).toISOString();
+
+      expect(
+        shouldRefreshCredentials("codex", {
+          refreshToken: "rt",
+          accessToken: "at",
+          expiresAt: expiresIn3d,
+          lastRefreshAt: recentRefresh,
+        }),
+      ).toBe(true);
+      expect(
+        shouldRefreshCredentialsForUsage("codex", {
+          refreshToken: "rt",
+          accessToken: "at",
+          expiresAt: expiresIn3d,
+          lastRefreshAt: recentRefresh,
+        }),
+      ).toBe(false);
+
+      // Missing lastRefreshAt + far expiry → chat stale yes, usage no
+      expect(
+        shouldRefreshCredentials("codex", {
+          refreshToken: "rt",
+          accessToken: "at",
+          expiresAt: farFuture,
+          lastRefreshAt: null,
+        }),
+      ).toBe(true);
+      expect(
+        shouldRefreshCredentialsForUsage("codex", {
+          refreshToken: "rt",
+          accessToken: "at",
+          expiresAt: farFuture,
+          lastRefreshAt: null,
+        }),
+      ).toBe(false);
+
+      // Within 5-minute buffer → usage yes
+      expect(
+        shouldRefreshCredentialsForUsage("codex", {
+          refreshToken: "rt",
+          accessToken: "at",
+          expiresAt: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
+        }),
+      ).toBe(true);
+    });
+
     it("should de-duplicate concurrent refreshes for the same Codex connection", async () => {
       const fetchMock = mockFetchWithJson({
         access_token: "new-access",

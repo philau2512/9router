@@ -49,26 +49,36 @@ export function resolveRefreshAccountLabel(credentials) {
 export function withRefreshAccountLog(credentials, log) {
   if (!log) return log;
   const account = resolveRefreshAccountLabel(credentials);
+  const emailRaw =
+    credentials?.email ||
+    credentials?.providerSpecificData?.email ||
+    null;
+  const email = emailRaw ? String(emailRaw) : null;
   const rawId = credentials?.connectionId || credentials?.id || null;
-  const connectionId = rawId ? String(rawId).slice(0, 8) : null;
-  if (!account && !connectionId) return log;
+  // Full id in logs — short slice is hard to match against localDb rows.
+  const connectionId = rawId ? String(rawId) : null;
+  if (!account && !email && !connectionId) return log;
+
+  const identity = {
+    ...(account ? { account } : {}),
+    ...(email ? { email } : {}),
+    ...(connectionId ? { connectionId } : {}),
+  };
 
   const inject = (data) => {
     if (data == null) {
-      return account
-        ? { account, ...(connectionId ? { connectionId } : {}) }
-        : { connectionId };
+      return { ...identity };
     }
     if (typeof data !== "object" || Array.isArray(data)) {
       return {
         detail: data,
-        ...(account ? { account } : {}),
-        ...(connectionId ? { connectionId } : {}),
+        ...identity,
       };
     }
     return {
       ...data,
       ...(account && data.account == null ? { account } : {}),
+      ...(email && data.email == null ? { email } : {}),
       ...(connectionId && data.connectionId == null ? { connectionId } : {}),
     };
   };

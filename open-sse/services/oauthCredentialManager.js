@@ -2,9 +2,17 @@ import {
   getRefreshLeadMs,
   isUnrecoverableRefreshError,
   refreshTokenByProvider,
+  TOKEN_EXPIRY_BUFFER_MS,
 } from "./tokenRefresh.js";
 
 export const CODEX_MAX_REFRESH_AGE_MS = 8 * 24 * 60 * 60 * 1000;
+
+/**
+ * Usage/quota polls must NOT use chat proactive leads (Codex = 5 days) or the
+ * 8-day lastRefresh rotation — those burn single-use refresh tokens on every
+ * dashboard refresh. Only rotate when the access token is expired / within buffer.
+ */
+export const USAGE_TOKEN_REFRESH_LEAD_MS = TOKEN_EXPIRY_BUFFER_MS;
 
 const refreshLocks = new Map();
 
@@ -64,6 +72,33 @@ export function shouldRefreshCredentials(
   }
 
   return false;
+}
+
+/**
+ * Gate for GET /api/usage and auto-ping: keep a valid access token only.
+ * Does not apply chat proactive lead times or Codex lastRefresh stale rotation.
+ *
+ * @param {string} provider
+ * @param {object|null|undefined} credentials
+ * @param {number} [nowMs]
+ * @returns {boolean}
+ */
+export function shouldRefreshCredentialsForUsage(
+  provider,
+  credentials,
+  nowMs = Date.now(),
+) {
+  if (!credentials) return false;
+  // No refresh token → nothing to rotate (apikey / bare access_token).
+  if (!credentials.refreshToken) return false;
+
+  const expiresAtMs = getCredentialExpiryMs(credentials);
+  // Unknown expiry: keep current accessToken; auth-fail path force-refreshes.
+  if (expiresAtMs === null) {
+    return !credentials.accessToken;
+  }
+
+  return expiresAtMs - nowMs < USAGE_TOKEN_REFRESH_LEAD_MS;
 }
 
 export function mergeProviderSpecificData(existing, next) {

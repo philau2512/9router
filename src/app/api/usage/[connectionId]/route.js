@@ -10,7 +10,7 @@ import { getCodexRateLimitResetCredits } from "open-sse/services/usage/codex.js"
 import { getExecutor } from "open-sse/executors/index.js";
 import {
   refreshProviderCredentials,
-  shouldRefreshCredentials,
+  shouldRefreshCredentialsForUsage,
 } from "open-sse/services/oauthCredentialManager.js";
 import { isUnrecoverableRefreshError } from "open-sse/services/tokenRefresh.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -71,11 +71,14 @@ export async function refreshAndUpdateCredentials(
   const useExecutorPath = provider === "github";
   const executor = useExecutorPath ? getExecutor(provider) : null;
 
+  // Usage/quota must not use chat proactive leads (Codex 5d) or 8d lastRefresh
+  // stale rotation — those rotate single-use refresh tokens on every quota poll.
+  // GitHub still uses executor.needsRefresh (Copilot token window).
   const needsRefresh =
     force ||
     (useExecutorPath
       ? executor.needsRefresh(credentials)
-      : shouldRefreshCredentials(provider, credentials));
+      : shouldRefreshCredentialsForUsage(provider, credentials));
 
   if (!needsRefresh) {
     return { connection, refreshed: false };

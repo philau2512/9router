@@ -54,7 +54,7 @@ describe("TOKEN_REFRESH account label", () => {
         hasNewAccessToken: true,
         expiresIn: 3600,
         account: "clotilde3209",
-        connectionId: "conn-kir",
+        connectionId: "conn-kiro-1-uuid",
       },
     );
 
@@ -76,7 +76,34 @@ describe("TOKEN_REFRESH account label", () => {
       "Successfully refreshed Kiro AWS token",
       expect.objectContaining({
         account: "dagostinot43",
-        connectionId: "6fd33e54",
+        connectionId: "6fd33e54-c86e-4a82-b391-31e6a3aa2e78",
+      }),
+    );
+
+    // Codex-style: name + email on the same row
+    const info3 = vi.fn();
+    const wrapped3 = withRefreshAccountLog(
+      {
+        name: "mopkbimlh2589@hotmail.com",
+        email: "mopkbimlh2589@hotmail.com",
+        connectionId: "3de06864-09ff-4f6b-ae49-6a8cf345ee81",
+      },
+      { info: info3, error: info3 },
+    );
+    wrapped3.error(
+      "TOKEN_REFRESH",
+      "Codex refresh token already used or invalid. Re-auth required.",
+      { status: 401, code: "refresh_token_reused" },
+    );
+    expect(info3).toHaveBeenCalledWith(
+      "TOKEN_REFRESH",
+      "Codex refresh token already used or invalid. Re-auth required.",
+      expect.objectContaining({
+        account: "mopkbimlh2589@hotmail.com",
+        email: "mopkbimlh2589@hotmail.com",
+        connectionId: "3de06864-09ff-4f6b-ae49-6a8cf345ee81",
+        status: 401,
+        code: "refresh_token_reused",
       }),
     );
 

@@ -1,12 +1,14 @@
 // Usage quota path must refresh OAuth via oauthCredentialManager (not only executor map).
 // Regression: provider "xai" uses DefaultExecutor without a hard-coded refresher, so
 // refreshAndUpdateCredentials used to skip/fail silently and call billing with a dead token.
+// Codex quota polls must use shouldRefreshCredentialsForUsage (5min buffer), NOT chat
+// proactive leads (5 days) / 8-day lastRefresh stale rotation.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const updateProviderConnection = vi.fn(async (_id, data) => data);
 const getProviderConnectionById = vi.fn();
 const getUsageForProvider = vi.fn(async () => ({ quotas: {} }));
-const shouldRefreshCredentials = vi.fn();
+const shouldRefreshCredentialsForUsage = vi.fn();
 const refreshProviderCredentials = vi.fn();
 const isUnrecoverableRefreshError = vi.fn(() => false);
 const getExecutor = vi.fn();
@@ -23,7 +25,8 @@ vi.mock("open-sse/executors/index.js", () => ({
   getExecutor: (...args) => getExecutor(...args),
 }));
 vi.mock("open-sse/services/oauthCredentialManager.js", () => ({
-  shouldRefreshCredentials: (...args) => shouldRefreshCredentials(...args),
+  shouldRefreshCredentialsForUsage: (...args) =>
+    shouldRefreshCredentialsForUsage(...args),
   refreshProviderCredentials: (...args) => refreshProviderCredentials(...args),
 }));
 vi.mock("open-sse/services/tokenRefresh.js", () => ({
@@ -54,7 +57,7 @@ describe("usage OAuth refresh", () => {
       providerSpecificData: { email: "a@b.com" },
     };
 
-    shouldRefreshCredentials.mockReturnValue(true);
+    shouldRefreshCredentialsForUsage.mockReturnValue(true);
     refreshProviderCredentials.mockResolvedValue({
       accessToken: "new-token",
       refreshToken: "rt2",
@@ -65,7 +68,7 @@ describe("usage OAuth refresh", () => {
     const result = await refreshAndUpdateCredentials(connection, false, null);
 
     expect(getExecutor).not.toHaveBeenCalled();
-    expect(shouldRefreshCredentials).toHaveBeenCalledWith(
+    expect(shouldRefreshCredentialsForUsage).toHaveBeenCalledWith(
       "xai",
       expect.objectContaining({
         connectionId: "conn-xai-1",
@@ -92,9 +95,42 @@ describe("usage OAuth refresh", () => {
     expect(result.connection.accessToken).toBe("new-token");
   });
 
+  it("codex token still valid for days → usage path does not rotate refreshToken", async () => {
+    const { refreshAndUpdateCredentials } = await load();
+    shouldRefreshCredentialsForUsage.mockReturnValue(false);
+
+    const connection = {
+      id: "conn-codex-1",
+      provider: "codex",
+      authType: "oauth",
+      name: "user@example.com",
+      email: "user@example.com",
+      accessToken: "still-valid",
+      refreshToken: "rt-codex",
+      // Codex access tokens are ~10 days; far outside the 5-minute usage buffer
+      expiresAt: new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString(),
+      lastRefreshAt: null, // missing lastRefresh would trigger chat stale path
+      providerSpecificData: { autoRefreshEnabled: true },
+    };
+
+    const result = await refreshAndUpdateCredentials(connection, false, null);
+
+    expect(shouldRefreshCredentialsForUsage).toHaveBeenCalledWith(
+      "codex",
+      expect.objectContaining({
+        connectionId: "conn-codex-1",
+        refreshToken: "rt-codex",
+      }),
+    );
+    expect(refreshProviderCredentials).not.toHaveBeenCalled();
+    expect(updateProviderConnection).not.toHaveBeenCalled();
+    expect(result.refreshed).toBe(false);
+    expect(result.connection.accessToken).toBe("still-valid");
+  });
+
   it("force=true skips needs check and still refreshes", async () => {
     const { refreshAndUpdateCredentials } = await load();
-    shouldRefreshCredentials.mockReturnValue(false);
+    shouldRefreshCredentialsForUsage.mockReturnValue(false);
     refreshProviderCredentials.mockResolvedValue({
       accessToken: "forced-token",
       expiresIn: 1200,
@@ -112,7 +148,7 @@ describe("usage OAuth refresh", () => {
       null,
     );
 
-    expect(shouldRefreshCredentials).not.toHaveBeenCalled();
+    expect(shouldRefreshCredentialsForUsage).not.toHaveBeenCalled();
     expect(refreshProviderCredentials).toHaveBeenCalled();
     expect(result.refreshed).toBe(true);
     expect(result.connection.accessToken).toBe("forced-token");
