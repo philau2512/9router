@@ -58,7 +58,8 @@ export function mergeProviderModels({
     .filter(Boolean);
   const liveList = (liveModels || [])
     .map(normalizeCatalogModel)
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((m) => ({ ...m, isLive: true }));
 
   if (liveList.length === 0) {
     return { models: staticList, shelvedModels: [] };
@@ -79,7 +80,7 @@ export function mergeProviderModels({
   // Union: static base, live overwrites / appends.
   const byId = new Map(staticList.map((m) => [m.id, m]));
   for (const lm of liveList) {
-    byId.set(lm.id, { ...(byId.get(lm.id) || {}), ...lm, id: lm.id });
+    byId.set(lm.id, { ...(byId.get(lm.id) || {}), ...lm, id: lm.id, isLive: true });
   }
   return { models: Array.from(byId.values()), shelvedModels: [] };
 }

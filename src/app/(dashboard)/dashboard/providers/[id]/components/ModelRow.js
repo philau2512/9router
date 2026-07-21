@@ -78,6 +78,21 @@ export default function ModelRow({
                 {model.name}
               </span>
             )}
+            {model.isLive ? (
+              <span
+                className="shrink-0 rounded border border-emerald-500/30 bg-emerald-500/10 px-1 py-0.2 font-mono text-[8px] font-semibold text-emerald-600 dark:text-emerald-400"
+                title="Model được fetch động trực tiếp từ API của Provider"
+              >
+                API
+              </span>
+            ) : (
+              <span
+                className="shrink-0 rounded border border-amber-500/30 bg-amber-500/10 px-1 py-0.2 font-mono text-[8px] font-semibold text-amber-600 dark:text-amber-400"
+                title="Model mặc định từ danh mục tĩnh (Static Catalog)"
+              >
+                Static
+              </span>
+            )}
             <CapacityBadges
               caps={caps}
               colorOverride="text-text-muted/70"

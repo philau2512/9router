@@ -59,8 +59,8 @@ describe("Antigravity live model catalog", () => {
 
     expect(result).toEqual({
       models: [
-        { id: "gemini-3-flash", name: "Gemini Flash" },
-        { id: "gemini-3.1-flash-image", name: "gemini-3.1-flash-image" },
+        { id: "gemini-3-flash", name: "Gemini Flash", isLive: true },
+        { id: "gemini-3.1-flash-image", name: "gemini-3.1-flash-image", isLive: true },
       ],
     });
     expect(proxyAwareFetch).toHaveBeenCalledWith(
@@ -83,7 +83,7 @@ describe("Antigravity live model catalog", () => {
       );
 
     await expect(resolveAntigravityModels(credentials)).resolves.toEqual({
-      models: [{ id: "gemini-3-flash", name: "Fallback" }],
+      models: [{ id: "gemini-3-flash", name: "Fallback", isLive: true }],
     });
     expect(proxyAwareFetch.mock.calls.map(([url]) => url)).toEqual(
       ANTIGRAVITY_BASE_URLS.map(
@@ -111,17 +111,17 @@ describe("Antigravity live model catalog", () => {
       .mockResolvedValueOnce(jsonResponse({ models: { cleared: {} } }));
 
     await expect(resolveAntigravityModels(credentials)).resolves.toEqual({
-      models: [{ id: "first", name: "first" }],
+      models: [{ id: "first", name: "first", isLive: true }],
     });
     await expect(resolveAntigravityModels(credentials)).resolves.toEqual({
-      models: [{ id: "first", name: "first" }],
+      models: [{ id: "first", name: "first", isLive: true }],
     });
     await expect(
       resolveAntigravityModels(credentials, { forceRefresh: true }),
-    ).resolves.toEqual({ models: [{ id: "refreshed", name: "refreshed" }] });
+    ).resolves.toEqual({ models: [{ id: "refreshed", name: "refreshed", isLive: true }] });
     clearAntigravityModelCache();
     await expect(resolveAntigravityModels(credentials)).resolves.toEqual({
-      models: [{ id: "cleared", name: "cleared" }],
+      models: [{ id: "cleared", name: "cleared", isLive: true }],
     });
 
     expect(proxyAwareFetch).toHaveBeenCalledTimes(3);
@@ -135,7 +135,7 @@ describe("Antigravity live model catalog", () => {
     await resolveAntigravityModels(credentials);
     await expect(
       resolveAntigravityModels({ ...credentials, connectionId: "other-connection" }),
-    ).resolves.toEqual({ models: [{ id: "two", name: "two" }] });
+    ).resolves.toEqual({ models: [{ id: "two", name: "two", isLive: true }] });
 
     expect(proxyAwareFetch).toHaveBeenCalledTimes(2);
   });

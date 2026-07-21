@@ -12,6 +12,8 @@ export default function ProviderModelsPanel({
   thinkingMode = "auto",
   onThinkingModeChange,
   thinkingLevelOptions = null,
+  onRefreshModels = null,
+  isRefreshingModels = false,
 }) {
   const allIds = [
     ...models,
@@ -26,6 +28,18 @@ export default function ProviderModelsPanel({
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-lg font-semibold">{"Available Models"}</h2>
         <div className="flex flex-wrap items-center gap-2">
+          {!isCompatible && onRefreshModels && (
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="refresh"
+              onClick={onRefreshModels}
+              loading={isRefreshingModels}
+              title="Bypass 5-minute cache and fetch live models from Provider API"
+            >
+              Refresh Models
+            </Button>
+          )}
           {!isCompatible && thinkingLevelOptions?.length > 0 && onThinkingModeChange && (
             <select
               value={thinkingMode || "auto"}

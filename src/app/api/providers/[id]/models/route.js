@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getProviderConnectionById } from "@/models";
 import {
+  PROVIDER_MODELS,
+  PROVIDER_ID_TO_ALIAS,
+} from "@/shared/constants/models";
+import {
   isOpenAICompatibleProvider,
   isAnthropicCompatibleProvider,
 } from "@/shared/constants/providers";
@@ -180,7 +184,7 @@ const PROVIDER_MODELS_CONFIG = {
   // chatgpt-account-id / project_id, prod→daily→sandbox fallback, TTL cache).
   // On failure they return no models → UI falls back to the static catalog.
   codex: {
-    customResolver: async (connection) => {
+    customResolver: async (connection, options = {}) => {
       const resolvedProxy = await resolveConnectionProxyConfig(
         connection.providerSpecificData || {},
       );
@@ -192,7 +196,7 @@ const PROVIDER_MODELS_CONFIG = {
             providerSpecificData: connection.providerSpecificData || {},
             connectionId: connection.id,
           },
-          { log: console, proxyOptions: resolvedProxy },
+          { log: console, proxyOptions: resolvedProxy, forceRefresh: options.forceRefresh },
         );
         if (result?.models?.length) {
           return { models: appendCodexReviewModels(result.models) };
@@ -209,7 +213,7 @@ const PROVIDER_MODELS_CONFIG = {
     },
   },
   antigravity: {
-    customResolver: async (connection) => {
+    customResolver: async (connection, options = {}) => {
       const resolvedProxy = await resolveConnectionProxyConfig(
         connection.providerSpecificData || {},
       );
@@ -221,7 +225,7 @@ const PROVIDER_MODELS_CONFIG = {
             providerSpecificData: connection.providerSpecificData || {},
             connectionId: connection.id,
           },
-          { log: console, proxyOptions: resolvedProxy },
+          { log: console, proxyOptions: resolvedProxy, forceRefresh: options.forceRefresh },
         );
         if (result?.models?.length) return { models: result.models };
         warning =
@@ -354,14 +358,17 @@ const PROVIDER_MODELS_CONFIG = {
     },
   },
   qoder: {
-    customResolver: async (connection) => {
-      const result = await resolveQoderModels({
-        accessToken: connection.accessToken,
-        refreshToken: connection.refreshToken,
-        email: connection.email,
-        displayName: connection.displayName,
-        providerSpecificData: connection.providerSpecificData || {},
-      });
+    customResolver: async (connection, options = {}) => {
+      const result = await resolveQoderModels(
+        {
+          accessToken: connection.accessToken,
+          refreshToken: connection.refreshToken,
+          email: connection.email,
+          displayName: connection.displayName,
+          providerSpecificData: connection.providerSpecificData || {},
+        },
+        { forceRefresh: options.forceRefresh },
+      );
       return result?.models?.length
         ? { models: result.models.map((model) => ({ id: model.id, name: model.name })) }
         : {
@@ -371,7 +378,7 @@ const PROVIDER_MODELS_CONFIG = {
     },
   },
   "grok-cli": {
-    customResolver: async (connection) => {
+    customResolver: async (connection, options = {}) => {
       const proxyOptions = await resolveConnectionProxyConfig(
         connection.providerSpecificData || {},
       );
@@ -380,6 +387,7 @@ const PROVIDER_MODELS_CONFIG = {
         {
           log: console,
           proxyOptions,
+          forceRefresh: options.forceRefresh,
           onCredentialsRefreshed: async (refreshed) => {
             await updateProviderCredentials(connection.id, {
               ...refreshed,
@@ -397,13 +405,13 @@ const PROVIDER_MODELS_CONFIG = {
     },
   },
   cursor: {
-    customResolver: async (connection) => {
+    customResolver: async (connection, options = {}) => {
       const result = await resolveCursorModels(
         {
           accessToken: connection.accessToken,
           providerSpecificData: connection.providerSpecificData || {},
         },
-        { forceRefresh: true, log: console },
+        { forceRefresh: options.forceRefresh ?? true, log: console },
       );
       return result?.models?.length
         ? { models: result.models }
@@ -416,7 +424,7 @@ const PROVIDER_MODELS_CONFIG = {
 
   // Custom resolvers (non-OpenAI-shaped APIs / token-refresh flows)
   kiro: {
-    customResolver: async (connection) => {
+    customResolver: async (connection, options = {}) => {
       const resolvedProxy = await resolveConnectionProxyConfig(
         connection.providerSpecificData || {},
       );
@@ -436,6 +444,7 @@ const PROVIDER_MODELS_CONFIG = {
         const result = await resolveKiroModels(credentials, {
           log: console,
           proxyOptions: resolvedProxy,
+          forceRefresh: options.forceRefresh,
           onCredentialsRefreshed: async (refreshed) => {
             if (refreshed?.accessToken) {
               await updateProviderCredentials(connection.id, {
@@ -634,12 +643,30 @@ export async function GET(request, { params }) {
 
     // Config-driven custom resolver path (OAuth refresh, non-OpenAI shape, etc.)
     if (typeof config.customResolver === "function") {
-      const result = await config.customResolver(connection);
+      const { searchParams } = new URL(request.url);
+      const forceRefresh =
+        searchParams.get("refresh") === "true" ||
+        searchParams.get("forceRefresh") === "true" ||
+        searchParams.get("refresh") === "1";
+      const result = await config.customResolver(connection, { forceRefresh });
       if (result.error) {
         return NextResponse.json(
           { error: result.error },
           { status: result.status || 500 },
         );
+      }
+      if (!result.models || result.models.length === 0) {
+        const staticAlias =
+          PROVIDER_ID_TO_ALIAS[connection.provider] || connection.provider;
+        const staticModels = PROVIDER_MODELS[staticAlias] || [];
+        return NextResponse.json({
+          provider: connection.provider,
+          connectionId: connection.id,
+          models: staticModels,
+          warning:
+            result.warning ||
+            "Live fetch returned no models; falling back to static catalog.",
+        });
       }
       return NextResponse.json({
         provider: connection.provider,
