@@ -1,4 +1,9 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
+  proxyAwareFetch: vi.fn(),
+}));
+import { proxyAwareFetch } from "../../open-sse/utils/proxyFetch.js";
 import {
   GrokCliExecutor,
   countGrokCliUserTurns,
@@ -64,8 +69,14 @@ describe("GrokCliExecutor", () => {
   let executor;
 
   beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
     _resetGrokCliTurnStore();
     executor = new GrokCliExecutor();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("is registered on executor map (id + aliases)", () => {
@@ -478,6 +489,43 @@ describe("GrokCliExecutor", () => {
       resolveGrokCliTurnIdx(`session-${i}`, [{ role: "user", content: "hi" }]);
     }
     expect(_getGrokCliTurnStoreSize()).toBe(5000);
+  });
+
+  it("stops retrying 503 after the configured Grok CLI budget", async () => {
+    proxyAwareFetch
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: "temporarily unavailable" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: "temporarily unavailable" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: "temporarily unavailable" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValue(new Response(null, { status: 200 }));
+
+    const result = executor.execute({
+      model: "grok-4.5",
+      body: { model: "grok-4.5", input: "retry test" },
+      stream: true,
+      credentials: { accessToken: "test-token", connectionId: "retry-budget" },
+      log: { debug: vi.fn(), info: vi.fn() },
+    });
+
+    await vi.runAllTimersAsync();
+    const { response } = await result;
+
+    expect(response.status).toBe(503);
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(3);
   });
 
   it("parseError surfaces 402 spending-limit", () => {

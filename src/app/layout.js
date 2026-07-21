@@ -1,5 +1,4 @@
 import { Inter } from "next/font/google";
-import Script from "next/script";
 import "material-symbols/outlined.css";
 import "./globals.css";
 import { ThemeProvider } from "@/shared/components/ThemeProvider";
@@ -29,16 +28,10 @@ export const viewport = {
   themeColor: "#0a0a0a",
 };
 
-// next/script avoids React 19 "script tag while rendering" console noise from raw <script> in layout.
-const FONTS_LOADED_SCRIPT = `if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){document.documentElement.classList.add('fonts-loaded')})}else{document.documentElement.classList.add('fonts-loaded')}`;
-
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans antialiased`}>
-        <Script id="fonts-loaded" strategy="beforeInteractive">
-          {FONTS_LOADED_SCRIPT}
-        </Script>
         <ThemeProvider>
           <RuntimeI18nProvider>{children}</RuntimeI18nProvider>
         </ThemeProvider>

@@ -155,8 +155,14 @@ export async function PUT(request, { params }) {
     if (globalPriority !== undefined)
       updateData.globalPriority = globalPriority;
     if (defaultModel !== undefined) updateData.defaultModel = defaultModel;
-    if (isActive !== undefined) updateData.isActive = isActive;
-    if (apiKey && existing.authType === "apikey") updateData.apiKey = apiKey;
+    if (isActive !== undefined) {
+      updateData.isActive = isActive;
+      if (isActive === true) {
+        if (testStatus === undefined) updateData.testStatus = "active";
+        if (lastError === undefined) updateData.lastError = null;
+        if (lastErrorAt === undefined) updateData.lastErrorAt = null;
+      }
+    }
     if (testStatus !== undefined) updateData.testStatus = testStatus;
     if (lastError !== undefined) updateData.lastError = lastError;
     if (lastErrorAt !== undefined) updateData.lastErrorAt = lastErrorAt;

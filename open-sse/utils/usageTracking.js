@@ -500,7 +500,13 @@ export function logUsage(
     usage.cache_read_input_tokens ||
     usage.cached_tokens ||
     usage.prompt_tokens_details?.cached_tokens;
-  if (cacheRead) msg += ` | cache_read=${cacheRead}`;
+  if (cacheRead) {
+    const cacheReadPercent =
+      inTokens > 0
+        ? Number(((cacheRead / inTokens) * 100).toFixed(2))
+        : 0;
+    msg += ` | cache_read=${cacheRead} (${cacheReadPercent}%)`;
+  }
 
   const cacheCreation = usage.cache_creation_input_tokens;
   if (cacheCreation) msg += ` | cache_create=${cacheCreation}`;

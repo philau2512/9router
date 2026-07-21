@@ -214,15 +214,35 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
     }
     if (newCredentials.projectId) updates.projectId = newCredentials.projectId;
 
+    const account =
+      newCredentials.connectionName ||
+      newCredentials.displayName ||
+      newCredentials.name ||
+      newCredentials.email ||
+      null;
+    const email = newCredentials.email || null;
+
     const result = await updateProviderConnection(connectionId, updates);
     log.info("TOKEN_REFRESH", "Credentials updated in localDb", {
       connectionId,
+      ...(account ? { account: String(account) } : {}),
+      ...(email ? { email: String(email) } : {}),
       success: !!result,
     });
     return !!result;
   } catch (error) {
     log.error("TOKEN_REFRESH", "Error updating credentials in localDb", {
       connectionId,
+      ...(newCredentials?.connectionName || newCredentials?.name || newCredentials?.email
+        ? {
+            account: String(
+              newCredentials.connectionName ||
+                newCredentials.name ||
+                newCredentials.email,
+            ),
+          }
+        : {}),
+      ...(newCredentials?.email ? { email: String(newCredentials.email) } : {}),
       error: error.message,
     });
     return false;
@@ -257,7 +277,11 @@ export async function checkAndRefreshToken(provider, credentials) {
         creds.displayName ||
         creds.name ||
         creds.email ||
-        (creds.connectionId ? String(creds.connectionId).slice(0, 8) : null),
+        (creds.connectionId ? String(creds.connectionId) : null),
+      ...(creds.email ? { email: String(creds.email) } : {}),
+      ...(creds.connectionId
+        ? { connectionId: String(creds.connectionId) }
+        : {}),
       expiresIn: remaining === null ? null : Math.round(remaining / 1000),
       refreshLeadMs: refreshLead,
       lastRefreshAt: creds.lastRefreshAt || null,
@@ -268,6 +292,12 @@ export async function checkAndRefreshToken(provider, credentials) {
       const mergedCreds = {
         ...newCreds,
         existingProviderSpecificData: creds.providerSpecificData,
+        // Log-only identity for "Credentials updated in localDb"
+        connectionId: creds.connectionId,
+        connectionName: creds.connectionName,
+        name: creds.name,
+        email: creds.email,
+        displayName: creds.displayName,
       };
 
       // Persist to DB (non-blocking path continues below)
@@ -378,11 +408,25 @@ export async function refreshCodexConnection(connection, options = {}) {
       return { ok: false, error: "Connection not found" };
     }
 
+    // Pass name/email so TOKEN_REFRESH logs (success + refresh_token_reused) show account.
+    const accountMeta = {
+      connectionId: freshConnection.id,
+      connectionName:
+        freshConnection.displayName ||
+        freshConnection.name ||
+        freshConnection.email ||
+        null,
+      name: freshConnection.name || null,
+      email: freshConnection.email || null,
+      displayName: freshConnection.displayName || null,
+    };
+
     const result = await getAccessToken(
       "codex",
       {
         refreshToken: freshConnection.refreshToken,
         providerSpecificData: freshConnection.providerSpecificData,
+        ...accountMeta,
       },
       log,
     );
@@ -413,6 +457,8 @@ export async function refreshCodexConnection(connection, options = {}) {
       testStatus: "active",
       lastError: null,
       lastErrorAt: null,
+      // Log-only identity (not persisted as credential fields)
+      ...accountMeta,
     });
 
     return {

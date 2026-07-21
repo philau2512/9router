@@ -32,10 +32,10 @@ export async function requireValidApiKey(request, settings = null) {
   const effectiveSettings = settings || (await getSettings());
   const apiKey = extractApiKey(request);
 
-  if (!effectiveSettings.requireApiKey) {
+  if (!effectiveSettings.requireApiKey && !apiKey) {
     return {
       ok: true,
-      apiKey,
+      apiKey: null,
       keyInfo: null,
       limitState: null,
       settings: effectiveSettings,
@@ -57,6 +57,15 @@ export async function requireValidApiKey(request, settings = null) {
 
   const validation = await getApiKeyValidationInfo(apiKey);
   if (!validation.valid) {
+    if (!effectiveSettings.requireApiKey) {
+      return {
+        ok: true,
+        apiKey,
+        keyInfo: null,
+        limitState: null,
+        settings: effectiveSettings,
+      };
+    }
     return {
       ok: false,
       apiKey,

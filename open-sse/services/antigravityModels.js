@@ -63,13 +63,22 @@ export async function resolveAntigravityModels(credentials, options = {}) {
           if (!res.ok) continue;
           const data = await res.json().catch(() => null);
           const modelsMap = data?.models;
-          if (!modelsMap || typeof modelsMap !== "object") continue;
+          if (!modelsMap) continue;
           const models = [];
-          for (const [rawId, modelData] of Object.entries(modelsMap)) {
-            const id = String(rawId).trim();
-            if (!id || ANTIGRAVITY_DYNAMIC_MODEL_SKIP_IDS.has(id)) continue;
-            const name = (modelData?.displayName || id).toString();
-            models.push({ id, name });
+          if (Array.isArray(modelsMap)) {
+            for (const item of modelsMap) {
+              const id = String(item?.id || item?.name || "").trim();
+              if (!id || ANTIGRAVITY_DYNAMIC_MODEL_SKIP_IDS.has(id)) continue;
+              const name = (item?.displayName || item?.name || id).toString();
+              models.push({ id, name, isLive: true });
+            }
+          } else if (typeof modelsMap === "object") {
+            for (const [rawId, modelData] of Object.entries(modelsMap)) {
+              const id = String(rawId).trim();
+              if (!id || ANTIGRAVITY_DYNAMIC_MODEL_SKIP_IDS.has(id)) continue;
+              const name = (modelData?.displayName || id).toString();
+              models.push({ id, name, isLive: true });
+            }
           }
           if (models.length) return { models };
         } catch {

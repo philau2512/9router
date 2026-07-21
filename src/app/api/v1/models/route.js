@@ -27,6 +27,11 @@ import { resolveGrokCliModels } from "open-sse/services/grokCliModels.js";
 import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
+import { requireValidApiKey } from "@/sse/services/api-key-validation.js";
+import {
+  filterApiKeyAccessibleModels,
+} from "@/sse/services/api-key-access.js";
+import { getComboModels, getModelInfo } from "@/sse/services/model.js";
 import { PROVIDERS } from "open-sse/config/providers.js";
 
 // Per-provider live model resolvers. Each receives a connection record and
@@ -611,6 +616,26 @@ export async function buildModelsList(kindFilter) {
   return dedupedModels;
 }
 
+export async function filterModelsForApiKey(request, models) {
+  const auth = await requireValidApiKey(request);
+  if (!auth.ok) {
+    return { error: auth, data: null };
+  }
+
+  const data = await filterApiKeyAccessibleModels(
+    auth.keyInfo,
+    models,
+    async (entry) => {
+      const comboModels = await getComboModels(entry.id);
+      const modelIds = comboModels || [entry.id];
+      const targets = await Promise.all(modelIds.map((modelId) => getModelInfo(modelId)));
+      return targets.filter((target) => target.provider);
+    },
+  );
+
+  return { error: null, data };
+}
+
 /**
  * Handle CORS preflight
  */
@@ -628,9 +653,16 @@ export async function OPTIONS() {
  * GET /v1/models - OpenAI compatible models list (LLM/chat models only by default).
  * For other capabilities use /v1/models/{kind} (image, tts, stt, embedding, image-to-text, web).
  */
-export async function GET() {
+export async function GET(request) {
   try {
-    const data = await buildModelsList([LLM_KIND]);
+    const models = await buildModelsList([LLM_KIND]);
+    const { error, data } = await filterModelsForApiKey(request, models);
+    if (error) {
+      return Response.json(
+        { error: { message: error.message, type: "authentication_error", code: error.code } },
+        { status: error.status, headers: { "Access-Control-Allow-Origin": "*" } },
+      );
+    }
     return Response.json(
       { object: "list", data },
       {

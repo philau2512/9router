@@ -1,8 +1,36 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
+import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
 const VALID_LIMIT_METRICS = new Set(["requests", "tokens", "cost"]);
 const VALID_LIMIT_PERIODS = new Set(["daily", "monthly"]);
+
+function normalizeAllowlistInput(value, fieldName) {
+  if (value == null) return [];
+  if (!Array.isArray(value)) {
+    throw new Error(`${fieldName} must be an array of strings`);
+  }
+
+  const normalized = value.map((item) => {
+    if (typeof item !== "string") {
+      throw new Error(`${fieldName} must be an array of strings`);
+    }
+    return item.trim();
+  });
+
+  if (normalized.some((item) => !item)) {
+    throw new Error(`${fieldName} cannot contain empty values`);
+  }
+
+  return [...new Set(normalized)];
+}
+
+function normalizeStoredAllowlist(value) {
+  const parsed = parseJson(value, []);
+  return Array.isArray(parsed)
+    ? normalizeAllowlistInput(parsed, "Stored allowlist")
+    : [];
+}
 
 function normalizeLimitRow(row) {
   if (!row) return null;
@@ -25,6 +53,8 @@ function rowToKey(row) {
     name: row.name,
     machineId: row.machineId,
     isActive: row.isActive === 1 || row.isActive === true,
+    allowedProviders: normalizeStoredAllowlist(row.allowedProviders),
+    allowedModels: normalizeStoredAllowlist(row.allowedModels),
     createdAt: row.createdAt,
     limit: normalizeLimitRow(row),
   };
@@ -113,6 +143,8 @@ function selectApiKeyBaseSql(
       ak.name,
       ak.machineId,
       ak.isActive,
+      ak.allowedProviders,
+      ak.allowedModels,
       ak.createdAt,
       akl.id AS limitId,
       akl.metricType,
@@ -159,16 +191,23 @@ export async function createApiKey(name, machineId, options = {}) {
     createdAt: new Date().toISOString(),
   };
   const normalizedLimit = validateLimitInput(options.limit);
+  const allowedProviders = normalizeAllowlistInput(
+    options.allowedProviders,
+    "allowedProviders",
+  );
+  const allowedModels = normalizeAllowlistInput(options.allowedModels, "allowedModels");
 
   db.transaction(() => {
     db.run(
-      `INSERT INTO apiKeys(id, key, name, machineId, isActive, createdAt) VALUES(?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedProviders, allowedModels, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         apiKey.id,
         apiKey.key,
         apiKey.name,
         apiKey.machineId,
         1,
+        stringifyJson(allowedProviders),
+        stringifyJson(allowedModels),
         apiKey.createdAt,
       ],
     );
@@ -193,10 +232,27 @@ export async function updateApiKey(id, data) {
         data.isActive === undefined
           ? row.isActive === 1 || row.isActive === true
           : !!data.isActive,
+      allowedProviders: Object.prototype.hasOwnProperty.call(
+        data,
+        "allowedProviders",
+      )
+        ? normalizeAllowlistInput(data.allowedProviders, "allowedProviders")
+        : normalizeStoredAllowlist(row.allowedProviders),
+      allowedModels: Object.prototype.hasOwnProperty.call(data, "allowedModels")
+        ? normalizeAllowlistInput(data.allowedModels, "allowedModels")
+        : normalizeStoredAllowlist(row.allowedModels),
     };
     db.run(
-      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ? WHERE id = ?`,
-      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, id],
+      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, allowedProviders = ?, allowedModels = ? WHERE id = ?`,
+      [
+        merged.key,
+        merged.name,
+        merged.machineId,
+        merged.isActive ? 1 : 0,
+        stringifyJson(merged.allowedProviders),
+        stringifyJson(merged.allowedModels),
+        id,
+      ],
     );
 
     if (Object.prototype.hasOwnProperty.call(data, "limit")) {

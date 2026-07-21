@@ -42,6 +42,15 @@ export {
   authFailureToErrorResponse,
   getRequestApiKeyContext,
 } from "./api-key-validation.js";
+export {
+  normalizeApiKeyAllowlist,
+  getCanonicalModelId,
+  isApiKeyAccessUnrestricted,
+  getApiKeyAccessDecision,
+  assertApiKeyAccess,
+  assertApiKeyAccessBatch,
+  filterApiKeyAccessibleModels,
+} from "./api-key-access.js";
 
 // ── API key helpers, builders, formatters ───────────────────────────
 export {

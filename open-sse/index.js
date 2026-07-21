@@ -74,6 +74,7 @@ export {
 export {
   CODEX_MAX_REFRESH_AGE_MS,
   shouldRefreshCredentials,
+  shouldRefreshCredentialsForUsage,
   refreshProviderCredentials,
   mergeRefreshedCredentials,
   mergeProviderSpecificData,

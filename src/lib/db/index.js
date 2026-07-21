@@ -166,6 +166,8 @@ export async function exportDb({ includeUsageAnalytics = false } = {}) {
       name: r.name,
       machineId: r.machineId,
       isActive: r.isActive === 1,
+      allowedProviders: parseJson(r.allowedProviders, []),
+      allowedModels: parseJson(r.allowedModels, []),
       createdAt: r.createdAt,
     })),
     combos: db.all(`SELECT * FROM combos`).map((r) => ({
@@ -313,13 +315,15 @@ export async function importDb(
     }
     for (const k of payload.apiKeys || []) {
       db.run(
-        `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, createdAt) VALUES(?, ?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, allowedProviders, allowedModels, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           k.id,
           k.key,
           k.name || null,
           k.machineId || null,
           k.isActive === false ? 0 : 1,
+          stringifyJson(Array.isArray(k.allowedProviders) ? k.allowedProviders : []),
+          stringifyJson(Array.isArray(k.allowedModels) ? k.allowedModels : []),
           k.createdAt || new Date().toISOString(),
         ],
       );

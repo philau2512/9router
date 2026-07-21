@@ -87,4 +87,11 @@ describe("Antigravity provider metadata", () => {
       ),
     ).toBe(false);
   });
+
+  it("exports valid model aliases for Gemini 3.6 Flash family", () => {
+    const { ANTIGRAVITY_MODEL_ALIASES } = require("../../open-sse/providers/antigravity-provider-metadata.js");
+    expect(ANTIGRAVITY_MODEL_ALIASES["gemini-3.6-flash-low"]).toBe("gemini-3.5-flash-low");
+    expect(ANTIGRAVITY_MODEL_ALIASES["gemini-3.6-flash-agent"]).toBe("gemini-3-flash-agent");
+    expect(ANTIGRAVITY_MODEL_ALIASES["gemini-3.6-flash-extra-low"]).toBe("gemini-3.5-flash-extra-low");
+  });
 });

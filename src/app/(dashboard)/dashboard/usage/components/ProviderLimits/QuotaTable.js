@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import { formatResetTime, getRemainingPercentage } from "./utils";
+import { formatResetTime, getRemainingPercentage, formatQuotaUsageLabel } from "./utils";
 
 const PAGE_SIZE = 10;
 
@@ -45,9 +45,11 @@ function QuotaTableContent({
         <table className="w-full table-fixed text-left">
           <tbody>
             {currentPageRows.map((quota) => {
-              const colors = getColorClasses(quota.remaining);
+              const isUnknown = quota.unknown === true;
+              const colors = getColorClasses(quota.remaining, isUnknown);
               const countdown = formatResetTime(quota.resetAt);
               const resetDisplay = formatResetTimeDisplay(quota.resetAt);
+              const usageLabel = formatQuotaUsageLabel(quota);
 
               return (
                 <tr
@@ -71,7 +73,7 @@ function QuotaTableContent({
                     <div className={compact ? "space-y-1" : "space-y-1.5"}>
                       <div
                         className={`${compact ? "h-1" : "h-1.5"} rounded-full overflow-hidden border ${colors.bgLight} ${
-                          quota.remaining === 0
+                          isUnknown || quota.remaining === 0
                             ? "border-black/10 dark:border-white/10"
                             : "border-transparent"
                         }`}
@@ -79,7 +81,9 @@ function QuotaTableContent({
                         <div
                           className={`h-full transition-all duration-300 ${colors.bg}`}
                           style={{
-                            width: `${Math.min(quota.remaining, 100)}%`,
+                            width: isUnknown
+                              ? "0%"
+                              : `${Math.min(quota.remaining, 100)}%`,
                           }}
                         />
                       </div>
@@ -87,13 +91,12 @@ function QuotaTableContent({
                       <div
                         className={`flex items-center justify-between ${compact ? "text-[10px]" : "text-xs"}`}
                       >
-                        <span className="text-text-muted">
-                          {quota.used.toLocaleString()} /{" "}
-                          {quota.total > 0 ? quota.total.toLocaleString() : "∞"}
-                        </span>
-                        <span className={`font-medium ${colors.text}`}>
-                          {quota.remaining}%
-                        </span>
+                        <span className="text-text-muted">{usageLabel}</span>
+                        {!isUnknown && (
+                          <span className={`font-medium ${colors.text}`}>
+                            {quota.remaining}%
+                          </span>
+                        )}
                       </div>
                     </div>
                   </td>
@@ -226,7 +229,17 @@ function formatResetTimeDisplay(resetTime) {
 /**
  * Get color classes based on remaining percentage
  */
-function getColorClasses(remainingPercentage) {
+function getColorClasses(remainingPercentage, unknown = false) {
+  // CLIProxyAPI free: empty neutral bar for "Used --" / "$0.00/$0.00"
+  if (unknown) {
+    return {
+      text: "text-text-muted",
+      bg: "bg-transparent",
+      bgLight: "bg-black/10 dark:bg-white/10",
+      emoji: "○",
+    };
+  }
+
   if (remainingPercentage > 70) {
     return {
       text: "text-green-600 dark:text-green-400",
@@ -343,9 +356,11 @@ export default function QuotaTable({
         <table className="w-full table-fixed text-left">
           <tbody>
             {currentPageRows.map((quota) => {
-              const colors = getColorClasses(quota.remaining);
+              const isUnknown = quota.unknown === true;
+              const colors = getColorClasses(quota.remaining, isUnknown);
               const countdown = formatResetTime(quota.resetAt);
               const resetDisplay = formatResetTimeDisplay(quota.resetAt);
+              const usageLabel = formatQuotaUsageLabel(quota);
 
               return (
                 <tr
@@ -369,7 +384,7 @@ export default function QuotaTable({
                     <div className={compact ? "space-y-1" : "space-y-1.5"}>
                       <div
                         className={`${compact ? "h-1" : "h-1.5"} rounded-full overflow-hidden border ${colors.bgLight} ${
-                          quota.remaining === 0
+                          isUnknown || quota.remaining === 0
                             ? "border-black/10 dark:border-white/10"
                             : "border-transparent"
                         }`}
@@ -377,7 +392,9 @@ export default function QuotaTable({
                         <div
                           className={`h-full transition-all duration-300 ${colors.bg}`}
                           style={{
-                            width: `${Math.min(quota.remaining, 100)}%`,
+                            width: isUnknown
+                              ? "0%"
+                              : `${Math.min(quota.remaining, 100)}%`,
                           }}
                         />
                       </div>
@@ -385,13 +402,12 @@ export default function QuotaTable({
                       <div
                         className={`flex items-center justify-between ${compact ? "text-[10px]" : "text-xs"}`}
                       >
-                        <span className="text-text-muted">
-                          {quota.used.toLocaleString()} /{" "}
-                          {quota.total > 0 ? quota.total.toLocaleString() : "∞"}
-                        </span>
-                        <span className={`font-medium ${colors.text}`}>
-                          {quota.remaining}%
-                        </span>
+                        <span className="text-text-muted">{usageLabel}</span>
+                        {!isUnknown && (
+                          <span className={`font-medium ${colors.text}`}>
+                            {quota.remaining}%
+                          </span>
+                        )}
                       </div>
                     </div>
                   </td>

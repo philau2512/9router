@@ -52,6 +52,12 @@ describe("Schema migrations", () => {
         "requestDetails",
       ]),
     );
+    const apiKeyColumns = db
+      .all(`PRAGMA table_info(apiKeys)`)
+      .map((column) => column.name);
+    expect(apiKeyColumns).toEqual(
+      expect.arrayContaining(["allowedProviders", "allowedModels"]),
+    );
   });
 
   it("existing DB at older schemaVersion → re-applies pending migrations on restart", async () => {

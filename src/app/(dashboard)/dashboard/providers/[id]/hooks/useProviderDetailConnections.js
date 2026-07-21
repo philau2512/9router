@@ -334,11 +334,25 @@ export function useProviderDetailConnections({
 
   const handleUpdateConnectionStatus = async (connectionId, isActive) => {
     try {
-      const res = await updateProviderConnection(connectionId, { isActive });
+      const payload = { isActive };
+      if (isActive) {
+        payload.testStatus = "active";
+        payload.lastError = null;
+        payload.lastErrorAt = null;
+      }
+      const res = await updateProviderConnection(connectionId, payload);
       if (res.ok) {
         applyConnections(
           connectionsRef.current.map((c) =>
-            c.id === connectionId ? { ...c, isActive } : c,
+            c.id === connectionId
+              ? {
+                  ...c,
+                  isActive,
+                  ...(isActive
+                    ? { testStatus: "active", lastError: null, lastErrorAt: null }
+                    : {}),
+                }
+              : c,
           ),
         );
       }
@@ -538,7 +552,13 @@ export function useProviderDetailConnections({
       let failed = 0;
       for (const connectionId of selectedConnectionIds) {
         try {
-          const res = await updateProviderConnection(connectionId, { isActive });
+          const payload = { isActive };
+          if (isActive) {
+            payload.testStatus = "active";
+            payload.lastError = null;
+            payload.lastErrorAt = null;
+          }
+          const res = await updateProviderConnection(connectionId, payload);
           if (!res.ok) failed += 1;
         } catch (error) {
           console.log("Error updating connection status:", connectionId, error);
@@ -549,7 +569,15 @@ export function useProviderDetailConnections({
       const updatedIds = new Set(selectedConnectionIds);
       applyConnections(
         connectionsRef.current.map((conn) =>
-          updatedIds.has(conn.id) ? { ...conn, isActive } : conn,
+          updatedIds.has(conn.id)
+            ? {
+                ...conn,
+                isActive,
+                ...(isActive
+                  ? { testStatus: "active", lastError: null, lastErrorAt: null }
+                  : {}),
+              }
+            : conn,
         ),
       );
 

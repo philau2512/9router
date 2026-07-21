@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { CardSkeleton } from "@/shared/components";
@@ -277,6 +277,34 @@ export default function ProviderDetailPage() {
     onProviderNodeLoaded: setProviderNode,
     onThinkingModeLoaded: setThinkingMode,
   });
+
+  const [isRefreshingModels, setIsRefreshingModels] = useState(false);
+
+  const handleRefreshLiveModels = useCallback(async () => {
+    if (isCompatible) return;
+    const activeConnection = (connections || []).find(
+      (conn) => conn && conn.id && conn.isActive !== false,
+    );
+    if (!activeConnection) return;
+
+    setIsRefreshingModels(true);
+    try {
+      const res = await fetch(
+        `/api/providers/${activeConnection.id}/models?refresh=true`,
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const fetched = Array.isArray(data?.models) ? data.models : [];
+        if (fetched.length > 0) {
+          setLiveModels(fetched);
+        }
+      }
+    } catch {
+      // fail-open
+    } finally {
+      setIsRefreshingModels(false);
+    }
+  }, [connections, isCompatible]);
 
   // Dynamic model fetch for the "Available Models" panel: OAuth providers with
   // a live catalog (codex/antigravity/kiro/...) pull /api/providers/{id}/models.
@@ -695,6 +723,8 @@ export default function ProviderDetailPage() {
         onThinkingModeChange={handleThinkingModeChange}
         thinkingLevelOptions={providerThinkingLevels}
         resolveThinkingSuffix={resolveThinkingSuffix}
+        onRefreshModels={handleRefreshLiveModels}
+        isRefreshingModels={isRefreshingModels}
       />
 
       <BulkProxyAssignmentModal

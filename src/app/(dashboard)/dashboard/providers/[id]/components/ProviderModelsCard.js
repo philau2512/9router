@@ -253,6 +253,8 @@ export default function ProviderModelsCard({
   onThinkingModeChange,
   thinkingLevelOptions = null,
   resolveThinkingSuffix,
+  onRefreshModels = null,
+  isRefreshingModels = false,
 }) {
   const { getCaps } = useModelCaps();
 
@@ -275,6 +277,8 @@ export default function ProviderModelsCard({
       thinkingMode={thinkingMode}
       onThinkingModeChange={onThinkingModeChange}
       thinkingLevelOptions={thinkingLevelOptions}
+      onRefreshModels={onRefreshModels}
+      isRefreshingModels={isRefreshingModels}
       renderModelsSection={() =>
         renderModelsSection({
           isCompatible,

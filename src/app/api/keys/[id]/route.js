@@ -7,6 +7,17 @@ import {
   buildApiKeyLimitPresentation,
 } from "@/lib/localDb";
 
+function validateAllowlist(body, fieldName) {
+  if (!Object.prototype.hasOwnProperty.call(body, fieldName)) return null;
+  const value = body[fieldName];
+  if (value == null) return null;
+  if (!Array.isArray(value)) return `${fieldName} must be an array of strings`;
+  if (value.some((item) => typeof item !== "string" || !item.trim())) {
+    return `${fieldName} must contain only non-empty strings`;
+  }
+  return null;
+}
+
 function parseLimit(body) {
   if (body.limitEnabled !== true) return null;
   return {
@@ -65,6 +76,12 @@ export async function PUT(request, { params }) {
     if (limitError) {
       return NextResponse.json({ error: limitError }, { status: 400 });
     }
+    const allowlistError =
+      validateAllowlist(body, "allowedProviders") ||
+      validateAllowlist(body, "allowedModels");
+    if (allowlistError) {
+      return NextResponse.json({ error: allowlistError }, { status: 400 });
+    }
 
     const updateData = {};
     if (isActive !== undefined) updateData.isActive = isActive;
@@ -76,6 +93,12 @@ export async function PUT(request, { params }) {
       Object.prototype.hasOwnProperty.call(body, "limitValue")
     ) {
       updateData.limit = parseLimit(body);
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "allowedProviders")) {
+      updateData.allowedProviders = body.allowedProviders;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "allowedModels")) {
+      updateData.allowedModels = body.allowedModels;
     }
 
     const updated = await updateApiKey(id, updateData);

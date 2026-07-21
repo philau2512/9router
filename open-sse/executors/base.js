@@ -293,22 +293,18 @@ export class BaseExecutor {
           } catch (e) {}
 
           if (this.isOverloadedError(response.status, bodyText)) {
-            const attempts = 3;
-            const delayMs = 2000;
-            if (retryAttemptsByUrl[urlIndex] < attempts) {
-              retryAttemptsByUrl[urlIndex]++;
-              log?.debug?.(
-                "RETRY",
-                `Overloaded status ${response.status} retry ${retryAttemptsByUrl[urlIndex]}/${attempts} after ${delayMs / 1000}s. Error details: ${bodyText.slice(0, 100)}`,
-              );
-              await new Promise((resolve) => setTimeout(resolve, delayMs));
+            if (
+              await tryRetry(
+                urlIndex,
+                response.status,
+                `overloaded status ${response.status}: ${bodyText.slice(0, 100)}`,
+              )
+            ) {
               urlIndex--;
               continue;
             }
           }
         }
-
-        retryAttemptsByUrl[urlIndex] = 0;
 
         if (
           await tryRetry(urlIndex, response.status, `status ${response.status}`)

@@ -81,6 +81,9 @@ export function calculatePercentage(used, total) {
  * @returns {number} Remaining percentage (0-100)
  */
 export function getRemainingPercentage(quota) {
+  // Free / unknown allotment: empty bar (CLIProxyAPI "Used --"), not 100% full.
+  if (quota?.unknown === true) return 0;
+
   if (quota?.remaining !== undefined) {
     return Math.max(0, Math.round(quota.remaining));
   }
@@ -90,6 +93,27 @@ export function getRemainingPercentage(quota) {
   }
 
   return calculatePercentage(quota?.used, quota?.total);
+}
+
+/** Format used/total for quota rows (CLIProxyAPI free: Used -- / $0.00). */
+export function formatQuotaUsageLabel(quota) {
+  if (quota?.unknown === true) {
+    if (quota.format === "currency") {
+      return "$0.00 / $0.00";
+    }
+    return "Used --";
+  }
+  const used = Number(quota?.used) || 0;
+  const total = Number(quota?.total) || 0;
+  if (quota?.format === "currency") {
+    const fmt = (n) =>
+      `$${n.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
+    return `${fmt(used)} / ${fmt(total)}`;
+  }
+  return `${used.toLocaleString()} / ${total > 0 ? total.toLocaleString() : "∞"}`;
 }
 
 export function getQuotaVisibilityKey(quota) {
@@ -189,8 +213,8 @@ export function parseQuotaData(provider, data) {
       case "xai":
         // Grok billing rows come keyed by label (Monthly credits / Weekly
         // limit / On-demand / Prepaid). Preserve remainingPercentage + unlimited
-        // so depleted ($0/$0) and unknown windows render correctly instead of a
-        // wrong 0% bar (same handling as antigravity).
+        // + unknown/format so free CLIProxyAPI-style "Used --" / "$0.00/$0.00"
+        // rows render instead of a fake 100% or 0% bar.
         if (data.quotas) {
           Object.entries(data.quotas).forEach(([name, quota]) => {
             normalizedQuotas.push({
@@ -200,6 +224,8 @@ export function parseQuotaData(provider, data) {
               resetAt: quota.resetAt || null,
               remainingPercentage: quota.remainingPercentage,
               unlimited: quota.unlimited,
+              unknown: quota.unknown === true,
+              format: quota.format || null,
             });
           });
         }
