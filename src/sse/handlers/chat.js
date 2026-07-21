@@ -6,6 +6,9 @@ import {
   clearAccountError,
   enforceApiKeyPolicy,
   getApiKeyValue,
+  getApiKeyInfo,
+  assertApiKeyAccess,
+  assertApiKeyAccessBatch,
   logApiKeyPresence,
   normalizeApiKeyFailureLog,
 } from "../services/auth.js";
@@ -32,7 +35,13 @@ import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 /**
  * Format error response dynamically based on request client format
  */
-function getCustomErrorResponse(request, statusCode, message, body = null) {
+function getCustomErrorResponse(
+  request,
+  statusCode,
+  message,
+  body = null,
+  details = {},
+) {
   const url = request?.url ? new URL(request.url) : null;
   const sourceFormat = url ? detectFormatByEndpoint(url.pathname, body) : null;
 
@@ -60,7 +69,7 @@ function getCustomErrorResponse(request, statusCode, message, body = null) {
       },
     );
   }
-  return errorResponse(statusCode, message);
+  return errorResponse(statusCode, message, details);
 }
 
 /**
@@ -129,6 +138,7 @@ export async function handleChat(request, clientRawRequest = null) {
       settings,
     );
     const apiKey = getApiKeyValue(authResult.auth);
+    const keyInfo = getApiKeyInfo(authResult.auth);
     logApiKeyPresence(apiKey, log);
     if (!authResult.ok) {
       normalizeApiKeyFailureLog(authResult.auth, log);
@@ -161,6 +171,23 @@ export async function handleChat(request, clientRawRequest = null) {
     const comboModels = await getComboModels(modelStr);
     timing.comboResolvedAt = Date.now();
     if (comboModels) {
+      const resolvedComboModels = await Promise.all(
+        comboModels.map((comboModel) => getModelInfo(comboModel)),
+      );
+      const access = assertApiKeyAccessBatch(
+        keyInfo,
+        resolvedComboModels.filter((modelInfo) => modelInfo.provider),
+      );
+      if (!access.ok) {
+        return getCustomErrorResponse(
+          request,
+          HTTP_STATUS.FORBIDDEN,
+          access.message,
+          body,
+          { code: access.code },
+        );
+      }
+
       // Check for combo-specific strategy first, fallback to global
       const comboStrategies = settings.comboStrategies || {};
       const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
@@ -179,6 +206,7 @@ export async function handleChat(request, clientRawRequest = null) {
             handleSingleModelChat(b, m, clientRawRequest, request, apiKey, {
               settings,
               timing: { ...timing },
+              keyInfo,
             }),
           log,
           comboName: modelStr,
@@ -199,6 +227,7 @@ export async function handleChat(request, clientRawRequest = null) {
           handleSingleModelChat(b, m, clientRawRequest, request, apiKey, {
             settings,
             timing: { ...timing },
+            keyInfo,
           }),
         log,
         comboName: modelStr,
@@ -214,7 +243,7 @@ export async function handleChat(request, clientRawRequest = null) {
       clientRawRequest,
       request,
       apiKey,
-      { settings, timing },
+      { settings, timing, keyInfo },
     );
   });
 }
@@ -232,6 +261,7 @@ async function handleSingleModelChat(
 ) {
   const timing = requestContext.timing || { requestStartTime: Date.now() };
   const settings = requestContext.settings || (await getSettings());
+  const keyInfo = requestContext.keyInfo || null;
   const modelInfo = await getModelInfo(modelStr);
   timing.modelResolvedAt = Date.now();
 
@@ -239,6 +269,23 @@ async function handleSingleModelChat(
   if (!modelInfo.provider) {
     const comboModels = await getComboModels(modelStr);
     if (comboModels) {
+      const resolvedComboModels = await Promise.all(
+        comboModels.map((comboModel) => getModelInfo(comboModel)),
+      );
+      const comboAccess = assertApiKeyAccessBatch(
+        keyInfo,
+        resolvedComboModels.filter((entry) => entry.provider),
+      );
+      if (!comboAccess.ok) {
+        return getCustomErrorResponse(
+          request,
+          HTTP_STATUS.FORBIDDEN,
+          comboAccess.message,
+          body,
+          { code: comboAccess.code },
+        );
+      }
+
       const chatSettings = settings;
       // Check for combo-specific strategy first, fallback to global
       const comboStrategies = chatSettings.comboStrategies || {};
@@ -258,6 +305,7 @@ async function handleSingleModelChat(
             handleSingleModelChat(b, m, clientRawRequest, request, apiKey, {
               settings,
               timing: { ...timing },
+              keyInfo,
             }),
           log,
           comboName: modelStr,
@@ -278,6 +326,7 @@ async function handleSingleModelChat(
           handleSingleModelChat(b, m, clientRawRequest, request, apiKey, {
             settings,
             timing: { ...timing },
+            keyInfo,
           }),
         log,
         comboName: modelStr,
@@ -295,6 +344,16 @@ async function handleSingleModelChat(
   }
 
   const { provider, model } = modelInfo;
+  const access = assertApiKeyAccess(keyInfo, { provider, model });
+  if (!access.ok) {
+    return getCustomErrorResponse(
+      request,
+      HTTP_STATUS.FORBIDDEN,
+      access.message,
+      body,
+      { code: access.code },
+    );
+  }
 
   // Log model routing (alias → actual model)
   if (modelStr !== `${provider}/${model}`) {

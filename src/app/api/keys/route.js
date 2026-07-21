@@ -53,6 +53,8 @@ function buildCreatePayload(apiKey) {
     isActive: apiKey.isActive,
     createdAt: apiKey.createdAt,
     limit: apiKey.limit,
+    allowedProviders: apiKey.allowedProviders,
+    allowedModels: apiKey.allowedModels,
   };
 }
 

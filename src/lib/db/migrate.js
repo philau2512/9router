@@ -232,13 +232,15 @@ function importLegacyMain(adapter, data) {
     data.apiKeys || [],
     (k) => {
       adapter.run(
-        `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, createdAt) VALUES(?, ?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, allowedProviders, allowedModels, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           k.id,
           k.key,
           k.name || null,
           k.machineId || null,
           k.isActive === false ? 0 : 1,
+          stringifyJson(Array.isArray(k.allowedProviders) ? k.allowedProviders : []),
+          stringifyJson(Array.isArray(k.allowedModels) ? k.allowedModels : []),
           k.createdAt || new Date().toISOString(),
         ],
       );

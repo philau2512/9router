@@ -14,12 +14,40 @@ import {
   normalizeLimitForm,
 } from "../../endpoint/utils/endpointLimitHelpers";
 
+function normalizeAllowlistValue(value) {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number") return String(value);
+  if (!value || typeof value !== "object") return "";
+
+  for (const field of ["value", "id", "name", "label"]) {
+    const normalized = normalizeAllowlistValue(value[field]);
+    if (normalized) return normalized;
+  }
+
+  return "";
+}
+
+function normalizeAllowlist(values) {
+  const seen = new Set();
+  return (Array.isArray(values) ? values : []).filter((value) => {
+    const normalized = normalizeAllowlistValue(value);
+    if (!normalized || seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  }).map(normalizeAllowlistValue);
+}
+
 export function useKeyBudgets() {
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
   const [editingKey, setEditingKey] = useState(null);
+  const [editingAccessKey, setEditingAccessKey] = useState(null);
   const [editKeyLimit, setEditKeyLimit] = useState(createDefaultLimitForm());
+  const [editAccess, setEditAccess] = useState({
+    allowedProviders: [],
+    allowedModels: [],
+  });
   const [formError, setFormError] = useState("");
   const [savingKeyId, setSavingKeyId] = useState(null);
   const [expandedKeyId, setExpandedKeyId] = useState(null);
@@ -75,6 +103,21 @@ export function useKeyBudgets() {
   const closeEditModal = useCallback(() => {
     setEditingKey(null);
     setEditKeyLimit(createDefaultLimitForm());
+    setFormError("");
+  }, []);
+
+  const openAccessModal = useCallback((key) => {
+    setEditingAccessKey(key);
+    setEditAccess({
+      allowedProviders: normalizeAllowlist(key.allowedProviders),
+      allowedModels: normalizeAllowlist(key.allowedModels),
+    });
+    setFormError("");
+  }, []);
+
+  const closeAccessModal = useCallback(() => {
+    setEditingAccessKey(null);
+    setEditAccess({ allowedProviders: [], allowedModels: [] });
     setFormError("");
   }, []);
 
@@ -138,6 +181,37 @@ export function useKeyBudgets() {
     }
   }, [closeEditModal, editKeyLimit, editingKey]);
 
+  const saveAccess = useCallback(async () => {
+    if (!editingAccessKey) return;
+
+    setSavingKeyId(editingAccessKey.id);
+    setFormError("");
+    try {
+      const payload = {
+        allowedProviders: normalizeAllowlist(editAccess.allowedProviders),
+        allowedModels: normalizeAllowlist(editAccess.allowedModels),
+      };
+      const { ok, data } = await updateKey(editingAccessKey.id, payload);
+      if (ok) {
+        setKeys((prev) =>
+          prev.map((key) =>
+            key.id === editingAccessKey.id
+              ? buildUpdatedKey(key, {}, data.key)
+              : key,
+          ),
+        );
+        setStatus({ type: "success", message: "Access updated" });
+        closeAccessModal();
+      } else {
+        setFormError(data.error || "Failed to update access");
+      }
+    } catch {
+      setFormError("Failed to update access");
+    } finally {
+      setSavingKeyId(null);
+    }
+  }, [closeAccessModal, editAccess, editingAccessKey]);
+
   const toggleUsageDetails = useCallback(
     async (key) => {
       if (expandedKeyId === key.id) {
@@ -187,7 +261,9 @@ export function useKeyBudgets() {
     status,
     summary,
     editingKey,
+    editingAccessKey,
     editKeyLimit,
+    editAccess,
     formError,
     savingKeyId,
     expandedKeyId,
@@ -196,12 +272,16 @@ export function useKeyBudgets() {
     visibleKeys,
     copiedKeyId,
     setEditKeyLimit,
+    setEditAccess,
     loadKeys,
     openEditModal,
     closeEditModal,
+    openAccessModal,
+    closeAccessModal,
     toggleKeyVisibility,
     copyKey,
     saveBudget,
+    saveAccess,
     toggleUsageDetails,
   };
 }
