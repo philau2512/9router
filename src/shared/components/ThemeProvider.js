@@ -8,6 +8,15 @@ export function ThemeProvider({ children }) {
 
   useEffect(() => {
     initTheme();
+    if (typeof document !== "undefined") {
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(() => {
+          document.documentElement.classList.add("fonts-loaded");
+        });
+      } else {
+        document.documentElement.classList.add("fonts-loaded");
+      }
+    }
   }, [initTheme]);
 
   return <>{children}</>;
