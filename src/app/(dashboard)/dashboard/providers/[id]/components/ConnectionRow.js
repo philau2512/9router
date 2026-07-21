@@ -249,11 +249,16 @@ export default function ConnectionRow({
     };
   }, [modelLockUntil]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Determine effective status (override unavailable if cooldown expired)
+  // Determine effective status (override unavailable if cooldown expired, or fallback unknown/disabled to active when account is ON)
   const effectiveStatus =
     connection.testStatus === "unavailable" && !isCooldown
-      ? "active" // Cooldown expired u2192 treat as active
-      : connection.testStatus;
+      ? "active"
+      : (!connection.testStatus ||
+          connection.testStatus === "unknown" ||
+          connection.testStatus === "disabled") &&
+        connection.isActive !== false
+        ? "active"
+        : connection.testStatus;
 
   const getStatusVariant = () => {
     if (connection.isActive === false) return "default";
