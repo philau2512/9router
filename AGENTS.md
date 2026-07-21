@@ -10,6 +10,24 @@
 
 Merge all three responses with `buildMergedGrokQuotas`. Do **not** replace this with upstream single-shape/single-billing parsing, conditional endpoint fetching, or a provider-specific quota format unless a captured Grok CLI payload and regression tests prove compatibility.
 
+### SuperGrok vs free allotment (CLIProxyAPI-style UI)
+
+- **SuperGrok / paid allotment**: emit percent bars only when the API returns finite fields:
+  - Weekly limit ← `creditUsagePercent` (0 is valid)
+  - Api usage ← `productUsage[].usagePercent` (finite only)
+  - Monthly credits ← plain `monthlyLimit` / `used` when total > 0
+- **Do not invent** Weekly `0/100 @ 100%` from bare `currentPeriod` without `creditUsagePercent` (free accounts look "full" incorrectly).
+- **Free / no SuperGrok allotment** (live shape: credits has `currentPeriod` + zeros, no percent fields; plain `monthlyLimit=0`/`used=0`): set `noCreditAllotment` and still render **two empty bars** like CLIProxyAPI:
+  - Weekly limit → `unknown: true` → UI label `Used --` + reset from `currentPeriod.end`
+  - Monthly credits → `unknown: true`, `format: "currency"` → UI `$0.00 / $0.00` + billing period end
+- Always surface **`payAsYouGo`** (`Enabled` / `Disabled` from `onDemandCap > 0`) for Grok-cli/xai cards; dashboard wires it through `use-provider-limits` + `provider-connection-card`.
+- Free usage is a **rolling 24h** window at runtime (`subscription:free-usage-exhausted`); billing endpoints do not return free %.
+
+Dashboard helpers: `formatQuotaUsageLabel` / `getRemainingPercentage` in
+`src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js` and
+`QuotaTable.js` must preserve `unknown` + `format` so free bars stay empty/neutral
+(not red 0% or green 100%).
+
 Before accepting upstream changes to this flow, run:
 
 ```bash
@@ -17,7 +35,7 @@ cd tests
 npx vitest run unit/grokBilling.test.js unit/grok-cli-executor.test.js unit/grok-cli-models.test.js unit/provider-quota-visibility.test.js unit/quota-auto-ping.test.js
 ```
 
-`tests/unit/grokBilling.test.js` protects the captured two-billing-shape merge and its fail-open behavior.
+`tests/unit/grokBilling.test.js` protects the captured two-billing-shape merge, free-tier unknown bars (no fake 100%), and fail-open behavior.
 
 ## SQLite backup export
 

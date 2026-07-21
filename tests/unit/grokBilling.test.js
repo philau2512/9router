@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   parseGrokCliBilling,
   parsePlainGrokBilling,
+  parseGrokCreditsShape,
   buildMergedGrokQuotas,
 } from "../../open-sse/services/usage/grok-cli.js";
 
@@ -138,5 +139,136 @@ describe("buildMergedGrokQuotas — two-endpoint parity with CLIProxyAPI", () =>
     const m = buildMergedGrokQuotas(null, plain, null);
     expect(m.quotas["Monthly credits"]).toBeTruthy();
     expect(m.quotas["Weekly limit"]).toBeUndefined();
+  });
+});
+
+/**
+ * Free / non-SuperGrok accounts often return currentPeriod (reset window) without
+ * creditUsagePercent / productUsage. Treating missing % as 0% used invents a
+ * fake Weekly 0/100 @ 100% bar (dashboard green "full" for empty free accounts).
+ *
+ * Live capture (hoa cúc free, 2026-07-22):
+ *   credits: currentPeriod + onDemandCap:0, NO creditUsagePercent/productUsage
+ *   plain: monthlyLimit:0, used:0
+ *   user: subscriptionTier:null, hasGrokCodeAccess:true
+ */
+describe("buildMergedGrokQuotas — free tier (no SuperGrok credit %)", () => {
+  // Live-captured free shape (fields only — no secrets).
+  const freeCredits = {
+    config: {
+      currentPeriod: {
+        type: "USAGE_PERIOD_TYPE_WEEKLY",
+        start: "2026-07-15T00:00:00+00:00",
+        end: "2026-07-22T00:00:00+00:00",
+      },
+      onDemandCap: { val: 0 },
+      onDemandUsed: { val: 0 },
+      isUnifiedBillingUser: true,
+      prepaidBalance: { val: 0 },
+      topUpMethod: "TOP_UP_METHOD_SAVED_PAYMENT_METHOD",
+      billingPeriodStart: "2026-07-15T00:00:00+00:00",
+      billingPeriodEnd: "2026-07-22T00:00:00+00:00",
+    },
+  };
+  const freePlain = {
+    config: {
+      monthlyLimit: { val: 0 },
+      used: { val: 0 },
+      onDemandCap: { val: 0 },
+      billingPeriodStart: "2026-07-01T00:00:00+00:00",
+      billingPeriodEnd: "2026-08-01T00:00:00+00:00",
+      history: [
+        {
+          billingCycle: { year: 2026, month: 6 },
+          includedUsed: { val: 0 },
+          onDemandUsed: { val: 0 },
+          totalUsed: { val: 0 },
+        },
+      ],
+    },
+  };
+  const freeUser = {
+    userId: "43ed972a-d85c-479d-996a-6a6f1a7442de",
+    hasGrokCodeAccess: true,
+    subscriptionTier: null,
+  };
+
+  it("does not invent Weekly 0/100 @ 100% when creditUsagePercent is missing", () => {
+    const m = buildMergedGrokQuotas(freeCredits, freePlain, freeUser);
+    // Free CLIProxyAPI style: unknown weekly, not SuperGrok percent bar
+    expect(m.quotas["Weekly limit"].unknown).toBe(true);
+    expect(m.quotas["Weekly limit"].total).toBe(0);
+    expect(m.quotas["Api usage"]).toBeUndefined();
+  });
+
+  it("shows CLIProxyAPI free bars: Weekly Used -- + Monthly $0.00/$0.00", () => {
+    const m = buildMergedGrokQuotas(freeCredits, freePlain, freeUser);
+    expect(m.noCreditAllotment).toBe(true);
+    expect(m.plan).toBe("Grok Code");
+    expect(m.payAsYouGo).toBe("Disabled");
+    expect(m.weeklyPeriodEnd).toContain("2026-07-22");
+
+    const weekly = m.quotas["Weekly limit"];
+    expect(weekly.unknown).toBe(true);
+    expect(weekly.resetAt).toContain("2026-07-22");
+    expect(weekly.remainingPercentage).toBe(0);
+
+    const monthly = m.quotas["Monthly credits"];
+    expect(monthly.unknown).toBe(true);
+    expect(monthly.format).toBe("currency");
+    expect(monthly.resetAt).toContain("2026-08-01");
+  });
+
+  it("parseGrokCreditsShape omits Weekly when only currentPeriod is present", () => {
+    const { quotas } = parseGrokCreditsShape(freeCredits.config);
+    expect(quotas["Weekly limit"]).toBeUndefined();
+    expect(quotas["Api usage"]).toBeUndefined();
+  });
+
+  it("still shows Weekly when creditUsagePercent is explicitly 0 (true 0% used)", () => {
+    const m = buildMergedGrokQuotas(
+      {
+        config: {
+          ...freeCredits.config,
+          creditUsagePercent: 0,
+        },
+      },
+      freePlain,
+      freeUser,
+    );
+    expect(m.noCreditAllotment).toBeFalsy();
+    expect(m.quotas["Weekly limit"].unknown).toBeFalsy();
+    expect(m.quotas["Weekly limit"].used).toBe(0);
+    expect(m.quotas["Weekly limit"].total).toBe(100);
+    expect(m.quotas["Weekly limit"].remainingPercentage).toBe(100);
+    expect(m.quotas["Weekly limit"].resetAt).toContain("2026-07-22");
+  });
+
+  it("omits Api usage when productUsage lacks a finite usagePercent", () => {
+    const { quotas } = parseGrokCreditsShape({
+      currentPeriod: freeCredits.config.currentPeriod,
+      creditUsagePercent: 10,
+      productUsage: [{ product: "Api" /* no usagePercent */ }],
+    });
+    expect(quotas["Weekly limit"].used).toBe(10);
+    expect(quotas["Api usage"]).toBeUndefined();
+  });
+
+  it("keeps Monthly credits when there is a real monthly allotment", () => {
+    const m = buildMergedGrokQuotas(
+      freeCredits,
+      {
+        config: {
+          monthlyLimit: { val: 4000 },
+          used: { val: 100 },
+          onDemandCap: { val: 0 },
+          billingPeriodEnd: "2026-08-01T00:00:00+00:00",
+        },
+      },
+      freeUser,
+    );
+    expect(m.noCreditAllotment).toBeFalsy();
+    expect(m.quotas["Monthly credits"].total).toBe(4000);
+    expect(m.quotas["Monthly credits"].used).toBe(100);
   });
 });

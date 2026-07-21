@@ -41,6 +41,17 @@ export default function ProviderConnectionCard({
     conn.provider === "codex" && plan && plan.toLowerCase() !== "unknown"
       ? plan
       : "";
+  // Grok CLI / xAI OAuth: show plan + pay-as-you-go like CLIProxyAPI / grok-pager
+  const isGrokQuotaProvider = ["grok-cli", "gcli", "xai"].includes(
+    conn.provider,
+  );
+  const grokPlan =
+    isGrokQuotaProvider && plan && plan.toLowerCase() !== "unknown"
+      ? plan
+      : "";
+  const payAsYouGo =
+    typeof quota?.payAsYouGo === "string" ? quota.payAsYouGo.trim() : "";
+  const showPayAsYouGo = isGrokQuotaProvider && !!payAsYouGo;
   const isResettingLimit = resettingLimitId === conn.id;
   const rowBusy =
     deletingId === conn.id || togglingId === conn.id || isResettingLimit;
@@ -73,6 +84,11 @@ export default function ProviderConnectionCard({
                 {codexPlan && (
                   <Badge variant="primary" size="sm" className="capitalize">
                     {codexPlan}
+                  </Badge>
+                )}
+                {grokPlan && (
+                  <Badge variant="primary" size="sm" className="capitalize">
+                    {grokPlan}
                   </Badge>
                 )}
                 {conn.priority !== undefined &&
@@ -266,18 +282,50 @@ export default function ProviderConnectionCard({
             <p className="mt-1.5 text-xs text-text-muted">{error}</p>
           </div>
         ) : quota?.message ? (
-          <div className="text-center py-5">
-            <p className="text-xs text-text-muted">{quota.message}</p>
+          <div className="space-y-2 py-3 px-1">
+            <p className="text-xs text-text-muted text-center">{quota.message}</p>
+            {showPayAsYouGo && (
+              <div className="flex items-center justify-center gap-1.5 text-[11px]">
+                <span className="text-text-muted">Pay as you go</span>
+                <Badge
+                  variant={
+                    payAsYouGo.toLowerCase() === "enabled"
+                      ? "success"
+                      : "default"
+                  }
+                  size="sm"
+                >
+                  {payAsYouGo}
+                </Badge>
+              </div>
+            )}
           </div>
         ) : (
-          <QuotaTable
-            quotas={quota?.quotas}
-            compact
-            sortMode="default"
-            showSortLabel={
-              conn.provider === "codex" && quotaSortMode !== "default"
-            }
-          />
+          <div className="space-y-1.5">
+            <QuotaTable
+              quotas={quota?.quotas}
+              compact
+              sortMode="default"
+              showSortLabel={
+                conn.provider === "codex" && quotaSortMode !== "default"
+              }
+            />
+            {showPayAsYouGo && (
+              <div className="flex items-center justify-between gap-2 px-1.5 py-1 text-[11px]">
+                <span className="text-text-muted">Pay as you go</span>
+                <Badge
+                  variant={
+                    payAsYouGo.toLowerCase() === "enabled"
+                      ? "success"
+                      : "default"
+                  }
+                  size="sm"
+                >
+                  {payAsYouGo}
+                </Badge>
+              </div>
+            )}
+          </div>
         )}
       </div>
 

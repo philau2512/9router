@@ -117,6 +117,22 @@ function percentUsedQuota(usedPercent, resetAt) {
 }
 
 /**
+ * CLIProxyAPI free-tier style row: empty bar, "Used --" or "$0.00 / $0.00".
+ * No invented SuperGrok percentage (would paint free accounts as 100% full).
+ */
+function makeUnknownQuota({ resetAt = null, format = null } = {}) {
+  return {
+    used: 0,
+    total: 0,
+    remainingPercentage: 0,
+    resetAt: resetAt || null,
+    unlimited: false,
+    unknown: true,
+    ...(format ? { format } : {}),
+  };
+}
+
+/**
  * Parse the `?format=credits` shape into the credit-window rows:
  *   config: {
  *     currentPeriod: { type: "...WEEKLY", start, end },
@@ -125,17 +141,19 @@ function percentUsedQuota(usedPercent, resetAt) {
  *     onDemandCap: { val }, onDemandUsed: { val }, prepaidBalance: { val },
  *   }
  * Returns { quotas: { "Weekly limit", "Api usage" }, payAsYouGo }.
+ *
+ * Free / non-SuperGrok accounts often only carry `currentPeriod` (reset window)
+ * without `creditUsagePercent`. Do NOT invent a Weekly 0/100 @ 100% bar from
+ * a missing percent — that paints free accounts as "full" SuperGrok quota.
  */
 export function parseGrokCreditsShape(config = {}) {
   const quotas = {};
   const weeklyReset = parseResetTime(config.currentPeriod?.end);
 
-  // Weekly limit — overall credit usage over the rolling weekly window.
-  if (config.creditUsagePercent !== undefined || config.currentPeriod) {
-    quotas["Weekly limit"] = percentUsedQuota(
-      config.creditUsagePercent,
-      weeklyReset,
-    );
+  // Weekly limit — only when the API returned a real used-% (0 is valid).
+  const creditUsedPct = toFiniteNumber(config.creditUsagePercent, NaN);
+  if (Number.isFinite(creditUsedPct)) {
+    quotas["Weekly limit"] = percentUsedQuota(creditUsedPct, weeklyReset);
   }
 
   // Api usage — per-product usage (find the Api product, else first entry).
@@ -144,8 +162,9 @@ export function parseGrokCreditsShape(config = {}) {
       config.productUsage.find(
         (p) => String(p?.product || "").toLowerCase() === "api",
       ) || config.productUsage[0];
-    if (api && api.usagePercent !== undefined) {
-      quotas["Api usage"] = percentUsedQuota(api.usagePercent, weeklyReset);
+    const apiPct = toFiniteNumber(api?.usagePercent, NaN);
+    if (Number.isFinite(apiPct)) {
+      quotas["Api usage"] = percentUsedQuota(apiPct, weeklyReset);
     }
   }
 
@@ -161,6 +180,10 @@ export function parseGrokCreditsShape(config = {}) {
  * (monthly credits) into the ordered rows CLIProxyAPI shows:
  *   Weekly limit → Api usage → Monthly credits.
  * Either input may be null (fail-open); whatever is available renders.
+ *
+ * Free live shape (captured): credits has currentPeriod + zeros, no
+ * creditUsagePercent; plain has monthlyLimit/used 0. That is NOT SuperGrok
+ * depleted — it is no credit allotment. Do not paint a fake 0/∞ 0% monthly bar.
  */
 export function buildMergedGrokQuotas(
   creditsBilling,
@@ -180,12 +203,14 @@ export function buildMergedGrokQuotas(
     quotas["Api usage"] = creditQuotas["Api usage"];
 
   // Monthly credits from the plain shape (monthlyLimit / used, in credit units).
+  let monthlyLimit = NaN;
+  let monthlyUsed = NaN;
   if (
     plainConfig.monthlyLimit !== undefined ||
     plainConfig.used !== undefined
   ) {
-    const monthlyLimit = unwrapVal(plainConfig.monthlyLimit, 0);
-    const monthlyUsed = unwrapVal(plainConfig.used, 0);
+    monthlyLimit = unwrapVal(plainConfig.monthlyLimit, 0);
+    monthlyUsed = unwrapVal(plainConfig.used, 0);
     quotas["Monthly credits"] = makeQuota({
       used: monthlyUsed,
       total: monthlyLimit,
@@ -193,7 +218,33 @@ export function buildMergedGrokQuotas(
     });
   }
 
-  const finiteBars = Object.values(quotas).filter((q) => q.unlimited !== true);
+  const hasPercentBars = !!(quotas["Weekly limit"] || quotas["Api usage"]);
+  const zeroMonthlyAllotment =
+    Number.isFinite(monthlyLimit) &&
+    monthlyLimit === 0 &&
+    Number.isFinite(monthlyUsed) &&
+    monthlyUsed === 0;
+
+  const weeklyPeriodEnd =
+    parseResetTime(creditsConfig.currentPeriod?.end) ||
+    parseResetTime(creditsConfig.billingPeriodEnd) ||
+    null;
+
+  // Free / no SuperGrok allotment: CLIProxyAPI shows two empty bars —
+  // Weekly "Used --" (reset from currentPeriod) + Monthly "$0.00/$0.00".
+  // Do NOT invent creditUsagePercent=0 → 0/100 @ 100% full.
+  const noCreditAllotment = !hasPercentBars && zeroMonthlyAllotment;
+  if (noCreditAllotment) {
+    quotas["Weekly limit"] = makeUnknownQuota({ resetAt: weeklyPeriodEnd });
+    quotas["Monthly credits"] = makeUnknownQuota({
+      resetAt: parseResetTime(plainConfig.billingPeriodEnd),
+      format: "currency",
+    });
+  }
+
+  const finiteBars = Object.values(quotas).filter(
+    (q) => q.unlimited !== true && q.unknown !== true,
+  );
   const exhausted =
     finiteBars.length > 0 &&
     finiteBars.every((q) => (q.remainingPercentage ?? 100) <= 0);
@@ -206,6 +257,8 @@ export function buildMergedGrokQuotas(
     quotas,
     payAsYouGo,
     exhausted,
+    noCreditAllotment,
+    weeklyPeriodEnd,
   };
 }
 
