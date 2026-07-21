@@ -12,12 +12,48 @@ import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
 import { refreshProviderCredentials } from "../services/oauthCredentialManager.js";
 import { isUnrecoverableRefreshError } from "../services/tokenRefresh.js";
 
+// Providers whose DefaultExecutor path is NOT OpenAI chat/completions SSE.
+// stream_options.include_usage is OpenAI Chat Completions only — Anthropic
+// Messages / Gemini / Responses endpoints reject or ignore it.
+const SKIP_STREAM_USAGE_PROVIDERS = new Set([
+  "claude",
+  "glm",
+  "kimi",
+  "minimax",
+  "minimax-cn",
+  "kimi-coding",
+  "gemini",
+]);
+
 export class DefaultExecutor extends BaseExecutor {
   constructor(provider) {
     super(provider, PROVIDERS[provider] || PROVIDERS.openai);
   }
 
-  transformRequest(model, body) {
+  /**
+   * OpenAI-compatible chat streams omit usage unless requested.
+   * Without this, stream.js falls back to estimateUsage → no cache_read.
+   */
+  shouldInjectStreamUsage() {
+    const p = this.provider || "";
+    if (SKIP_STREAM_USAGE_PROVIDERS.has(p)) return false;
+    if (p.startsWith("anthropic-compatible-")) return false;
+    // Custom OpenAI-compatible Responses mounts (…-responses) use a different API.
+    if (p.includes("responses")) return false;
+    return true;
+  }
+
+  injectStreamUsage(body, stream) {
+    if (!stream || !body || typeof body !== "object") return body;
+    if (!this.shouldInjectStreamUsage()) return body;
+    // Chat Completions body only (Responses uses `input`, not `messages`)
+    if (!Array.isArray(body.messages)) return body;
+    if (body.stream_options) return body;
+    body.stream_options = { include_usage: true };
+    return body;
+  }
+
+  transformRequest(model, body, stream = true, credentials = null) {
     const transformed = this.applyJsonSchemaFallback(body);
     const result = injectReasoningContent({
       provider: this.provider,
@@ -26,6 +62,7 @@ export class DefaultExecutor extends BaseExecutor {
     });
     // Config-driven strip of params unsupported by this provider/model
     stripUnsupportedParams(this.provider, model, result);
+    this.injectStreamUsage(result, stream);
     return result;
   }
 
