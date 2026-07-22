@@ -137,17 +137,24 @@ export function trackPendingRequest(
   emitPending();
 }
 
-export async function getActiveRequests() {
+export async function getActiveRequests(connectionId) {
   const connectionMap = await getConnectionMapCached();
   const activeRequests = extractActiveFromPending(
     pendingRequests,
     connectionMap,
+    connectionId,
   );
 
   await ensureRingInitialized();
-  const recentRequests = deduplicateRecentRequests(recentRing.items);
+  const recentRequests = deduplicateRecentRequests(
+    recentRing.items,
+    20,
+    connectionId,
+  );
 
   const errorProvider =
-    Date.now() - lastErrorProvider.ts < 10000 ? lastErrorProvider.provider : "";
+    connectionId || Date.now() - lastErrorProvider.ts >= 10000
+      ? ""
+      : lastErrorProvider.provider;
   return { activeRequests, recentRequests, errorProvider };
 }

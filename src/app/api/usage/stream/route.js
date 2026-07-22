@@ -2,7 +2,10 @@ import { getUsageStats, statsEmitter, getActiveRequests } from "@/lib/usageDb";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request) {
+  const connectionId = request
+    ? new URL(request.url).searchParams.get("connectionId") || undefined
+    : undefined;
   const encoder = new TextEncoder();
   const state = {
     closed: false,
@@ -33,7 +36,7 @@ export async function GET() {
             // Push lightweight update immediately so UI reflects changes fast
             if (state.cachedStats) {
               const { activeRequests, recentRequests, errorProvider } =
-                await getActiveRequests();
+                await getActiveRequests(connectionId);
               const quickStats = {
                 ...state.cachedStats,
                 activeRequests,
@@ -45,7 +48,7 @@ export async function GET() {
               );
             }
             // Then do full recalc and update cache
-            const stats = await getUsageStats();
+            const stats = await getUsageStats("all", connectionId);
             state.cachedStats = stats;
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify(stats)}\n\n`),
@@ -66,7 +69,7 @@ export async function GET() {
         if (state.closed || !state.cachedStats) return;
         try {
           const { activeRequests, recentRequests, errorProvider } =
-            await getActiveRequests();
+            await getActiveRequests(connectionId);
           const stats = {
             ...state.cachedStats,
             activeRequests,

@@ -276,6 +276,7 @@ export default function UsageStats({
 
   const sortBy = searchParams.get("sortBy") || "rawModel";
   const sortOrder = searchParams.get("sortOrder") || "asc";
+  const connectionId = searchParams.get("connectionId") || undefined;
 
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -283,6 +284,7 @@ export default function UsageStats({
   const [tableView, setTableView] = useState("model");
   const [viewMode, setViewMode] = useState("costs");
   const [providers, setProviders] = useState([]);
+  const [accountName, setAccountName] = useState("");
   const [periodLocal, setPeriodLocal] = useState("today");
   const isInitialLoad = useRef(true);
   const period = periodProp ?? periodLocal;
@@ -305,10 +307,22 @@ export default function UsageStats({
         const noAuthProviders = Object.values(FREE_PROVIDERS)
           .filter((p) => p.noAuth && !seen.has(p.id) && isLLMProvider(p.id))
           .map((p) => ({ provider: p.id, name: p.name }));
-        setProviders([...unique, ...noAuthProviders]);
+        const selectedConnection = (d?.connections || []).find(
+          (connection) => connection.id === connectionId,
+        );
+        setProviders(
+          connectionId
+            ? selectedConnection
+              ? [selectedConnection]
+              : []
+            : [...unique, ...noAuthProviders],
+        );
+        setAccountName(
+          selectedConnection?.name || selectedConnection?.email || "",
+        );
       })
       .catch(() => {});
-  }, []);
+  }, [connectionId]);
 
   // Fetch filtered stats via REST when period changes
   useEffect(() => {
@@ -320,21 +334,28 @@ export default function UsageStats({
       setFetching(true);
     }
 
-    fetch(`/api/usage/stats?period=${period}`)
+    const params = new URLSearchParams({ period });
+    if (connectionId) params.set("connectionId", connectionId);
+
+    fetch(`/api/usage/stats?${params.toString()}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data) setStats((prev) => ({ ...prev, ...data }));
+        if (data) setStats(data);
       })
       .catch(() => {})
       .finally(() => {
         setLoading(false);
         setFetching(false);
       });
-  }, [period]);
+  }, [period, connectionId]);
 
   // SSE connection - real-time updates for activeRequests + recentRequests only
   useEffect(() => {
-    const es = new EventSource("/api/usage/stream");
+    const params = new URLSearchParams();
+    if (connectionId) params.set("connectionId", connectionId);
+    const es = new EventSource(
+      `/api/usage/stream${params.size ? `?${params.toString()}` : ""}`,
+    );
 
     es.onmessage = (e) => {
       try {
@@ -356,7 +377,13 @@ export default function UsageStats({
     es.onerror = () => setLoading(false);
 
     return () => es.close();
-  }, []);
+  }, [connectionId]);
+
+  const clearAccountFilter = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("connectionId");
+    router.replace(`/dashboard/usage?${params.toString()}`, { scroll: false });
+  }, [router, searchParams]);
 
   const toggleSort = useCallback(
     (tableType, field) => {
@@ -607,6 +634,24 @@ export default function UsageStats({
         </div>
       )}
 
+      {connectionId && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-primary">Account usage</p>
+            <p className="truncate text-sm text-text-main">
+              {accountName || `Account ${connectionId.slice(0, 8)}...`}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={clearAccountFilter}
+            className="rounded-lg border border-primary/30 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+          >
+            All accounts
+          </button>
+        </div>
+      )}
+
       {/* Overview cards */}
       {loading ? spinner : <OverviewCards stats={stats} />}
 
@@ -626,7 +671,7 @@ export default function UsageStats({
       )}
 
       {/* Token / Cost chart - sync period */}
-      {loading ? spinner : <UsageChart period={period} />}
+      {loading ? spinner : <UsageChart period={period} connectionId={connectionId} />}
 
       {/* Table with dropdown selector */}
       <div className="flex flex-col gap-3">

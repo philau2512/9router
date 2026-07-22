@@ -22,7 +22,8 @@ export async function GET(request) {
       return NextResponse.json({ error: "Invalid period" }, { status: 400 });
     }
 
-    const data = await getChartData(period);
+    const connectionId = searchParams.get("connectionId") || undefined;
+    const data = await getChartData(period, connectionId);
     return NextResponse.json(data);
   } catch (error) {
     console.error("[API] Failed to get chart data:", error);

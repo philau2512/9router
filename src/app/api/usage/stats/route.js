@@ -24,7 +24,8 @@ export async function GET(request) {
       return NextResponse.json({ error: "Invalid period" }, { status: 400 });
     }
 
-    const stats = await getUsageStats(period);
+    const connectionId = searchParams.get("connectionId") || undefined;
+    const stats = await getUsageStats(period, connectionId);
     return NextResponse.json(stats);
   } catch (error) {
     console.error("[API] Failed to get usage stats:", error);
