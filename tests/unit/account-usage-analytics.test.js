@@ -77,6 +77,8 @@ describe("account usage analytics", () => {
     expect(chartRoute).toContain("getChartData(period, connectionId)");
     expect(streamRoute).toContain("getUsageStats(\"all\", connectionId)");
     expect(streamRoute).toContain("getActiveRequests(connectionId)");
+    expect(statsUi).toContain("Cached");
+    expect(statsUi).toContain("setInterval(refreshStats, 10_000)");
   });
 
 
@@ -88,7 +90,11 @@ describe("account usage analytics", () => {
         provider: "alpha",
         model: "model-a",
         connectionId: "account-a",
-        tokens: { prompt_tokens: 10, completion_tokens: 5 },
+        tokens: {
+          prompt_tokens: 10,
+          completion_tokens: 5,
+          cached_tokens: 7,
+        },
       });
       await saveRequestUsage({
         timestamp: new Date(Date.now() - 60_000).toISOString(),
@@ -111,6 +117,8 @@ describe("account usage analytics", () => {
       expect(accountStats.totalRequests).toBe(1);
       expect(accountStats.totalPromptTokens).toBe(10);
       expect(accountStats.totalCompletionTokens).toBe(5);
+      expect(accountStats.totalCachedTokens).toBe(7);
+      expect(accountStats.recentRequests[0].cachedTokens).toBe(7);
       expect(Object.values(accountStats.byProvider)).toHaveLength(1);
       expect(Object.values(accountStats.byProvider)[0].requests).toBe(1);
       expect(accountStats.recentRequests).toHaveLength(1);

@@ -32,10 +32,10 @@ import UsageChart from "@/app/(dashboard)/dashboard/usage/components/UsageChart"
 
 function timeAgo(timestamp) {
   const diff = Math.floor((Date.now() - new Date(timestamp)) / 1000);
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+  if (diff < 60) return `${diff}s`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  return `${Math.floor(diff / 86400)}d`;
 }
 
 // Auto-update time display every second without re-rendering parent
@@ -80,6 +80,9 @@ function RecentRequests({ requests = [] }) {
                 <th className="py-1.5 text-right font-semibold text-text-muted whitespace-nowrap">
                   In / Out
                 </th>
+                <th className="py-1.5 text-right font-semibold text-text-muted whitespace-nowrap">
+                  Cached
+                </th>
                 <th className="py-1.5 text-right font-semibold text-text-muted">
                   When
                 </th>
@@ -109,6 +112,20 @@ function RecentRequests({ requests = [] }) {
                       <span className="text-success">
                         {fmt(r.completionTokens)}↓
                       </span>
+                    </td>
+                    <td className="py-1.5 text-right text-blue-500 dark:text-blue-400 whitespace-nowrap">
+                      {typeof r.cachedTokens === "number" ? (
+                        <>
+                          {fmt(r.cachedTokens)}
+                          {r.promptTokens > 0 && (
+                            <span className="ml-1 text-text-muted">
+                              ({((r.cachedTokens / r.promptTokens) * 100).toFixed(2)}%)
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td className="py-1.5 text-right text-text-muted whitespace-nowrap">
                       <TimeAgo timestamp={r.timestamp} />
@@ -347,6 +364,29 @@ export default function UsageStats({
         setLoading(false);
         setFetching(false);
       });
+  }, [period, connectionId]);
+
+  // Refresh every 10 seconds while this overview stays mounted. SSE still supplies
+  // immediate active/recent changes; polling reconciles persisted totals and tables.
+  useEffect(() => {
+    const refreshStats = () => {
+      if (document.visibilityState === "visible") {
+        const params = new URLSearchParams({ period });
+        if (connectionId) params.set("connectionId", connectionId);
+
+        setFetching(true);
+        fetch(`/api/usage/stats?${params.toString()}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            if (data) setStats(data);
+          })
+          .catch(() => {})
+          .finally(() => setFetching(false));
+      }
+    };
+
+    const interval = setInterval(refreshStats, 10_000);
+    return () => clearInterval(interval);
   }, [period, connectionId]);
 
   // SSE connection - real-time updates for activeRequests + recentRequests only
@@ -663,6 +703,7 @@ export default function UsageStats({
           <ProviderTopology
             providers={providers}
             activeRequests={stats.activeRequests || []}
+            recentRequests={stats.recentRequests || []}
             lastProvider={stats.recentRequests?.[0]?.provider || ""}
             errorProvider={stats.errorProvider || ""}
           />

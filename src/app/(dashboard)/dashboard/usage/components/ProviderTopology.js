@@ -34,8 +34,13 @@ export {
 } from "./topologyActiveMatch";
 export { buildLayout } from "./topologyLayout";
 
-const KAME_PARTICLE_COUNT = 6;
-const SPARK_COUNT = 5;
+const TOKEN_LABEL_COUNT = 2;
+
+function formatTokenCount(value) {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return String(value || 0);
+}
 
 // Custom provider node - rectangle with image + name
 function ProviderNode({ data }) {
@@ -192,7 +197,8 @@ function TopologyEdge({
   });
   const active = !!data?.active;
   const stroke = style.stroke || "var(--color-border)";
-  const filterId = `topo-electric-${id}`;
+  const inputLabel = `IN ${formatTokenCount(data?.usage?.promptTokens)}`;
+  const outputLabel = `OUT ${formatTokenCount(data?.usage?.completionTokens)}`;
 
   if (!active) {
     return <BaseEdge id={id} path={edgePath} style={{ ...style, stroke }} />;
@@ -200,82 +206,77 @@ function TopologyEdge({
 
   return (
     <g className="topology-edge-electric">
-      <defs>
-        <filter id={filterId} x="-40%" y="-40%" width="180%" height="180%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="2" result="noise">
-            <animate attributeName="baseFrequency" values="0.8;1.4;0.8" dur="0.25s" repeatCount="indefinite" />
-          </feTurbulence>
-          <feDisplacementMap in="SourceGraphic" in2="noise" scale="3.5" xChannelSelector="R" yChannelSelector="G" />
-        </filter>
-      </defs>
-      {/* Outer electric halo */}
+      {/* Subtle halo — labels remain readable above the active edge. */}
       <path
         d={edgePath}
         fill="none"
         stroke="#22d3ee"
-        strokeWidth={10}
-        strokeOpacity={0.35}
+        strokeWidth={7}
+        strokeOpacity={0.14}
         strokeLinecap="round"
-        filter={`url(#${filterId})`}
         className="topology-edge-halo"
       />
-      {/* Mid plasma */}
       <path
         d={edgePath}
         fill="none"
         stroke="#4ade80"
-        strokeWidth={5}
-        strokeOpacity={0.85}
+        strokeWidth={3}
+        strokeOpacity={0.5}
         strokeLinecap="round"
-        filter={`url(#${filterId})`}
         className="topology-edge-plasma"
       />
-      {/* Hot white core */}
       <BaseEdge
         id={id}
         path={edgePath}
-        style={{ stroke: "#f8fafc", strokeWidth: 2.2, opacity: 1 }}
+        style={{ stroke: "#a7f3d0", strokeWidth: 1.5, opacity: 0.8 }}
         className="topology-edge-kame"
       />
-      {/* Energy orbs */}
-      {Array.from({ length: KAME_PARTICLE_COUNT }, (_, i) => (
-        <circle
-          key={`${id}-p-${i}`}
-          r={i % 2 === 0 ? 4 : 2.5}
-          fill={i % 3 === 0 ? "#fde047" : i % 3 === 1 ? "#67e8f9" : "#fff"}
-          opacity={0.95}
-          style={{ filter: "drop-shadow(0 0 4px #22d3ee)" }}
-        >
+      {/* Input token labels: router → provider */}
+      {Array.from({ length: TOKEN_LABEL_COUNT }, (_, i) => (
+        <g key={`${id}-input-${i}`}>
           <animateMotion
-            dur={`${0.4 + i * 0.08}s`}
+            dur={`${2.4 + i * 0.4}s`}
             repeatCount="indefinite"
             path={edgePath}
-            begin={`${i * 0.09}s`}
+            rotate="auto"
+            begin={`${i * 1.2}s`}
           />
-        </circle>
+          <text
+            y="-10"
+            fill="#67e8f9"
+            fontSize="10"
+            fontWeight="700"
+            textAnchor="middle"
+            style={{ filter: "drop-shadow(0 0 2px #0f172a)" }}
+          >
+            {inputLabel}
+          </text>
+        </g>
       ))}
-      {/* Electric sparks (short-lived blink along path) */}
-      {Array.from({ length: SPARK_COUNT }, (_, i) => (
-        <circle
-          key={`${id}-s-${i}`}
-          r={1.8}
-          fill="#e0f2fe"
-          opacity={0}
-        >
-          <animate
-            attributeName="opacity"
-            values="0;1;0;0;1;0"
-            dur={`${0.35 + (i % 3) * 0.1}s`}
-            begin={`${i * 0.07}s`}
-            repeatCount="indefinite"
-          />
+      {/* Output token labels: provider → router */}
+      {Array.from({ length: TOKEN_LABEL_COUNT }, (_, i) => (
+        <g key={`${id}-output-${i}`}>
           <animateMotion
-            dur={`${0.28 + i * 0.05}s`}
+            dur={`${2.6 + i * 0.4}s`}
             repeatCount="indefinite"
             path={edgePath}
-            begin={`${i * 0.11}s`}
+            rotate="auto-reverse"
+            keyPoints="1;0"
+            keyTimes="0;1"
+            calcMode="linear"
+            begin={`${i * 1.3}s`}
           />
-        </circle>
+          <text
+            y="-10"
+            fill="#fde047"
+            fontSize="10"
+            fontWeight="700"
+            textAnchor="middle"
+            style={{ filter: "drop-shadow(0 0 2px #0f172a)" }}
+          >
+            {outputLabel}
+          </text>
+        </g>
       ))}
     </g>
   );
@@ -299,6 +300,7 @@ const edgeTypes = { topology: TopologyEdge };
 export default function ProviderTopology({
   providers = [],
   activeRequests = [],
+  recentRequests = [],
   lastProvider = "",
   errorProvider = "",
 }) {
@@ -372,9 +374,9 @@ export default function ProviderTopology({
   );
 
   const { nodes, edges } = useMemo(
-    () => buildLayout(providers, activeSet, lastSet, errorSet),
+    () => buildLayout(providers, activeSet, lastSet, errorSet, recentRequests),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [providers, activeSetKey, lastSet, errorSet],
+    [providers, activeSetKey, lastSet, errorSet, recentRequests],
   );
 
   const fitOpts = useMemo(() => ({ padding: 0.2, duration: 200 }), []);
@@ -478,6 +480,13 @@ ProviderTopology.propTypes = {
       provider: PropTypes.string,
       model: PropTypes.string,
       account: PropTypes.string,
+    }),
+  ),
+  recentRequests: PropTypes.arrayOf(
+    PropTypes.shape({
+      provider: PropTypes.string,
+      promptTokens: PropTypes.number,
+      completionTokens: PropTypes.number,
     }),
   ),
   lastProvider: PropTypes.string,

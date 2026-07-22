@@ -353,13 +353,14 @@ export function deduplicateRecentRequests(
           provider: r.provider || "",
           promptTokens: t.prompt_tokens || t.input_tokens || 0,
           completionTokens: t.completion_tokens || t.output_tokens || 0,
+          cachedTokens: t.cached_tokens || t.cache_read_input_tokens || 0,
           status: r.status || "ok",
         };
       })
       .filter((e) => {
         if (e.promptTokens === 0 && e.completionTokens === 0) return false;
         const minute = e.timestamp ? e.timestamp.slice(0, 16) : "";
-        const key = `${e.model}|${e.provider}|${e.promptTokens}|${e.completionTokens}|${minute}`;
+        const key = `${e.model}|${e.provider}|${e.promptTokens}|${e.completionTokens}|${e.cachedTokens}|${minute}`;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
