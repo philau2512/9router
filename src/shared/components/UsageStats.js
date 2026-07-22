@@ -50,6 +50,15 @@ function TimeAgo({ timestamp }) {
   return <>{timeAgo(timestamp)}</>;
 }
 
+function formatRequestCost(cost) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(Number(cost)) ? Number(cost) : 0);
+}
+
 function RecentRequests({ requests = [] }) {
   return (
     <Card
@@ -77,14 +86,23 @@ function RecentRequests({ requests = [] }) {
                 <th className="py-1.5 text-left font-semibold text-text-muted">
                   Model
                 </th>
-                <th className="py-1.5 text-right font-semibold text-text-muted whitespace-nowrap">
+                <th className="py-1.5 text-center font-semibold text-text-muted whitespace-nowrap">
                   In / Out
                 </th>
-                <th className="py-1.5 text-right font-semibold text-text-muted whitespace-nowrap">
+                <th className="py-1.5 text-center font-semibold text-text-muted whitespace-nowrap">
                   Cached
                 </th>
-                <th className="py-1.5 text-right font-semibold text-text-muted">
-                  When
+                <th className="py-1.5 text-center font-semibold text-amber-500 dark:text-amber-300 whitespace-nowrap">
+                  $
+                </th>
+                <th
+                  className="py-1.5 text-center font-semibold text-text-muted"
+                  title="When"
+                  aria-label="When"
+                >
+                  <span className="material-symbols-outlined text-[13px] leading-none">
+                    schedule
+                  </span>
                 </th>
               </tr>
             </thead>
@@ -105,7 +123,7 @@ function RecentRequests({ requests = [] }) {
                     >
                       {r.model}
                     </td>
-                    <td className="py-1.5 text-right whitespace-nowrap">
+                    <td className="py-1.5 text-center whitespace-nowrap">
                       <span className="text-primary">
                         {fmt(r.promptTokens)}↑
                       </span>{" "}
@@ -113,7 +131,7 @@ function RecentRequests({ requests = [] }) {
                         {fmt(r.completionTokens)}↓
                       </span>
                     </td>
-                    <td className="py-1.5 text-right text-blue-500 dark:text-blue-400 whitespace-nowrap">
+                    <td className="py-1.5 text-center text-blue-500 dark:text-blue-400 whitespace-nowrap">
                       {typeof r.cachedTokens === "number" ? (
                         <>
                           {fmt(r.cachedTokens)}
@@ -127,7 +145,10 @@ function RecentRequests({ requests = [] }) {
                         "—"
                       )}
                     </td>
-                    <td className="py-1.5 text-right text-text-muted whitespace-nowrap">
+                    <td className="py-1.5 text-center font-mono font-medium text-amber-500 dark:text-amber-300 whitespace-nowrap">
+                      {formatRequestCost(r.cost)}
+                    </td>
+                    <td className="py-1.5 text-center text-text-muted whitespace-nowrap">
                       <TimeAgo timestamp={r.timestamp} />
                     </td>
                   </tr>

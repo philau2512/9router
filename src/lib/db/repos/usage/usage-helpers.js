@@ -354,6 +354,7 @@ export function deduplicateRecentRequests(
           promptTokens: t.prompt_tokens || t.input_tokens || 0,
           completionTokens: t.completion_tokens || t.output_tokens || 0,
           cachedTokens: t.cached_tokens || t.cache_read_input_tokens || 0,
+          cost: Number.isFinite(Number(r.cost)) ? Number(r.cost) : 0,
           status: r.status || "ok",
         };
       })
