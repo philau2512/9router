@@ -825,11 +825,17 @@ export async function handleChatCore({
   const antigravityReplayKey =
     provider === "antigravity" ? getAntigravitySessionKey(model, body) : null;
   const onStreamComplete = antigravityReplayKey
-    ? (contentObj, usage, ttftAt, detailId) => {
+    ? (contentObj, usage, ttftAt, performance, detailId) => {
         if (contentObj?.thinking) {
           setCachedThinking(antigravityReplayKey, contentObj.thinking);
         }
-        return baseOnStreamComplete?.(contentObj, usage, ttftAt, detailId);
+        return baseOnStreamComplete?.(
+          contentObj,
+          usage,
+          ttftAt,
+          performance,
+          detailId,
+        );
       }
     : baseOnStreamComplete;
 

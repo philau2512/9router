@@ -55,6 +55,41 @@ const STREAM_MODE = {
  * @param {function} options.onStreamComplete - Callback when stream completes (content, usage)
  * @param {string} options.apiKey - API key for usage tracking
  */
+/**
+ * Visible assistant text only (not thinking/reasoning, not whitespace).
+ * Used for TTFT "first text" — aligned with cursor-byok firstTextToken semantics.
+ */
+export function isNonEmptyVisibleText(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+/**
+ * Build passive stream performance metrics.
+ * TTFT baseline MUST be request entry (requestStartTime), not transform creation —
+ * createSSEStream only runs after upstream headers/body are already available.
+ *
+ * firstTokenTime = first **visible text** (not thinking/reasoning).
+ * t/s uses generation window (first text → endAt), not wall-clock.
+ * endTime should be captured at stream flush (before setImmediate DB work).
+ */
+export function buildStreamPerformance({
+  requestStartTime,
+  firstTokenTime,
+  endTime = Date.now(),
+  outTokens = 0,
+}) {
+  if (!Number.isFinite(firstTokenTime) || !(outTokens > 0)) return null;
+  const origin = Number.isFinite(requestStartTime)
+    ? requestStartTime
+    : firstTokenTime;
+  const genMs = Math.max(1, endTime - firstTokenTime);
+  return {
+    firstTokenMs: Math.max(0, firstTokenTime - origin),
+    tokensPerSecond: outTokens / (genMs / 1000),
+    durationMs: Math.max(0, endTime - origin),
+  };
+}
+
 export function createSSEStream(options = {}) {
   const {
     mode = STREAM_MODE.TRANSLATE,
@@ -70,6 +105,9 @@ export function createSSEStream(options = {}) {
     apiKey = null,
     streamStateTracker = null,
     targetModelAlias = null,
+    // Absolute request entry time (ms). Required for correct TTFT; falls back to
+    // transform-create time only when callers omit it (tests / legacy).
+    requestStartTime = null,
     // Phase 3 (option c) object hand-off: when true, transform() receives
     // already-parsed OpenAI chunk OBJECTS (from Kiro's object-mode decode) plus a
     // final { done: true } sentinel, instead of raw SSE bytes. It skips
@@ -87,6 +125,17 @@ export function createSSEStream(options = {}) {
 
   let buffer = "";
   let usage = null;
+
+  // Performance tracking — anchor TTFT to request entry when available.
+  // firstTokenTime = first visible text only (not thinking/reasoning).
+  const startTime = Number.isFinite(requestStartTime)
+    ? requestStartTime
+    : Date.now();
+  let firstTokenTime = null;
+  const noteFirstVisibleText = () => {
+    if (!firstTokenTime) firstTokenTime = Date.now();
+  };
+  let completionTokenCount = 0;
 
   // Per-stream decoder with stream:true to correctly handle multi-byte chars split across chunks
   const decoder = new TextDecoder("utf-8", { fatal: false });
@@ -193,29 +242,32 @@ export function createSSEStream(options = {}) {
       return;
     }
 
-    // Claude format - content
-    if (parsed.delta?.text) {
+    // Claude format - content (visible text → TTFT)
+    if (isNonEmptyVisibleText(parsed.delta?.text)) {
       totalContentLength += parsed.delta.text.length;
       accumulatedContent += parsed.delta.text;
+      noteFirstVisibleText();
     }
-    // Claude format - thinking
+    // Claude format - thinking (not TTFT)
     if (parsed.delta?.thinking) {
       totalContentLength += parsed.delta.thinking.length;
       accumulatedThinking += parsed.delta.thinking;
     }
 
-    // OpenAI format - content
-    if (parsed.choices?.[0]?.delta?.content) {
+    // OpenAI format - content (visible text → TTFT)
+    if (isNonEmptyVisibleText(parsed.choices?.[0]?.delta?.content)) {
       totalContentLength += parsed.choices[0].delta.content.length;
       accumulatedContent += parsed.choices[0].delta.content;
+      noteFirstVisibleText();
     }
-    // OpenAI format - reasoning
+    // OpenAI format - reasoning (not TTFT)
     if (parsed.choices?.[0]?.delta?.reasoning_content) {
       totalContentLength += parsed.choices[0].delta.reasoning_content.length;
       accumulatedThinking += parsed.choices[0].delta.reasoning_content;
     }
 
-    // Gemini format
+    // Gemini format — only non-thought visible text counts as first text.
+    // Antigravity unmarked parts are buffered (may become thinking); skip TTFT here.
     const geminiResponse = parsed.response || parsed;
     if (geminiResponse.candidates?.[0]?.content?.parts) {
       for (const part of geminiResponse.candidates[0].content.parts) {
@@ -225,14 +277,21 @@ export function createSSEStream(options = {}) {
             accumulatedThinking += part.text;
           } else if (targetFormat !== FORMATS.ANTIGRAVITY) {
             accumulatedContent += part.text;
+            if (isNonEmptyVisibleText(part.text)) noteFirstVisibleText();
           }
         }
       }
     }
 
-    // Extract usage
+    // Extract usage and track completion tokens
     const extracted = extractUsage(parsed);
-    if (extracted) state.usage = mergeUsage(state.usage, extracted); // Keep original usage for logging
+    if (extracted) {
+      state.usage = mergeUsage(state.usage, extracted);
+      // Track completion token count for TPS calculation
+      if (extracted.completion_tokens > completionTokenCount) {
+        completionTokenCount = extracted.completion_tokens;
+      }
+    }
 
     // Codex output_item.done reconstruction (Phase 4)
     if (
@@ -452,29 +511,36 @@ export function createSSEStream(options = {}) {
                 continue; // empty delta — skip (F7)
               }
 
-              // Track reasoning for semantic stall watchdog (F3)
-              if (
-                dataStr.includes('"reasoning_content":') &&
-                streamStateTracker
-              ) {
-                streamStateTracker.inThinking = true;
+              // Accurate first-text TTFT: content-bearing chunks before first
+              // visible text must full-parse (fast-path cannot distinguish
+              // "content":"" / null / reasoning-only from real text).
+              if (!firstTokenTime) {
+                // fall through to full JSON parse below
+              } else {
+                // Track reasoning for semantic stall watchdog (F3)
+                if (
+                  dataStr.includes('"reasoning_content":') &&
+                  streamStateTracker
+                ) {
+                  streamStateTracker.inThinking = true;
+                }
+
+                // Rough token estimate only — no regex content extraction (F6)
+                // accumulatedContent not populated from fast-path (R2-F6 trade-off)
+                totalContentLength += Math.ceil(dataStr.length / 4);
+                updateTracker(); // F10 + R2-F2
+
+                const fastOutput =
+                  line.startsWith("data:") && !line.startsWith("data: ")
+                    ? "data: " + line.slice(5) + "\n"
+                    : line + "\n";
+
+                emitFirstChunkLog(fastOutput, { kind: "passthrough-fast" }); // R2-F1
+                reqLogger?.appendConvertedChunk?.(fastOutput);
+                controller.enqueue(sharedEncoder.encode(fastOutput));
+                sseEmittedCount++;
+                continue;
               }
-
-              // Rough token estimate only — no regex content extraction (F6)
-              // accumulatedContent not populated from fast-path (R2-F6 trade-off)
-              totalContentLength += Math.ceil(dataStr.length / 4);
-              updateTracker(); // F10 + R2-F2
-
-              const fastOutput =
-                line.startsWith("data:") && !line.startsWith("data: ")
-                  ? "data: " + line.slice(5) + "\n"
-                  : line + "\n";
-
-              emitFirstChunkLog(fastOutput, { kind: "passthrough-fast" }); // R2-F1
-              reqLogger?.appendConvertedChunk?.(fastOutput);
-              controller.enqueue(sharedEncoder.encode(fastOutput));
-              sseEmittedCount++;
-              continue;
             }
           }
 
@@ -589,6 +655,28 @@ export function createSSEStream(options = {}) {
               const extracted = extractUsage(parsed);
               if (extracted) {
                 usage = mergeUsage(usage, extracted);
+                if (extracted.completion_tokens > completionTokenCount) {
+                  completionTokenCount = extracted.completion_tokens;
+                }
+              }
+
+              // Track first visible text for TTFT / t/s (passthrough full-parse).
+              // Thinking / reasoning / empty content do NOT count.
+              if (!firstTokenTime) {
+                if (isNonEmptyVisibleText(parsed.choices?.[0]?.delta?.content)) {
+                  noteFirstVisibleText();
+                } else if (
+                  typeof parsed?.delta === "string" &&
+                  typeof parsed?.type === "string" &&
+                  parsed.type.startsWith("response.") &&
+                  parsed.type.endsWith(".delta") &&
+                  !parsed.type.includes("reasoning") &&
+                  (parsed.type.includes("output_text") ||
+                    parsed.type.includes("refusal")) &&
+                  isNonEmptyVisibleText(parsed.delta)
+                ) {
+                  noteFirstVisibleText();
+                }
               }
 
               const isFinishChunk = parsed.choices?.[0]?.finish_reason;
@@ -680,12 +768,18 @@ export function createSSEStream(options = {}) {
 
           // Defer heavy operations (usage estimation, DB writes) to next tick
           // so the stream closes immediately for the client.
+          // Capture endAt HERE (not inside setImmediate) for accurate gen t/s.
+          const endAt = Date.now();
           const _usage = usage;
           const _body = body;
           const _totalContentLength = totalContentLength;
           const _accumulatedContent = accumulatedContent;
           const _accumulatedThinking = accumulatedThinking;
           const _ttftAt = ttftAt;
+          const _startTime = startTime;
+          const _firstTokenTime = firstTokenTime;
+          const _completionTokenCount = completionTokenCount;
+          const _endAt = endAt;
           setImmediate(() => {
             let finalUsage = _usage;
             if (!hasValidUsage(finalUsage) && _totalContentLength > 0) {
@@ -695,6 +789,20 @@ export function createSSEStream(options = {}) {
                 FORMATS.OPENAI,
               );
             }
+            
+            // Calculate performance metrics (TTFT from request entry + gen t/s)
+            const outTokens =
+              _completionTokenCount ||
+              finalUsage?.completion_tokens ||
+              finalUsage?.output_tokens ||
+              0;
+            const performance = buildStreamPerformance({
+              requestStartTime: _startTime,
+              firstTokenTime: _firstTokenTime,
+              endTime: _endAt,
+              outTokens,
+            });
+            
             if (hasValidUsage(finalUsage)) {
               logUsage(provider, finalUsage, model, connectionId, apiKey);
             } else {
@@ -714,6 +822,7 @@ export function createSSEStream(options = {}) {
                 },
                 finalUsage,
                 _ttftAt,
+                performance,
               );
             }
           });
@@ -773,13 +882,19 @@ export function createSSEStream(options = {}) {
           controller.enqueue(sharedEncoder.encode(doneOutput));
         }
 
-        // Defer heavy operations (usage estimation, DB writes) to next tick
+        // Defer heavy operations (usage estimation, DB writes) to next tick.
+        // Capture endAt HERE (not inside setImmediate) for accurate gen t/s.
+        const endAt = Date.now();
         const _state = state;
         const _body = body;
         const _totalContentLength = totalContentLength;
         const _accumulatedContent = accumulatedContent;
         const _accumulatedThinking = accumulatedThinking;
         const _ttftAt = ttftAt;
+        const _startTime = startTime;
+        const _firstTokenTime = firstTokenTime;
+        const _completionTokenCount = completionTokenCount;
+        const _endAt = endAt;
         setImmediate(() => {
           if (!hasValidUsage(_state?.usage) && _totalContentLength > 0) {
             _state.usage = estimateUsage(
@@ -788,6 +903,21 @@ export function createSSEStream(options = {}) {
               sourceFormat,
             );
           }
+          
+          // Calculate performance metrics (TTFT from request entry + gen t/s)
+          const finalUsage = _state?.usage;
+          const outTokens =
+            _completionTokenCount ||
+            finalUsage?.completion_tokens ||
+            finalUsage?.output_tokens ||
+            0;
+          const performance = buildStreamPerformance({
+            requestStartTime: _startTime,
+            firstTokenTime: _firstTokenTime,
+            endTime: _endAt,
+            outTokens,
+          });
+          
           if (hasValidUsage(_state?.usage)) {
             logUsage(
               _state.provider || targetFormat,
@@ -810,6 +940,7 @@ export function createSSEStream(options = {}) {
               { content: _accumulatedContent, thinking: _accumulatedThinking },
               _state?.usage,
               _ttftAt,
+              performance,
             );
           }
         });
@@ -832,6 +963,7 @@ export function createSSETransformStreamWithLogger(
   onStreamComplete = null,
   apiKey = null,
   streamStateTracker = null,
+  requestStartTime = null,
 ) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
@@ -846,6 +978,7 @@ export function createSSETransformStreamWithLogger(
     onStreamComplete,
     apiKey,
     streamStateTracker,
+    requestStartTime,
   });
 }
 
@@ -865,6 +998,7 @@ export function createObjectTranslateStreamWithLogger(
   onStreamComplete = null,
   apiKey = null,
   streamStateTracker = null,
+  requestStartTime = null,
 ) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
@@ -880,6 +1014,7 @@ export function createObjectTranslateStreamWithLogger(
     onStreamComplete,
     apiKey,
     streamStateTracker,
+    requestStartTime,
   });
 }
 
@@ -893,6 +1028,7 @@ export function createPassthroughStreamWithLogger(
   apiKey = null,
   streamStateTracker = null,
   targetModelAlias = null,
+  requestStartTime = null,
 ) {
   return createSSEStream({
     mode: STREAM_MODE.PASSTHROUGH,
@@ -905,5 +1041,6 @@ export function createPassthroughStreamWithLogger(
     apiKey,
     streamStateTracker,
     targetModelAlias,
+    requestStartTime,
   });
 }

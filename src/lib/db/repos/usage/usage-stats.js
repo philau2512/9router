@@ -504,11 +504,11 @@ export async function getUsageStats(period = "all", connectionId) {
   // Recent requests from live history
   const recentRows = connectionId
     ? db.all(
-        `SELECT timestamp, provider, model, connectionId, tokens, cost, status FROM usageHistory WHERE connectionId = ? ORDER BY id DESC LIMIT 100`,
+        `SELECT timestamp, provider, model, connectionId, tokens, cost, status, performance FROM usageHistory WHERE connectionId = ? ORDER BY id DESC LIMIT 100`,
         [connectionId],
       )
     : db.all(
-        `SELECT timestamp, provider, model, connectionId, tokens, cost, status FROM usageHistory ORDER BY id DESC LIMIT 100`,
+        `SELECT timestamp, provider, model, connectionId, tokens, cost, status, performance FROM usageHistory ORDER BY id DESC LIMIT 100`,
       );
   const recentRequests = deduplicateRecentRequests(
     recentRows,

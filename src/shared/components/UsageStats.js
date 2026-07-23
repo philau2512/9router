@@ -59,6 +59,55 @@ function formatRequestCost(cost) {
   }).format(Number.isFinite(Number(cost)) ? Number(cost) : 0);
 }
 
+function formatDuration(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return "—";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+// Speed tiers (palette aligned with cursor-byok ModelAdapterTestCard):
+// green #86efac = good, amber #fcd34d = mid, orange #fb923c = slow
+function tpsColorClass(tps) {
+  if (!Number.isFinite(tps)) return "text-text-muted";
+  if (tps >= 50) return "text-[#86efac]";
+  if (tps >= 20) return "text-[#fcd34d]";
+  return "text-[#fb923c]";
+}
+
+function ttftColorClass(ms) {
+  if (!Number.isFinite(ms)) return "text-text-muted";
+  if (ms <= 500) return "text-[#86efac]";
+  if (ms <= 2000) return "text-[#fcd34d]";
+  return "text-[#fb923c]";
+}
+
+function hasPerformanceMetrics(performance) {
+  return (
+    Number.isFinite(performance?.tokensPerSecond) &&
+    Number.isFinite(performance?.firstTokenMs)
+  );
+}
+
+function PerformanceMetrics({ performance }) {
+  const tps = performance?.tokensPerSecond;
+  const ttft = performance?.firstTokenMs;
+  if (!hasPerformanceMetrics(performance)) return null;
+
+  const tpsRounded = Math.round(tps);
+  const ttftLabel = formatDuration(ttft);
+
+  return (
+    <span
+      className="block h-[14px] text-[10px] font-normal leading-[14px] whitespace-nowrap"
+      title={`Generate ${tpsRounded} t/s (after first text) · TTFT ${ttftLabel} (request → first visible text)`}
+    >
+      <span className={tpsColorClass(tps)}>{tpsRounded} t/s</span>
+      <span className="text-text-muted"> | </span>
+      <span className={ttftColorClass(ttft)}>{ttftLabel}</span>
+    </span>
+  );
+}
+
 function RecentRequests({ requests = [] }) {
   return (
     <Card
@@ -78,21 +127,29 @@ function RecentRequests({ requests = [] }) {
           No requests yet.
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto">
-          <table className="w-full min-w-[300px] border-collapse text-xs">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          <table className="w-full table-fixed border-collapse text-xs">
+            <colgroup>
+              <col className="w-[3%]" />
+              <col className="w-[28%]" />
+              <col className="w-[22%]" />
+              <col className="w-[24%]" />
+              <col className="w-[12%]" />
+              <col className="w-[11%]" />
+            </colgroup>
             <thead className="sticky top-0 bg-bg z-10">
               <tr className="border-b border-border">
-                <th className="py-1.5 text-left font-semibold text-text-muted w-2"></th>
-                <th className="py-1.5 text-left font-semibold text-text-muted">
+                <th className="py-1.5 text-left font-semibold text-text-muted" />
+                <th className="py-1.5 pr-1 text-left font-semibold text-text-muted">
                   Model
                 </th>
-                <th className="py-1.5 text-center font-semibold text-text-muted whitespace-nowrap">
+                <th className="py-1.5 text-center font-semibold text-text-muted">
                   In / Out
                 </th>
-                <th className="py-1.5 text-center font-semibold text-text-muted whitespace-nowrap">
+                <th className="py-1.5 text-center font-semibold text-text-muted">
                   Cached
                 </th>
-                <th className="py-1.5 text-center font-semibold text-amber-500 dark:text-amber-300 whitespace-nowrap">
+                <th className="py-1.5 text-center font-semibold text-amber-500 dark:text-amber-300">
                   $
                 </th>
                 <th
@@ -106,24 +163,32 @@ function RecentRequests({ requests = [] }) {
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border/50">
+            <tbody className="divide-y divide-text-muted/35">
               {requests.map((r, i) => {
                 const ok =
                   !r.status || r.status === "ok" || r.status === "success";
+                const showPerf = hasPerformanceMetrics(r.performance);
                 return (
                   <tr key={i} className="hover:bg-bg-subtle transition-colors">
-                    <td className="py-1.5">
+                    <td className="py-2 align-middle">
                       <span
                         className={`block w-1.5 h-1.5 rounded-full ${ok ? "bg-success" : "bg-error"}`}
                       />
                     </td>
-                    <td
-                      className="py-1.5 font-mono truncate max-w-[120px]"
-                      title={r.model}
-                    >
-                      {r.model}
+                    <td className="py-2 pr-1 align-middle font-mono" title={r.model}>
+                      {/* Fixed 2-line box: metrics on bottom, or model vertically centered */}
+                      <div
+                        className={`flex h-[34px] min-w-0 flex-col ${
+                          showPerf ? "justify-center gap-0.5" : "justify-center"
+                        }`}
+                      >
+                        <span className="truncate leading-4">{r.model}</span>
+                        {showPerf && (
+                          <PerformanceMetrics performance={r.performance} />
+                        )}
+                      </div>
                     </td>
-                    <td className="py-1.5 text-center whitespace-nowrap">
+                    <td className="py-2 text-center align-middle">
                       <span className="text-primary">
                         {fmt(r.promptTokens)}↑
                       </span>{" "}
@@ -131,7 +196,7 @@ function RecentRequests({ requests = [] }) {
                         {fmt(r.completionTokens)}↓
                       </span>
                     </td>
-                    <td className="py-1.5 text-center text-blue-500 dark:text-blue-400 whitespace-nowrap">
+                    <td className="py-2 text-center align-middle text-blue-500 dark:text-blue-400">
                       {typeof r.cachedTokens === "number" ? (
                         <>
                           {fmt(r.cachedTokens)}
@@ -145,10 +210,10 @@ function RecentRequests({ requests = [] }) {
                         "—"
                       )}
                     </td>
-                    <td className="py-1.5 text-center font-mono font-medium text-amber-500 dark:text-amber-300 whitespace-nowrap">
+                    <td className="py-2 text-center align-middle font-mono font-medium text-amber-500 dark:text-amber-300">
                       {formatRequestCost(r.cost)}
                     </td>
-                    <td className="py-1.5 text-center text-text-muted whitespace-nowrap">
+                    <td className="py-2 text-center align-middle text-text-muted">
                       <TimeAgo timestamp={r.timestamp} />
                     </td>
                   </tr>
@@ -720,7 +785,8 @@ export default function UsageStats({
       {loading ? (
         spinner
       ) : (
-        <div className="grid min-w-0 grid-cols-1 items-stretch gap-2 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+        // Right panel ≈ 2/5 width (Cached Tokens + Est. Cost cards)
+        <div className="grid min-w-0 grid-cols-1 items-stretch gap-2 lg:grid-cols-[minmax(0,3fr)_minmax(300px,2fr)]">
           <ProviderTopology
             providers={providers}
             activeRequests={stats.activeRequests || []}

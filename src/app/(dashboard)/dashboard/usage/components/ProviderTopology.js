@@ -460,7 +460,7 @@ export default function ProviderTopology({
             gap={24}
             className="text-text-muted/10"
           />
-          <Controls showInteractive={false} />
+          <Controls className="react-flow-controls-custom" showInteractive={false} />
         </ReactFlow>
       )}
     </div>

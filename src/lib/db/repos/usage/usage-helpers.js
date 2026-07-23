@@ -347,6 +347,11 @@ export function deduplicateRecentRequests(
           typeof r.tokens === "string"
             ? parseJson(r.tokens, {})
             : r.tokens || {};
+        // performance may also be JSON string or object
+        const perf =
+          typeof r.performance === "string"
+            ? parseJson(r.performance, null)
+            : r.performance || null;
         return {
           timestamp: r.timestamp,
           model: r.model,
@@ -356,6 +361,7 @@ export function deduplicateRecentRequests(
           cachedTokens: t.cached_tokens || t.cache_read_input_tokens || 0,
           cost: Number.isFinite(Number(r.cost)) ? Number(r.cost) : 0,
           status: r.status || "ok",
+          performance: perf,
         };
       })
       .filter((e) => {
