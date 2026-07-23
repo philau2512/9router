@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import PropTypes from "prop-types";
 import { Badge, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
@@ -647,6 +648,19 @@ export default function ConnectionRow({
               <span className="text-[10px] leading-tight">Export</span>
             </button>
           )}
+          <Link
+            href={`/dashboard/usage?tab=overview&connectionId=${encodeURIComponent(connection.id)}`}
+            className="flex flex-col items-center rounded px-2 py-1 text-text-muted hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+            title="View Usage & Analytics"
+            aria-label="View Usage & Analytics"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span className="material-symbols-outlined text-[18px]">
+              analytics
+            </span>
+            <span className="text-[10px] leading-tight">Usage</span>
+          </Link>
           <button
             onClick={onEdit}
             className="flex flex-col items-center rounded px-2 py-1 text-text-muted hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"

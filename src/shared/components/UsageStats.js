@@ -32,10 +32,10 @@ import UsageChart from "@/app/(dashboard)/dashboard/usage/components/UsageChart"
 
 function timeAgo(timestamp) {
   const diff = Math.floor((Date.now() - new Date(timestamp)) / 1000);
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+  if (diff < 60) return `${diff}s`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  return `${Math.floor(diff / 86400)}d`;
 }
 
 // Auto-update time display every second without re-rendering parent
@@ -48,6 +48,64 @@ function TimeAgo({ timestamp }) {
   }, []);
 
   return <>{timeAgo(timestamp)}</>;
+}
+
+function formatRequestCost(cost) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(Number(cost)) ? Number(cost) : 0);
+}
+
+function formatDuration(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return "—";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+// Speed tiers (palette aligned with cursor-byok ModelAdapterTestCard):
+// green #86efac = good, amber #fcd34d = mid, orange #fb923c = slow
+function tpsColorClass(tps) {
+  if (!Number.isFinite(tps)) return "text-text-muted";
+  if (tps >= 50) return "text-[#86efac]";
+  if (tps >= 20) return "text-[#fcd34d]";
+  return "text-[#fb923c]";
+}
+
+function ttftColorClass(ms) {
+  if (!Number.isFinite(ms)) return "text-text-muted";
+  if (ms <= 500) return "text-[#86efac]";
+  if (ms <= 2000) return "text-[#fcd34d]";
+  return "text-[#fb923c]";
+}
+
+function hasPerformanceMetrics(performance) {
+  return (
+    Number.isFinite(performance?.tokensPerSecond) &&
+    Number.isFinite(performance?.firstTokenMs)
+  );
+}
+
+function PerformanceMetrics({ performance }) {
+  const tps = performance?.tokensPerSecond;
+  const ttft = performance?.firstTokenMs;
+  if (!hasPerformanceMetrics(performance)) return null;
+
+  const tpsRounded = Math.round(tps);
+  const ttftLabel = formatDuration(ttft);
+
+  return (
+    <span
+      className="block h-[14px] text-[10px] font-normal leading-[14px] whitespace-nowrap"
+      title={`Generate ${tpsRounded} t/s (after first text) · TTFT ${ttftLabel} (request → first visible text)`}
+    >
+      <span className={tpsColorClass(tps)}>{tpsRounded} t/s</span>
+      <span className="text-text-muted"> | </span>
+      <span className={ttftColorClass(ttft)}>{ttftLabel}</span>
+    </span>
+  );
 }
 
 function RecentRequests({ requests = [] }) {
@@ -69,40 +127,68 @@ function RecentRequests({ requests = [] }) {
           No requests yet.
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto">
-          <table className="w-full min-w-[300px] border-collapse text-xs">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          <table className="w-full table-fixed border-collapse text-xs">
+            <colgroup>
+              <col className="w-[3%]" />
+              <col className="w-[28%]" />
+              <col className="w-[22%]" />
+              <col className="w-[24%]" />
+              <col className="w-[12%]" />
+              <col className="w-[11%]" />
+            </colgroup>
             <thead className="sticky top-0 bg-bg z-10">
               <tr className="border-b border-border">
-                <th className="py-1.5 text-left font-semibold text-text-muted w-2"></th>
-                <th className="py-1.5 text-left font-semibold text-text-muted">
+                <th className="py-1.5 text-left font-semibold text-text-muted" />
+                <th className="py-1.5 pr-1 text-left font-semibold text-text-muted">
                   Model
                 </th>
-                <th className="py-1.5 text-right font-semibold text-text-muted whitespace-nowrap">
+                <th className="py-1.5 text-center font-semibold text-text-muted">
                   In / Out
                 </th>
-                <th className="py-1.5 text-right font-semibold text-text-muted">
-                  When
+                <th className="py-1.5 text-center font-semibold text-text-muted">
+                  Cached
+                </th>
+                <th className="py-1.5 text-center font-semibold text-amber-500 dark:text-amber-300">
+                  $
+                </th>
+                <th
+                  className="py-1.5 text-center font-semibold text-text-muted"
+                  title="When"
+                  aria-label="When"
+                >
+                  <span className="material-symbols-outlined text-[13px] leading-none">
+                    schedule
+                  </span>
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border/50">
+            <tbody className="divide-y divide-text-muted/35">
               {requests.map((r, i) => {
                 const ok =
                   !r.status || r.status === "ok" || r.status === "success";
+                const showPerf = hasPerformanceMetrics(r.performance);
                 return (
                   <tr key={i} className="hover:bg-bg-subtle transition-colors">
-                    <td className="py-1.5">
+                    <td className="py-2 align-middle">
                       <span
                         className={`block w-1.5 h-1.5 rounded-full ${ok ? "bg-success" : "bg-error"}`}
                       />
                     </td>
-                    <td
-                      className="py-1.5 font-mono truncate max-w-[120px]"
-                      title={r.model}
-                    >
-                      {r.model}
+                    <td className="py-2 pr-1 align-middle font-mono" title={r.model}>
+                      {/* Fixed 2-line box: metrics on bottom, or model vertically centered */}
+                      <div
+                        className={`flex h-[34px] min-w-0 flex-col ${
+                          showPerf ? "justify-center gap-0.5" : "justify-center"
+                        }`}
+                      >
+                        <span className="truncate leading-4">{r.model}</span>
+                        {showPerf && (
+                          <PerformanceMetrics performance={r.performance} />
+                        )}
+                      </div>
                     </td>
-                    <td className="py-1.5 text-right whitespace-nowrap">
+                    <td className="py-2 text-center align-middle">
                       <span className="text-primary">
                         {fmt(r.promptTokens)}↑
                       </span>{" "}
@@ -110,7 +196,24 @@ function RecentRequests({ requests = [] }) {
                         {fmt(r.completionTokens)}↓
                       </span>
                     </td>
-                    <td className="py-1.5 text-right text-text-muted whitespace-nowrap">
+                    <td className="py-2 text-center align-middle text-blue-500 dark:text-blue-400">
+                      {typeof r.cachedTokens === "number" ? (
+                        <>
+                          {fmt(r.cachedTokens)}
+                          {r.promptTokens > 0 && (
+                            <span className="ml-1 text-text-muted">
+                              ({((r.cachedTokens / r.promptTokens) * 100).toFixed(2)}%)
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="py-2 text-center align-middle font-mono font-medium text-amber-500 dark:text-amber-300">
+                      {formatRequestCost(r.cost)}
+                    </td>
+                    <td className="py-2 text-center align-middle text-text-muted">
                       <TimeAgo timestamp={r.timestamp} />
                     </td>
                   </tr>
@@ -276,6 +379,7 @@ export default function UsageStats({
 
   const sortBy = searchParams.get("sortBy") || "rawModel";
   const sortOrder = searchParams.get("sortOrder") || "asc";
+  const connectionId = searchParams.get("connectionId") || undefined;
 
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -283,6 +387,7 @@ export default function UsageStats({
   const [tableView, setTableView] = useState("model");
   const [viewMode, setViewMode] = useState("costs");
   const [providers, setProviders] = useState([]);
+  const [accountName, setAccountName] = useState("");
   const [periodLocal, setPeriodLocal] = useState("today");
   const isInitialLoad = useRef(true);
   const period = periodProp ?? periodLocal;
@@ -305,10 +410,22 @@ export default function UsageStats({
         const noAuthProviders = Object.values(FREE_PROVIDERS)
           .filter((p) => p.noAuth && !seen.has(p.id) && isLLMProvider(p.id))
           .map((p) => ({ provider: p.id, name: p.name }));
-        setProviders([...unique, ...noAuthProviders]);
+        const selectedConnection = (d?.connections || []).find(
+          (connection) => connection.id === connectionId,
+        );
+        setProviders(
+          connectionId
+            ? selectedConnection
+              ? [selectedConnection]
+              : []
+            : [...unique, ...noAuthProviders],
+        );
+        setAccountName(
+          selectedConnection?.name || selectedConnection?.email || "",
+        );
       })
       .catch(() => {});
-  }, []);
+  }, [connectionId]);
 
   // Fetch filtered stats via REST when period changes
   useEffect(() => {
@@ -320,21 +437,51 @@ export default function UsageStats({
       setFetching(true);
     }
 
-    fetch(`/api/usage/stats?period=${period}`)
+    const params = new URLSearchParams({ period });
+    if (connectionId) params.set("connectionId", connectionId);
+
+    fetch(`/api/usage/stats?${params.toString()}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data) setStats((prev) => ({ ...prev, ...data }));
+        if (data) setStats(data);
       })
       .catch(() => {})
       .finally(() => {
         setLoading(false);
         setFetching(false);
       });
-  }, [period]);
+  }, [period, connectionId]);
+
+  // Refresh every 10 seconds while this overview stays mounted. SSE still supplies
+  // immediate active/recent changes; polling reconciles persisted totals and tables.
+  useEffect(() => {
+    const refreshStats = () => {
+      if (document.visibilityState === "visible") {
+        const params = new URLSearchParams({ period });
+        if (connectionId) params.set("connectionId", connectionId);
+
+        setFetching(true);
+        fetch(`/api/usage/stats?${params.toString()}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            if (data) setStats(data);
+          })
+          .catch(() => {})
+          .finally(() => setFetching(false));
+      }
+    };
+
+    const interval = setInterval(refreshStats, 10_000);
+    return () => clearInterval(interval);
+  }, [period, connectionId]);
 
   // SSE connection - real-time updates for activeRequests + recentRequests only
   useEffect(() => {
-    const es = new EventSource("/api/usage/stream");
+    const params = new URLSearchParams();
+    if (connectionId) params.set("connectionId", connectionId);
+    const es = new EventSource(
+      `/api/usage/stream${params.size ? `?${params.toString()}` : ""}`,
+    );
 
     es.onmessage = (e) => {
       try {
@@ -356,7 +503,13 @@ export default function UsageStats({
     es.onerror = () => setLoading(false);
 
     return () => es.close();
-  }, []);
+  }, [connectionId]);
+
+  const clearAccountFilter = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("connectionId");
+    router.replace(`/dashboard/usage?${params.toString()}`, { scroll: false });
+  }, [router, searchParams]);
 
   const toggleSort = useCallback(
     (tableType, field) => {
@@ -607,6 +760,24 @@ export default function UsageStats({
         </div>
       )}
 
+      {connectionId && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-primary">Account usage</p>
+            <p className="truncate text-sm text-text-main">
+              {accountName || `Account ${connectionId.slice(0, 8)}...`}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={clearAccountFilter}
+            className="rounded-lg border border-primary/30 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+          >
+            All accounts
+          </button>
+        </div>
+      )}
+
       {/* Overview cards */}
       {loading ? spinner : <OverviewCards stats={stats} />}
 
@@ -614,10 +785,12 @@ export default function UsageStats({
       {loading ? (
         spinner
       ) : (
-        <div className="grid min-w-0 grid-cols-1 items-stretch gap-2 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+        // Right panel ≈ 2/5 width (Cached Tokens + Est. Cost cards)
+        <div className="grid min-w-0 grid-cols-1 items-stretch gap-2 lg:grid-cols-[minmax(0,3fr)_minmax(300px,2fr)]">
           <ProviderTopology
             providers={providers}
             activeRequests={stats.activeRequests || []}
+            recentRequests={stats.recentRequests || []}
             lastProvider={stats.recentRequests?.[0]?.provider || ""}
             errorProvider={stats.errorProvider || ""}
           />
@@ -626,7 +799,7 @@ export default function UsageStats({
       )}
 
       {/* Token / Cost chart - sync period */}
-      {loading ? spinner : <UsageChart period={period} />}
+      {loading ? spinner : <UsageChart period={period} connectionId={connectionId} />}
 
       {/* Table with dropdown selector */}
       <div className="flex flex-col gap-3">

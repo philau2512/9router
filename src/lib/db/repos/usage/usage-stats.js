@@ -394,13 +394,13 @@ function aggregateLiveHistory(
 
 // --- Internal: build active requests list ---
 
-function buildActiveRequests(connectionMap) {
-  return extractActiveFromPending(pendingRequests, connectionMap);
+function buildActiveRequests(connectionMap, connectionId) {
+  return extractActiveFromPending(pendingRequests, connectionMap, connectionId);
 }
 
 // --- Internal: build recent requests (10-minute buckets) ---
 
-function buildLast10Minutes(db) {
+function buildLast10Minutes(db, connectionId) {
   const now = new Date();
   const currentMinuteStart = new Date(
     Math.floor(now.getTime() / 60000) * 60000,
@@ -418,10 +418,15 @@ function buildLast10Minutes(db) {
     };
     last10Minutes.push(bucketMap[ts]);
   }
-  const recent10 = db.all(
-    `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE timestamp >= ? AND timestamp <= ?`,
-    [tenMinutesAgo.toISOString(), now.toISOString()],
-  );
+  const recent10 = connectionId
+    ? db.all(
+        `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE connectionId = ? AND timestamp >= ? AND timestamp <= ?`,
+        [connectionId, tenMinutesAgo.toISOString(), now.toISOString()],
+      )
+    : db.all(
+        `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE timestamp >= ? AND timestamp <= ?`,
+        [tenMinutesAgo.toISOString(), now.toISOString()],
+      );
   for (const r of recent10) {
     const tt = new Date(r.timestamp).getTime();
     const minuteStart = Math.floor(tt / 60000) * 60000;
@@ -435,9 +440,34 @@ function buildLast10Minutes(db) {
   return last10Minutes;
 }
 
+function getHistoryCutoff(period) {
+  if (period === "today") {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    return startOfDay.toISOString();
+  }
+  if (period === "24h") {
+    return new Date(Date.now() - PERIOD_MS["24h"]).toISOString();
+  }
+  const periodDays = {
+    "7d": 7,
+    "30d": 30,
+    "60d": 60,
+    "90d": 90,
+    "180d": 180,
+    "365d": 365,
+  };
+  const days = periodDays[period];
+  if (!days) return new Date(0).toISOString();
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - days + 1);
+  return start.toISOString();
+}
+
 // --- Public API ---
 
-export async function getUsageStats(period = "all") {
+export async function getUsageStats(period = "all", connectionId) {
   const db = await getAdapter();
 
   const [{ getProviderConnections }, { getApiKeys }, { getProviderNodes }] =
@@ -472,10 +502,29 @@ export async function getUsageStats(period = "all") {
     apiKeyMap[k.key] = { name: k.name, id: k.id, createdAt: k.createdAt };
 
   // Recent requests from live history
-  const recentRows = db.all(
-    `SELECT timestamp, provider, model, tokens, status FROM usageHistory ORDER BY id DESC LIMIT 100`,
+  const recentRows = connectionId
+    ? db.all(
+        `SELECT timestamp, provider, model, connectionId, tokens, cost, status, performance FROM usageHistory WHERE connectionId = ? ORDER BY id DESC LIMIT 100`,
+        [connectionId],
+      )
+    : db.all(
+        `SELECT timestamp, provider, model, connectionId, tokens, cost, status, performance FROM usageHistory ORDER BY id DESC LIMIT 100`,
+      );
+  const recentRequests = deduplicateRecentRequests(
+    recentRows,
+    20,
+    connectionId,
   );
-  const recentRequests = deduplicateRecentRequests(recentRows);
+
+  const accountPending = connectionId
+    ? pendingRequests.byAccount?.[connectionId] || {}
+    : null;
+  const pending = connectionId
+    ? {
+        byModel: accountPending,
+        byAccount: accountPending ? { [connectionId]: accountPending } : {},
+      }
+    : pendingRequests;
 
   // Initialize stats object
   const stats = {
@@ -490,22 +539,35 @@ export async function getUsageStats(period = "all") {
     byApiKey: {},
     byEndpoint: {},
     last10Minutes: [],
-    pending: pendingRequests,
-    activeRequests: buildActiveRequests(connectionMap),
+    pending,
+    activeRequests: buildActiveRequests(connectionMap, connectionId),
     recentRequests,
     errorProvider:
-      Date.now() - lastErrorProvider.ts < 10000
-        ? lastErrorProvider.provider
-        : "",
+      connectionId || Date.now() - lastErrorProvider.ts >= 10000
+        ? ""
+        : lastErrorProvider.provider,
   };
 
   // 10-minute buckets
-  stats.last10Minutes = buildLast10Minutes(db);
+  stats.last10Minutes = buildLast10Minutes(db, connectionId);
 
   // Aggregate by period type
   const useDailySummary = period !== "24h" && period !== "today";
 
-  if (useDailySummary) {
+  if (connectionId) {
+    const cutoff = getHistoryCutoff(period);
+    const filtered = db.all(
+      `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, tokens FROM usageHistory WHERE connectionId = ? AND timestamp >= ?`,
+      [connectionId, cutoff],
+    );
+    aggregateLiveHistory(
+      filtered,
+      stats,
+      connectionMap,
+      apiKeyMap,
+      providerNodeNameMap,
+    );
+  } else if (useDailySummary) {
     const periodDays = {
       "7d": 7,
       "30d": 30,

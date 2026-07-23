@@ -43,7 +43,7 @@ async function ensureRingInitialized() {
   try {
     const db = await getAdapter();
     const rows = db.all(
-      `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens FROM usageHistory ORDER BY id DESC LIMIT ?`,
+      `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens, performance FROM usageHistory ORDER BY id DESC LIMIT ?`,
       [RING_CAP],
     );
     recentRing.items = rows.reverse().map((r) => ({
@@ -56,6 +56,7 @@ async function ensureRingInitialized() {
       cost: r.cost,
       status: r.status,
       tokens: parseJson(r.tokens, {}),
+      performance: parseJson(r.performance, null),
     }));
   } catch {}
 }
@@ -137,17 +138,24 @@ export function trackPendingRequest(
   emitPending();
 }
 
-export async function getActiveRequests() {
+export async function getActiveRequests(connectionId) {
   const connectionMap = await getConnectionMapCached();
   const activeRequests = extractActiveFromPending(
     pendingRequests,
     connectionMap,
+    connectionId,
   );
 
   await ensureRingInitialized();
-  const recentRequests = deduplicateRecentRequests(recentRing.items);
+  const recentRequests = deduplicateRecentRequests(
+    recentRing.items,
+    20,
+    connectionId,
+  );
 
   const errorProvider =
-    Date.now() - lastErrorProvider.ts < 10000 ? lastErrorProvider.provider : "";
+    connectionId || Date.now() - lastErrorProvider.ts >= 10000
+      ? ""
+      : lastErrorProvider.provider;
   return { activeRequests, recentRequests, errorProvider };
 }

@@ -20,7 +20,13 @@ function getProviderImageUrl(providerId) {
  * Place N nodes evenly along an ellipse around the router center.
  * Active / last / error flags use sibling-aware match (xai ↔ grok-cli).
  */
-export function buildLayout(providers, activeSet, lastSet, errorSet) {
+export function buildLayout(
+  providers,
+  activeSet,
+  lastSet,
+  errorSet,
+  recentRequests = [],
+) {
   const nodeW = 180;
   const nodeH = 30;
   const routerW = 120;
@@ -122,7 +128,14 @@ export function buildLayout(providers, activeSet, lastSet, errorSet) {
       sourceHandle,
       target: nodeId,
       targetHandle,
+      type: "topology",
       animated: active,
+      data: {
+        active,
+        usage: recentRequests.find((request) =>
+          isTopologyProviderActive(p.provider, new Set([request?.provider])),
+        ),
+      },
       style: edgeStyle(active, last, error, config.color),
     });
   });

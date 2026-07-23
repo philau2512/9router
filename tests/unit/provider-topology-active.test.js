@@ -114,6 +114,13 @@ describe("buildLayout active edge animation (multi-provider)", () => {
       activeSet,
       new Set(),
       new Set(),
+      [
+        {
+          provider: "grok-cli",
+          promptTokens: 2574,
+          completionTokens: 22,
+        },
+      ],
     );
 
     expect(nodes.find((n) => n.id === "provider-grok-cli")?.data.active).toBe(
@@ -122,12 +129,15 @@ describe("buildLayout active edge animation (multi-provider)", () => {
     expect(nodes.find((n) => n.id === "provider-kiro")?.data.active).toBe(
       false,
     );
-    expect(edges.find((e) => e.id === "e-provider-grok-cli")?.animated).toBe(
-      true,
-    );
-    expect(edges.find((e) => e.id === "e-provider-grok-cli")?.style?.stroke).toBe(
-      "#22c55e",
-    );
+    const grokEdge = edges.find((e) => e.id === "e-provider-grok-cli");
+    expect(grokEdge?.animated).toBe(true);
+    expect(grokEdge?.type).toBe("topology");
+    expect(grokEdge?.data?.active).toBe(true);
+    expect(grokEdge?.data?.usage).toMatchObject({
+      promptTokens: 2574,
+      completionTokens: 22,
+    });
+    expect(grokEdge?.style?.stroke).toBe("#22c55e");
     expect(nodes.find((n) => n.id === "router")?.data.activeCount).toBe(1);
   });
 

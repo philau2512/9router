@@ -250,8 +250,8 @@ parentPort.on("message", async (message) => {
       database.transaction(() => {
         // 1. Ghi usageHistory
         database.run(
-          `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) 
-           VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, performance) 
+           VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             entry.timestamp,
             entry.provider || null,
@@ -265,6 +265,7 @@ parentPort.on("message", async (message) => {
             entry.status || "ok",
             stringifyJson(tokens),
             stringifyJson({}),
+            entry.performance ? stringifyJson(entry.performance) : null,
           ],
         );
 

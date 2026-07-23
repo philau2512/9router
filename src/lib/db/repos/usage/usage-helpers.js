@@ -261,9 +261,31 @@ export function incrementStatsEntry(
  * @param {object} connectionMap - { [connectionId]: displayName }
  * @returns {Array<{model, provider, account, count}>}
  */
-export function extractActiveFromPending(pending, connectionMap = {}) {
+export function extractActiveFromPending(
+  pending,
+  connectionMap = {},
+  connectionId,
+) {
   const activeRequests = [];
   const seenProviders = new Set();
+
+  // A per-account dashboard must never include free/global pending state.
+  if (connectionId) {
+    const models = pending.byAccount?.[connectionId] || {};
+    const accountName =
+      connectionMap[connectionId] || `Account ${connectionId.slice(0, 8)}...`;
+    for (const [modelKey, count] of Object.entries(models)) {
+      if (count <= 0) continue;
+      const match = modelKey.match(/^(.*) \((.*)\)$/);
+      activeRequests.push({
+        model: match ? match[1] : modelKey,
+        provider: match ? match[2] : "unknown",
+        account: accountName,
+        count,
+      });
+    }
+    return activeRequests;
+  }
 
   // 1) Requests with connectionId tracked in byAccount
   for (const [connectionId, models] of Object.entries(
@@ -310,29 +332,42 @@ export function extractActiveFromPending(pending, connectionMap = {}) {
  * Deduplicate recent request entries by model+provider+tokens+minute.
  * Used in both getActiveRequests and getUsageStats.
  */
-export function deduplicateRecentRequests(rows, maxItems = 20) {
+export function deduplicateRecentRequests(
+  rows,
+  maxItems = 20,
+  connectionId,
+) {
   const seen = new Set();
   return (
     rows
+      .filter((row) => !connectionId || row.connectionId === connectionId)
       .map((r) => {
         // tokens may be a JSON string (from DB) or already-parsed object (from ring buffer)
         const t =
           typeof r.tokens === "string"
             ? parseJson(r.tokens, {})
             : r.tokens || {};
+        // performance may also be JSON string or object
+        const perf =
+          typeof r.performance === "string"
+            ? parseJson(r.performance, null)
+            : r.performance || null;
         return {
           timestamp: r.timestamp,
           model: r.model,
           provider: r.provider || "",
           promptTokens: t.prompt_tokens || t.input_tokens || 0,
           completionTokens: t.completion_tokens || t.output_tokens || 0,
+          cachedTokens: t.cached_tokens || t.cache_read_input_tokens || 0,
+          cost: Number.isFinite(Number(r.cost)) ? Number(r.cost) : 0,
           status: r.status || "ok",
+          performance: perf,
         };
       })
       .filter((e) => {
         if (e.promptTokens === 0 && e.completionTokens === 0) return false;
         const minute = e.timestamp ? e.timestamp.slice(0, 16) : "";
-        const key = `${e.model}|${e.provider}|${e.promptTokens}|${e.completionTokens}|${minute}`;
+        const key = `${e.model}|${e.provider}|${e.promptTokens}|${e.completionTokens}|${e.cachedTokens}|${minute}`;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;

@@ -138,6 +138,11 @@ describe("streamingHandler TTFT path", () => {
       { content: "hello", thinking: null },
       { prompt_tokens: 1, completion_tokens: 2 },
       requestStartTime + 60,
+      {
+        firstTokenMs: 60,
+        tokensPerSecond: 10,
+        durationMs: 100,
+      },
       "detail-123",
     );
 

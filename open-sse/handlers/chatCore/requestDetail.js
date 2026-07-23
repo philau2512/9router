@@ -87,6 +87,7 @@ export function buildRequestDetail(base, overrides = {}) {
     timestamp: new Date().toISOString(),
     latency: base.latency || { ttft: 0, total: 0 },
     tokens: base.tokens || { prompt_tokens: 0, completion_tokens: 0 },
+    performance: base.performance || null,
     request: base.request,
     providerRequest: base.providerRequest || null,
     providerResponse: base.providerResponse || null,
@@ -103,6 +104,7 @@ export function saveUsageStats({
   connectionId,
   apiKey,
   endpoint,
+  performance,
   label = "USAGE",
 }) {
   if (!tokens || typeof tokens !== "object") return;
@@ -142,5 +144,6 @@ export function saveUsageStats({
     connectionId: connectionId || undefined,
     apiKey: apiKey || undefined,
     endpoint: endpoint || null,
+    performance: performance || null,
   }).catch(() => {});
 }

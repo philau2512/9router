@@ -89,7 +89,7 @@ export async function saveRequestUsage(entry) {
             }
 
             db.run(
-              `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, performance) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 _entry.timestamp,
                 _entry.provider || null,
@@ -103,6 +103,7 @@ export async function saveRequestUsage(entry) {
                 _entry.status || "ok",
                 stringifyJson(tokens),
                 stringifyJson({}),
+                _entry.performance ? stringifyJson(_entry.performance) : null,
               ],
             );
 

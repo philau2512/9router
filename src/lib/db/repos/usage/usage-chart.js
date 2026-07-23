@@ -23,7 +23,7 @@ function buildHourlyBuckets(startTime, bucketCount, bucketMs) {
   }));
 }
 
-export async function getChartData(period = "7d") {
+export async function getChartData(period = "7d", connectionId) {
   const db = await getAdapter();
   const now = Date.now();
 
@@ -37,10 +37,15 @@ export async function getChartData(period = "7d") {
     const endTime = startTime + bucketCount * bucketMs;
     const buckets = buildHourlyBuckets(startTime, bucketCount, bucketMs);
 
-    const rows = db.all(
-      `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE timestamp >= ?`,
-      [new Date(startTime).toISOString()],
-    );
+    const rows = connectionId
+      ? db.all(
+          `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE connectionId = ? AND timestamp >= ?`,
+          [connectionId, new Date(startTime).toISOString()],
+        )
+      : db.all(
+          `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE timestamp >= ?`,
+          [new Date(startTime).toISOString()],
+        );
     for (const r of rows) {
       const t = new Date(r.timestamp).getTime();
       if (t < startTime || t >= endTime) continue;
@@ -61,10 +66,15 @@ export async function getChartData(period = "7d") {
     const startTime = now - bucketCount * bucketMs;
     const buckets = buildHourlyBuckets(startTime, bucketCount, bucketMs);
 
-    const rows = db.all(
-      `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE timestamp >= ?`,
-      [new Date(startTime).toISOString()],
-    );
+    const rows = connectionId
+      ? db.all(
+          `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE connectionId = ? AND timestamp >= ?`,
+          [connectionId, new Date(startTime).toISOString()],
+        )
+      : db.all(
+          `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE timestamp >= ?`,
+          [new Date(startTime).toISOString()],
+        );
     for (const r of rows) {
       const t = new Date(r.timestamp).getTime();
       if (t < startTime || t > now) continue;
@@ -76,6 +86,55 @@ export async function getChartData(period = "7d") {
       buckets[idx].cost += r.cost || 0;
     }
     return buckets;
+  }
+
+  if (connectionId) {
+    const periodDays = {
+      "7d": 7,
+      "30d": 30,
+      "60d": 60,
+      "90d": 90,
+      "180d": 180,
+      "365d": 365,
+    };
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const firstTimestamp = db.get(
+      `SELECT MIN(timestamp) AS timestamp FROM usageHistory WHERE connectionId = ?`,
+      [connectionId],
+    )?.timestamp;
+    const firstDay = firstTimestamp ? new Date(firstTimestamp) : today;
+    firstDay.setHours(0, 0, 0, 0);
+    const bucketCount = periodDays[period]
+      ? periodDays[period]
+      : Math.max(
+          1,
+          Math.floor((today.getTime() - firstDay.getTime()) / 86400000) + 1,
+        );
+    const startDay = new Date(today);
+    startDay.setDate(startDay.getDate() - bucketCount + 1);
+    const rows = db.all(
+      `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE connectionId = ? AND timestamp >= ?`,
+      [connectionId, startDay.toISOString()],
+    );
+    const byDate = new Map();
+    for (const row of rows) {
+      const date = new Date(row.timestamp);
+      const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+      const bucket = byDate.get(dateKey) || { tokens: 0, cost: 0 };
+      bucket.tokens += (row.promptTokens || 0) + (row.completionTokens || 0);
+      bucket.cost += row.cost || 0;
+      byDate.set(dateKey, bucket);
+    }
+    const labelFn = (date) =>
+      date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return Array.from({ length: bucketCount }, (_, index) => {
+      const date = new Date(startDay);
+      date.setDate(date.getDate() + index);
+      const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+      const bucket = byDate.get(dateKey) || { tokens: 0, cost: 0 };
+      return { label: labelFn(date), ...bucket };
+    });
   }
 
   // --- 7d / 30d / 60d / 90d / 180d / 365d / all: daily buckets from usageDaily ---

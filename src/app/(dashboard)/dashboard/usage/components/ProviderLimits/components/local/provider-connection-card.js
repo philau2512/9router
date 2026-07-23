@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import Badge from "@/shared/components/Badge";
 import Card from "@/shared/components/Card";
@@ -203,6 +204,18 @@ export default function ProviderConnectionCard({
                 </button>
               </Tooltip>
             )}
+            <Link
+              href={`/dashboard/usage?tab=overview&connectionId=${encodeURIComponent(conn.id)}`}
+              aria-label="View Usage & Analytics"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+              title="View Usage & Analytics"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span className="material-symbols-outlined text-[18px]">
+                analytics
+              </span>
+            </Link>
             <button
               type="button"
               onClick={() => refreshProvider(conn.id, conn.provider)}
