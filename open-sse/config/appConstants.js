@@ -181,6 +181,14 @@ export const REFRESH_LEAD_MS = {
   antigravity: 5 * 60 * 1000, // 5 minutes
 };
 
+// Codex background auto-refresh: scan every 15 minutes and rotate eligible tokens
+// five hours before expiry. Temporary upstream failures retry with short backoff.
+export const CODEX_AUTO_REFRESH = {
+  leadMs: 5 * 60 * 60 * 1000,
+  maxAttempts: 3,
+  retryDelayMs: 1_000,
+};
+
 // OAuth endpoints
 export const OAUTH_ENDPOINTS = {
   google: {
