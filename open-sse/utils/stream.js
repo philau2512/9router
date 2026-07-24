@@ -266,6 +266,17 @@ export function createSSEStream(options = {}) {
       accumulatedThinking += parsed.choices[0].delta.reasoning_content;
     }
 
+    // OpenAI Responses format (Codex) - visible text is carried directly in
+    // `delta`, not under Chat Completions' choices[].delta.content.
+    if (
+      parsed.type === "response.output_text.delta" &&
+      isNonEmptyVisibleText(parsed.delta)
+    ) {
+      totalContentLength += parsed.delta.length;
+      accumulatedContent += parsed.delta;
+      noteFirstVisibleText();
+    }
+
     // Gemini format — only non-thought visible text counts as first text.
     // Antigravity unmarked parts are buffered (may become thinking); skip TTFT here.
     const geminiResponse = parsed.response || parsed;

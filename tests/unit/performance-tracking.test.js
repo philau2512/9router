@@ -2,10 +2,11 @@
  * Performance tracking test - verify timing metrics structure
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { deduplicateRecentRequests } from "@/lib/db/repos/usage/usage-helpers.js";
 import {
   buildStreamPerformance,
+  createSSETransformStreamWithLogger,
   isNonEmptyVisibleText,
 } from "../../open-sse/utils/stream.js";
 
@@ -225,6 +226,63 @@ describe("Performance tracking", () => {
         outTokens: 0,
       }),
     ).toBeNull();
+  });
+
+  it("records first visible text from Codex Responses deltas", async () => {
+    const complete = vi.fn();
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(
+            `event: response.output_text.delta\ndata: ${JSON.stringify({
+              type: "response.output_text.delta",
+              delta: "Hello",
+            })}\n\n`,
+          ),
+        );
+        controller.enqueue(
+          new TextEncoder().encode(
+            `event: response.completed\ndata: ${JSON.stringify({
+              type: "response.completed",
+              response: {
+                usage: { input_tokens: 10, output_tokens: 5 },
+              },
+            })}\n\n`,
+          ),
+        );
+        controller.close();
+      },
+    });
+
+    const output = stream.pipeThrough(
+      createSSETransformStreamWithLogger(
+        "openai-responses",
+        "openai-responses",
+        "codex",
+        null,
+        null,
+        "gpt-5.6-terra",
+        "codex-connection",
+        {},
+        complete,
+        null,
+        null,
+        500,
+      ),
+    );
+    const reader = output.getReader();
+    while (!(await reader.read()).done) {}
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(complete).toHaveBeenCalledWith(
+      expect.objectContaining({ content: "Hello" }),
+      expect.any(Object),
+      expect.any(Number),
+      expect.objectContaining({
+        firstTokenMs: expect.any(Number),
+        tokensPerSecond: expect.any(Number),
+      }),
+    );
   });
 
   it("treats only non-empty visible text as first-text TTFT candidates", () => {
