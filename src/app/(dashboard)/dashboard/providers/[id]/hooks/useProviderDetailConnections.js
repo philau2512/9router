@@ -825,14 +825,25 @@ export function useProviderDetailConnections({
     setManualRefreshSummary(null);
   };
 
-  const handleWarmupSelected = async () => {
+  const handleWarmupSelected = async (options = {}) => {
     if (selectedConnectionIds.length === 0 || warmupRunning) return;
 
+    const intensity = options.intensity || "light";
     setWarmupRunning(true);
     setWarmupSummary(null);
+    // Mark selected rows as in-progress so per-row badges update immediately.
+    setWarmupResults(
+      Object.fromEntries(
+        selectedConnectionIds.map((id) => [
+          id,
+          { state: "refreshing", error: null },
+        ]),
+      ),
+    );
     try {
       const { res, data } = await warmupSelectedConnections(
         selectedConnectionIds,
+        { intensity },
       );
       if (!res.ok) {
         alert(data.error || "Failed to warmup selected accounts");

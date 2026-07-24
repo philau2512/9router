@@ -123,6 +123,11 @@ function renderLine(line, onIdClick) {
   ) {
     color = "#22d3ee"; // cyan
   } else if (
+    line.includes("🔥") ||
+    line.includes("[WARMUP]")
+  ) {
+    color = "#fb923c"; // orange — matches Warmup action
+  } else if (
     line.includes("📤") ||
     line.includes("ℹ️") ||
     line.includes("[INFO]") ||
@@ -146,7 +151,11 @@ function renderLine(line, onIdClick) {
     color = "#f472b6"; // pink
   } else if (line.includes("[PENDING]")) {
     color = "#818cf8"; // indigo
-  } else if (line.includes("[DB]") || line.includes("[InitApp]")) {
+  } else if (
+    line.includes("[DB]") ||
+    line.includes("[InitApp]") ||
+    line.includes("[AutoPing]")
+  ) {
     color = "#94a3b8"; // slate
   }
 
