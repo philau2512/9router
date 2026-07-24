@@ -138,6 +138,13 @@ export function openaiResponsesToOpenAIRequest(
           name: item.name,
           arguments: item.arguments,
         },
+        ...(typeof item.thought_signature === "string" &&
+        item.thought_signature.length > 0
+          ? { thought_signature: item.thought_signature }
+          : typeof item.thoughtSignature === "string" &&
+              item.thoughtSignature.length > 0
+            ? { thought_signature: item.thoughtSignature }
+            : {}),
       });
     } else if (itemType === "function_call_output") {
       // Flush assistant message first if exists
@@ -349,12 +356,21 @@ export function openaiToOpenAIResponsesRequest(
     // Convert tool calls
     if (msg.role === "assistant" && msg.tool_calls) {
       for (const tc of msg.tool_calls) {
-        result.input.push({
+        const thoughtSig =
+          tc.thought_signature ||
+          tc.thoughtSignature ||
+          tc.function?.thought_signature ||
+          tc.function?.thoughtSignature;
+        const item = {
           type: "function_call",
           call_id: clampCallId(tc.id),
           name: tc.function?.name || "_unknown",
           arguments: tc.function?.arguments || "{}",
-        });
+        };
+        if (typeof thoughtSig === "string" && thoughtSig.length > 0) {
+          item.thought_signature = thoughtSig;
+        }
+        result.input.push(item);
       }
     }
 

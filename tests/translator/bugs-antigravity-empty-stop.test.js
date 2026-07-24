@@ -10,10 +10,11 @@
  *
  * Fix directions:
  *   1. Detect empty STOP candidate as non-success / retryable  ✅
- *   2. Preserve real thoughtSignature across OpenAI bridge (Responses path) — open
+ *   2. Preserve real thoughtSignature across OpenAI bridge (Responses path)  ✅
  *   3. Keep thought parts on Gemini-3 thinking tool continuations  ✅
- *   4. Do not merge functionResponse with follow-up user text — open
+ *   4. Do not merge functionResponse with follow-up user text  ✅
  *   5. requestLogger must not redact maxOutputTokens / max_output_tokens  ✅
+ *   6. Responses client must not emit response.completed on empty STOP  ✅
  *
  * it.fails = still open; regular it = fixed.
  */
@@ -24,6 +25,7 @@ import "./registerAll.js";
 import {
   translateRequest,
   translateResponse,
+  initState,
 } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { AntigravityExecutor } from "../../open-sse/executors/antigravity.js";
@@ -141,12 +143,61 @@ describe("fix1: empty STOP candidate must not look like a successful answer", ()
       ).toBe(true);
     },
   );
+
+  it(
+    "OpenAI finish_reason=error becomes response.failed for Responses clients",
+    () => {
+      const state = initState(FORMATS.OPENAI_RESPONSES);
+      const events = translateResponse(
+        FORMATS.OPENAI,
+        FORMATS.OPENAI_RESPONSES,
+        {
+          id: "chatcmpl-empty-stop",
+          object: "chat.completion.chunk",
+          created: 1,
+          model: "gemini-default",
+          choices: [
+            {
+              index: 0,
+              delta: { role: "assistant" },
+              finish_reason: null,
+            },
+          ],
+        },
+        state,
+      );
+      const terminal = translateResponse(
+        FORMATS.OPENAI,
+        FORMATS.OPENAI_RESPONSES,
+        {
+          id: "chatcmpl-empty-stop",
+          object: "chat.completion.chunk",
+          created: 1,
+          model: "gemini-default",
+          choices: [{ index: 0, delta: {}, finish_reason: "error" }],
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 0,
+            total_tokens: 10,
+          },
+        },
+        state,
+      );
+
+      const all = [...(events || []), ...(terminal || [])];
+      const hasFailed = all.some((e) => e.event === "response.failed");
+      const hasCompleted = all.some((e) => e.event === "response.completed");
+
+      expect(hasFailed, "expected response.failed for empty STOP").toBe(true);
+      expect(hasCompleted, "empty STOP must not complete successfully").toBe(false);
+    },
+  );
 });
 
 // ─── 2. Preserve thoughtSignature ──────────────────────────────────────────
 
 describe("fix2: real thoughtSignature must survive OpenAI bridge for tool continuity", () => {
-  it.fails(
+  it(
     "AG response functionCall thoughtSignature is exposed on OpenAI tool_calls",
     () => {
       const state = { responseTargetFormat: FORMATS.ANTIGRAVITY };
@@ -191,7 +242,7 @@ describe("fix2: real thoughtSignature must survive OpenAI bridge for tool contin
     },
   );
 
-  it.fails(
+  it(
     "OpenAI→Antigravity reuses tool_call thought_signature instead of DEFAULT_CLI",
     () => {
       const out = T(FORMATS.OPENAI, FORMATS.ANTIGRAVITY, {
@@ -230,7 +281,7 @@ describe("fix2: real thoughtSignature must survive OpenAI bridge for tool contin
     },
   );
 
-  it.fails(
+  it(
     "Responses→OpenAI→Antigravity keeps function_call thought_signature",
     () => {
       // Mirrors Cursor /v1/responses history: function_call item may carry continuity sig.
@@ -408,7 +459,7 @@ describe("fix3: thought parts must survive executor when thinking is active", ()
 // ─── 4. FR must not merge with follow-up user text ─────────────────────────
 
 describe("fix4: functionResponse must not share content with follow-up user text", () => {
-  it.fails(
+  it(
     "OpenAI tool result + later user message stay in separate contents",
     () => {
       const out = T(FORMATS.OPENAI, FORMATS.ANTIGRAVITY, {
@@ -457,7 +508,7 @@ describe("fix4: functionResponse must not share content with follow-up user text
     },
   );
 
-  it.fails(
+  it(
     "Responses path: function_call_output + user_query not co-located with FR",
     () => {
       const out = T(FORMATS.OPENAI_RESPONSES, FORMATS.ANTIGRAVITY, {

@@ -239,16 +239,21 @@ export function createResponsesApiTransformStream(logger = null) {
         arguments: args,
       });
 
+      const item = {
+        id: `fc_${callId}`,
+        type: "function_call",
+        arguments: args,
+        call_id: callId,
+        name: state.funcNames[idx] || "",
+      };
+      if (state.funcThoughtSigs?.[idx]) {
+        item.thought_signature = state.funcThoughtSigs[idx];
+      }
+
       emit(controller, "response.output_item.done", {
         type: "response.output_item.done",
         output_index: outputIndex,
-        item: {
-          id: `fc_${callId}`,
-          type: "function_call",
-          arguments: args,
-          call_id: callId,
-          name: state.funcNames[idx] || "",
-        },
+        item,
       });
 
       state.funcItemDone[idx] = true;
@@ -268,6 +273,26 @@ export function createResponsesApiTransformStream(logger = null) {
           status: "completed",
           background: false,
           error: null,
+        },
+      });
+    }
+  };
+
+  const sendFailed = (controller, error) => {
+    if (!state.completedSent) {
+      state.completedSent = true;
+      emit(controller, "response.failed", {
+        type: "response.failed",
+        response: {
+          id: state.responseId,
+          object: "response",
+          created_at: state.created,
+          status: "failed",
+          background: false,
+          error: {
+            code: error?.code || "provider_error",
+            message: error?.message || "Provider stream failed",
+          },
         },
       });
     }
@@ -423,23 +448,36 @@ export function createResponsesApiTransformStream(logger = null) {
             const tcIdx = tc.index ?? 0;
             const newCallId = tc.id;
             const funcName = tc.function?.name;
+            const thoughtSig =
+              tc.thought_signature ||
+              tc.thoughtSignature ||
+              tc.function?.thought_signature ||
+              tc.function?.thoughtSignature;
 
             if (funcName) state.funcNames[tcIdx] = funcName;
+            if (typeof thoughtSig === "string" && thoughtSig.length > 0) {
+              state.funcThoughtSigs ??= {};
+              state.funcThoughtSigs[tcIdx] = thoughtSig;
+            }
 
             if (!state.funcCallIds[tcIdx] && newCallId) {
               state.funcCallIds[tcIdx] = newCallId;
               const outputIndex = getOutputIndex("tool", tcIdx);
+              const item = {
+                id: `fc_${newCallId}`,
+                type: "function_call",
+                arguments: "",
+                call_id: newCallId,
+                name: state.funcNames[tcIdx] || "",
+              };
+              if (state.funcThoughtSigs?.[tcIdx]) {
+                item.thought_signature = state.funcThoughtSigs[tcIdx];
+              }
 
               emit(controller, "response.output_item.added", {
                 type: "response.output_item.added",
                 output_index: outputIndex,
-                item: {
-                  id: `fc_${newCallId}`,
-                  type: "function_call",
-                  arguments: "",
-                  call_id: newCallId,
-                  name: state.funcNames[tcIdx] || "",
-                },
+                item,
               });
             }
 
@@ -465,7 +503,15 @@ export function createResponsesApiTransformStream(logger = null) {
           for (const i in state.msgItemAdded) closeMessage(controller, i);
           closeReasoning(controller);
           for (const i in state.funcCallIds) closeToolCall(controller, i);
-          sendCompleted(controller);
+          if (choice.finish_reason === "error") {
+            sendFailed(controller, {
+              code: "empty_provider_response",
+              message:
+                "Provider returned an empty STOP with no content or tool calls",
+            });
+          } else {
+            sendCompleted(controller);
+          }
         }
       }
     },
@@ -474,6 +520,8 @@ export function createResponsesApiTransformStream(logger = null) {
       for (const i in state.msgItemAdded) closeMessage(controller, i);
       closeReasoning(controller);
       for (const i in state.funcCallIds) closeToolCall(controller, i);
+      // Only complete if the stream ended without an explicit terminal reason.
+      // finish_reason=error already sent response.failed via sendFailed.
       sendCompleted(controller);
 
       logger?.logOutput("data: [DONE]");
