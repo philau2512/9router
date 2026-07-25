@@ -203,6 +203,7 @@ export function getSafeTotals(totals, fallbackTotal = 0) {
     totals || {
       eligibleConnections: fallbackTotal,
       providerFilteredConnections: fallbackTotal,
+      filteredConnections: fallbackTotal,
     }
   );
 }
