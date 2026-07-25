@@ -182,9 +182,9 @@ export const REFRESH_LEAD_MS = {
 };
 
 // Codex background auto-refresh: scan every 15 minutes and rotate eligible tokens
-// five hours before expiry. Temporary upstream failures retry with short backoff.
+// one day before expiry. Temporary upstream failures retry with short backoff.
 export const CODEX_AUTO_REFRESH = {
-  leadMs: 5 * 60 * 60 * 1000,
+  leadMs: 24 * 60 * 60 * 1000, // 1 day
   maxAttempts: 3,
   retryDelayMs: 1_000,
 };
