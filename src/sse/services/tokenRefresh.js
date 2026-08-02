@@ -29,6 +29,9 @@ import {
   isUnrecoverableRefreshError,
 } from "open-sse/services/tokenRefresh.js";
 import {
+  CODEX_AUTO_REFRESH,
+} from "open-sse/config/appConstants.js";
+import {
   refreshProviderCredentials as _refreshProviderCredentials,
   shouldRefreshCredentials as _shouldRefreshCredentials,
 } from "open-sse/services/oauthCredentialManager.js";
@@ -388,6 +391,46 @@ export async function refreshGitHubAndCopilotTokens(credentials) {
 }
 
 const codexConnectionRefreshLocks = new Map();
+export const CODEX_PROACTIVE_REFRESH_LEAD_MS = CODEX_AUTO_REFRESH.leadMs;
+
+function hasCodexRefreshCredentials(result) {
+  return Boolean(result?.accessToken);
+}
+
+async function refreshCodexWithRetry(credentials) {
+  for (let attempt = 1; attempt <= CODEX_AUTO_REFRESH.maxAttempts; attempt++) {
+    let result = null;
+
+    try {
+      result = await getAccessToken("codex", credentials, log);
+    } catch (error) {
+      log.warn("TOKEN_REFRESH", "Codex refresh attempt failed", {
+        attempt,
+        maxAttempts: CODEX_AUTO_REFRESH.maxAttempts,
+        error: error.message,
+      });
+    }
+
+    if (hasCodexRefreshCredentials(result) || isUnrecoverableRefreshError(result)) {
+      return result;
+    }
+
+    if (attempt < CODEX_AUTO_REFRESH.maxAttempts) {
+      const delayMs = attempt * CODEX_AUTO_REFRESH.retryDelayMs;
+      log.warn("TOKEN_REFRESH", "Retrying Codex refresh after temporary failure", {
+        attempt,
+        maxAttempts: CODEX_AUTO_REFRESH.maxAttempts,
+        delayMs,
+      });
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  log.error("TOKEN_REFRESH", "Codex refresh failed after all retry attempts", {
+    maxAttempts: CODEX_AUTO_REFRESH.maxAttempts,
+  });
+  return null;
+}
 
 export async function refreshCodexConnection(connection, options = {}) {
   if (!connection || connection.provider !== "codex") {
@@ -421,15 +464,11 @@ export async function refreshCodexConnection(connection, options = {}) {
       displayName: freshConnection.displayName || null,
     };
 
-    const result = await getAccessToken(
-      "codex",
-      {
-        refreshToken: freshConnection.refreshToken,
-        providerSpecificData: freshConnection.providerSpecificData,
-        ...accountMeta,
-      },
-      log,
-    );
+    const result = await refreshCodexWithRetry({
+      refreshToken: freshConnection.refreshToken,
+      providerSpecificData: freshConnection.providerSpecificData,
+      ...accountMeta,
+    });
 
     if (!result?.accessToken) {
       const errorMessage = isUnrecoverableRefreshError(result)
@@ -511,7 +550,7 @@ export async function refreshSelectedCodexConnections(connections) {
 export function isCodexAutoRefreshCandidate(
   connection,
   now = Date.now(),
-  leadMs = 2 * 60 * 60 * 1000,
+  leadMs = CODEX_PROACTIVE_REFRESH_LEAD_MS,
 ) {
   if (!connection || connection.provider !== "codex") return false;
   if (connection.providerSpecificData?.autoRefreshEnabled !== true)
@@ -525,7 +564,7 @@ export function isCodexAutoRefreshCandidate(
 }
 
 export async function runCodexProactiveRefreshCheckpoint(options = {}) {
-  const leadMs = options.leadMs ?? 2 * 60 * 60 * 1000;
+  const leadMs = options.leadMs ?? CODEX_PROACTIVE_REFRESH_LEAD_MS;
   const now = Date.now();
   const connections = await getProviderConnections();
   const candidates = (connections || []).filter((connection) =>
@@ -551,8 +590,6 @@ export async function runCodexProactiveRefreshCheckpoint(options = {}) {
 
   return { total: results.length, refreshed, failed, results };
 }
-
-export const CODEX_PROACTIVE_REFRESH_LEAD_MS = 2 * 60 * 60 * 1000;
 
 export function getCodexProactiveRefreshIntervalMs() {
   return 15 * 60 * 1000;

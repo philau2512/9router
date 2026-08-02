@@ -120,6 +120,33 @@ function sortConnections(connections, sort) {
   });
 }
 
+function connectionSearchHaystack(connection) {
+  const psd = connection.providerSpecificData || {};
+  return [
+    connection.name,
+    connection.email,
+    connection.displayName,
+    connection.provider,
+    connection.id,
+    psd.username,
+    psd.githubLogin,
+    psd.githubName,
+    psd.githubEmail,
+    psd.firstName,
+    psd.lastName,
+    psd.accountId,
+  ]
+    .filter((value) => typeof value === "string" && value.trim())
+    .join(" ")
+    .toLowerCase();
+}
+
+function matchesConnectionSearch(connection, search) {
+  const query = typeof search === "string" ? search.trim().toLowerCase() : "";
+  if (!query) return true;
+  return connectionSearchHaystack(connection).includes(query);
+}
+
 export async function GET(request) {
   try {
     await backfillCodexEmails();
@@ -127,6 +154,7 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const provider = searchParams.get("provider") || "all";
     const accountStatus = searchParams.get("accountStatus") || "all";
+    const search = searchParams.get("search") || "";
     const sort = searchParams.get("sort") || "priority";
     const page = parsePositiveInt(searchParams.get("page"), 1);
     const pageSize = Math.min(
@@ -152,7 +180,11 @@ export async function GET(request) {
       },
     );
 
-    const sortedConnections = sortConnections(accountFilteredConnections, sort);
+    const searchFilteredConnections = accountFilteredConnections.filter(
+      (conn) => matchesConnectionSearch(conn, search),
+    );
+
+    const sortedConnections = sortConnections(searchFilteredConnections, sort);
     const total = sortedConnections.length;
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const currentPage = Math.min(page, totalPages);
@@ -173,6 +205,7 @@ export async function GET(request) {
       totals: {
         eligibleConnections: eligibleConnections.length,
         providerFilteredConnections: providerFilteredConnections.length,
+        filteredConnections: total,
       },
     });
   } catch (error) {

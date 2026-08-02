@@ -106,7 +106,15 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     for (const i in state.msgItemAdded) closeMessage(state, emit, i);
     closeReasoning(state, emit);
     for (const i in state.funcCallIds) closeToolCall(state, emit, i);
-    sendCompleted(state, emit);
+    if (choice.finish_reason === "error") {
+      sendFailed(state, emit, {
+        code: "empty_provider_response",
+        message:
+          "Provider returned an empty STOP with no content or tool calls",
+      });
+    } else {
+      sendCompleted(state, emit);
+    }
   }
 
   return events;
@@ -280,23 +288,36 @@ function emitToolCall(state, emit, tc) {
   const tcIdx = tc.index ?? 0;
   const newCallId = tc.id;
   const funcName = tc.function?.name;
+  const thoughtSig =
+    tc.thought_signature ||
+    tc.thoughtSignature ||
+    tc.function?.thought_signature ||
+    tc.function?.thoughtSignature;
 
   if (funcName) state.funcNames[tcIdx] = funcName;
+  if (typeof thoughtSig === "string" && thoughtSig.length > 0) {
+    state.funcThoughtSigs ??= {};
+    state.funcThoughtSigs[tcIdx] = thoughtSig;
+  }
 
   if (!state.funcCallIds[tcIdx] && newCallId) {
     state.funcCallIds[tcIdx] = newCallId;
     const outputIndex = getOutputIndex(state, "tool", tcIdx);
+    const item = {
+      id: `fc_${newCallId}`,
+      type: "function_call",
+      arguments: "",
+      call_id: newCallId,
+      name: state.funcNames[tcIdx] || "",
+    };
+    if (state.funcThoughtSigs?.[tcIdx]) {
+      item.thought_signature = state.funcThoughtSigs[tcIdx];
+    }
 
     emit("response.output_item.added", {
       type: "response.output_item.added",
       output_index: outputIndex,
-      item: {
-        id: `fc_${newCallId}`,
-        type: "function_call",
-        arguments: "",
-        call_id: newCallId,
-        name: state.funcNames[tcIdx] || "",
-      },
+      item,
     });
   }
 
@@ -329,16 +350,21 @@ function closeToolCall(state, emit, idx) {
       arguments: args,
     });
 
+    const item = {
+      id: `fc_${callId}`,
+      type: "function_call",
+      arguments: args,
+      call_id: callId,
+      name: state.funcNames[idx] || "",
+    };
+    if (state.funcThoughtSigs?.[idx]) {
+      item.thought_signature = state.funcThoughtSigs[idx];
+    }
+
     emit("response.output_item.done", {
       type: "response.output_item.done",
       output_index: outputIndex,
-      item: {
-        id: `fc_${callId}`,
-        type: "function_call",
-        arguments: args,
-        call_id: callId,
-        name: state.funcNames[idx] || "",
-      },
+      item,
     });
 
     state.funcItemDone[idx] = true;
@@ -358,6 +384,26 @@ function sendCompleted(state, emit) {
         status: "completed",
         background: false,
         error: null,
+      },
+    });
+  }
+}
+
+function sendFailed(state, emit, error) {
+  if (!state.completedSent) {
+    state.completedSent = true;
+    emit("response.failed", {
+      type: "response.failed",
+      response: {
+        id: state.responseId,
+        object: "response",
+        created_at: state.created,
+        status: "failed",
+        background: false,
+        error: {
+          code: error?.code || "provider_error",
+          message: error?.message || "Provider stream failed",
+        },
       },
     });
   }

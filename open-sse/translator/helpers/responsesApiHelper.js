@@ -115,6 +115,13 @@ export function convertResponsesApiFormat(body) {
           name: item.name,
           arguments: item.arguments,
         },
+        ...(typeof item.thought_signature === "string" &&
+        item.thought_signature.length > 0
+          ? { thought_signature: item.thought_signature }
+          : typeof item.thoughtSignature === "string" &&
+              item.thoughtSignature.length > 0
+            ? { thought_signature: item.thoughtSignature }
+            : {}),
       });
     } else if (itemType === "function_call_output") {
       // Flush assistant message first if exists

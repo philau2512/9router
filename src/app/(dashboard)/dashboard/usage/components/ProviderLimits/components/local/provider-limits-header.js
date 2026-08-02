@@ -15,6 +15,8 @@ export default function ProviderLimitsHeader({
   providerOptions,
   accountFilter,
   setAccountFilter,
+  searchInput,
+  setSearchInput,
   quotaSortMode,
   setQuotaSortMode,
   expiringFirst,
@@ -35,6 +37,35 @@ export default function ProviderLimitsHeader({
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
       <div className="flex flex-wrap items-center gap-1.5">
+        <div className="relative">
+          <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 material-symbols-outlined text-[14px] text-text-muted">
+            search
+          </span>
+          <input
+            type="text"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder="Search name, email…"
+            aria-label="Search accounts by name or email"
+            autoComplete="off"
+            spellCheck={false}
+            className="h-8 w-40 sm:w-52 rounded-lg border border-black/10 bg-black/[0.02] py-0 pl-7 pr-7 text-xs text-text-primary outline-none transition-colors placeholder:text-text-muted hover:bg-black/5 focus:border-primary/40 focus:bg-black/[0.03] dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/10 dark:focus:bg-white/[0.05]"
+          />
+          {searchInput ? (
+            <button
+              type="button"
+              onClick={() => setSearchInput("")}
+              className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-text-muted transition-colors hover:bg-black/5 hover:text-text-primary dark:hover:bg-white/10"
+              aria-label="Clear account search"
+              title="Clear search"
+            >
+              <span className="material-symbols-outlined text-[14px]">
+                close
+              </span>
+            </button>
+          ) : null}
+        </div>
+
         <div className="relative">
           <button
             type="button"

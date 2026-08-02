@@ -8,13 +8,15 @@ import {
   isOpenAICompatibleProvider,
   isAnthropicCompatibleProvider,
 } from "@/shared/constants/providers";
-import { PROVIDER_ENDPOINTS } from "@/shared/constants/config";
+import { PROVIDER_ENDPOINTS, QUOTA_AUTOPING_CONFIG } from "@/shared/constants/config";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import {
   refreshProviderCredentials,
   shouldRefreshCredentials,
+  shouldRefreshCredentialsForUsage,
 } from "open-sse/services/oauthCredentialManager.js";
+import { getExecutor } from "open-sse/executors/index.js";
 import {
   GEMINI_CONFIG,
   ANTIGRAVITY_CONFIG,
@@ -54,6 +56,79 @@ function getFriendlyErrorMessage(err) {
   }
 
   return msg;
+}
+
+// Codex only starts the 5h quota window after the streaming response completes.
+async function drainResponseBody(response) {
+  if (typeof response?.text === "function") {
+    await response.text();
+    return;
+  }
+
+  const reader = response?.body?.getReader?.();
+  if (!reader) return;
+
+  try {
+    while (true) {
+      const { done } = await reader.read();
+      if (done) return;
+    }
+  } finally {
+    reader.releaseLock?.();
+  }
+}
+
+function buildCodexWarmupInput(text) {
+  return [
+    {
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text }],
+    },
+  ];
+}
+
+function resolveCodexWarmupPayload(intensity = "light") {
+  const codexPing = QUOTA_AUTOPING_CONFIG.providers.codex;
+  const model = codexPing.pingModel || "gpt-5.5";
+
+  if (intensity === "medium") {
+    return {
+      model,
+      prompt:
+        "Write a detailed 300-word story about space exploration. Be creative and include descriptions of stars and planets.",
+      instructions: "Write the full story as requested.",
+      reasoningEffort: "low",
+    };
+  }
+
+  if (intensity === "heavy") {
+    return {
+      model,
+      prompt:
+        "Write a comprehensive 1500-word essay about the history and future of artificial intelligence in software engineering, discussing benefits and ethical implications.",
+      instructions: "Write the full essay as requested.",
+      reasoningEffort: "low",
+    };
+  }
+
+  // Light: same minimal shape as quota auto-ping — starts the window, tiny burn.
+  return {
+    model,
+    prompt: codexPing.pingText || "hi",
+    instructions: codexPing.pingInstructions || "Reply with OK.",
+    reasoningEffort: codexPing.pingReasoningEffort || "none",
+  };
+}
+
+function toExecutorProxyOptions(effectiveProxy = null) {
+  return {
+    connectionProxyEnabled: effectiveProxy?.connectionProxyEnabled === true,
+    connectionProxyUrl: effectiveProxy?.connectionProxyUrl || "",
+    connectionNoProxy: effectiveProxy?.connectionNoProxy || "",
+    vercelRelayUrl: effectiveProxy?.vercelRelayUrl || "",
+    strictProxy: false,
+  };
 }
 
 // OAuth provider test endpoints
@@ -307,11 +382,21 @@ async function refreshOAuthToken(connection) {
   }
 }
 
-function isTokenExpired(connection) {
+function isTokenExpired(connection, refreshPolicy = "chat") {
+  // "usage": only when access token is expired / within short buffer.
+  // Avoids Codex 5-day chat lead + 8-day lastRefresh rotation (burns single-use RT).
+  if (refreshPolicy === "usage") {
+    return shouldRefreshCredentialsForUsage(connection.provider, connection);
+  }
   return shouldRefreshCredentials(connection.provider, connection);
 }
 
-async function testOAuthConnection(connection, effectiveProxy = null) {
+async function testOAuthConnection(
+  connection,
+  effectiveProxy = null,
+  options = {},
+) {
+  const refreshPolicy = options.refreshPolicy || "chat";
   const config = OAUTH_TEST_CONFIG[connection.provider];
   if (!config)
     return {
@@ -331,7 +416,7 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
   let refreshed = false;
   let newTokens = null;
 
-  const tokenExpired = isTokenExpired(connection);
+  const tokenExpired = isTokenExpired(connection, refreshPolicy);
   if (config.refreshable && tokenExpired && connection.refreshToken) {
     const tokens = await refreshOAuthToken(connection);
     if (tokens) {
@@ -1341,8 +1426,11 @@ async function executeWarmup(connection, effectiveProxy = null, options = {}) {
     return testApiKeyConnection(connection, effectiveProxy);
   }
 
-  // OAuth Providers
-  const oAuthTest = await testOAuthConnection(connection, effectiveProxy);
+  // OAuth Providers — warmup only needs a currently-valid access token.
+  // Use usage refresh gate (not chat 5-day Codex lead / 8-day lastRefresh rotation).
+  const oAuthTest = await testOAuthConnection(connection, effectiveProxy, {
+    refreshPolicy: "usage",
+  });
   if (!oAuthTest.valid) {
     return oAuthTest;
   }
@@ -1446,47 +1534,71 @@ async function executeWarmup(connection, effectiveProxy = null, options = {}) {
   }
 
   if (provider === "codex") {
-    let prompt = "hi";
-    let storeValue = false;
+    // Codex requires stream:true and only starts the 5h quota window after the
+    // SSE body is fully consumed (same contract as quota auto-ping).
+    const { model, prompt, instructions, reasoningEffort } =
+      resolveCodexWarmupPayload(intensity);
+    const accountLabel =
+      connection.email || connection.name || connection.id || "unknown";
 
-    if (intensity === "medium") {
-      prompt =
-        "Write a detailed 300-word story about space exploration. Be creative and include descriptions of stars and planets.";
-      storeValue = true;
-    } else if (intensity === "heavy") {
-      prompt =
-        "Write a comprehensive 1500-word essay about the history and future of artificial intelligence in software engineering, discussing benefits and ethical implications.";
-      storeValue = true;
-    }
+    console.log(
+      `[WARMUP] codex:${connection.id}: stream start model=${model} intensity=${intensity} effort=${reasoningEffort} account=${accountLabel}`,
+    );
 
     try {
-      const res = await fetchWithConnectionProxy(
-        "https://chatgpt.com/backend-api/codex/responses",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-            originator: "codex-cli",
-            "User-Agent": "codex-cli/1.0.18 (macOS; arm64)",
-          },
-          body: JSON.stringify({
-            model: "gpt-5.3-codex",
-            input: [{ role: "user", content: prompt }],
-            stream: false,
-            store: storeValue,
-          }),
+      const executor = getExecutor("codex");
+      const { response } = await executor.execute({
+        model,
+        stream: true,
+        credentials: {
+          accessToken,
+          connectionId: connection.id,
+          providerSpecificData: connection.providerSpecificData,
         },
-        effectiveProxy,
+        proxyOptions: toExecutorProxyOptions(effectiveProxy),
+        log: console,
+        body: {
+          model,
+          input: buildCodexWarmupInput(prompt),
+          instructions,
+          reasoning: { effort: reasoningEffort, summary: "auto" },
+          store: false,
+          stream: true,
+        },
+      });
+
+      if (!response?.ok) {
+        try {
+          await response?.body?.cancel?.();
+        } catch {
+          /* noop */
+        }
+        console.warn(
+          `[WARMUP] codex:${connection.id}: stream HTTP ${response?.status ?? "unknown"} model=${model}`,
+        );
+        return {
+          valid: false,
+          error: `API returned status ${response?.status ?? "unknown"}`,
+          refreshed: oAuthTest.refreshed,
+          newTokens: oAuthTest.newTokens,
+        };
+      }
+
+      // Must fully drain SSE — quota window starts only after stream completes.
+      await drainResponseBody(response);
+      console.log(
+        `[WARMUP] codex:${connection.id}: stream drained model=${model} (quota window should start)`,
       );
-      const valid = res.status !== 401 && res.status !== 403;
       return {
-        valid,
-        error: valid ? null : `API returned status ${res.status}`,
+        valid: true,
+        error: null,
         refreshed: oAuthTest.refreshed,
         newTokens: oAuthTest.newTokens,
       };
     } catch (err) {
+      console.warn(
+        `[WARMUP] codex:${connection.id}: stream error: ${err.message}`,
+      );
       return {
         valid: false,
         error: err.message,
@@ -1503,13 +1615,22 @@ async function executeWarmup(connection, effectiveProxy = null, options = {}) {
  * Warmup a single connection by ID, update DB, and return result.
  */
 export async function warmupSingleConnection(id, options = {}) {
+  const intensity = options.intensity || "light";
   const connection = await getProviderConnectionById(id);
-  if (!connection)
+  if (!connection) {
+    console.warn(`[WARMUP] ${id}: connection not found`);
     return {
       valid: false,
       error: "Connection not found",
       testedAt: new Date().toISOString(),
     };
+  }
+
+  const label =
+    connection.email || connection.name || connection.provider || id;
+  console.log(
+    `[WARMUP] ${connection.provider}:${id}: start intensity=${intensity} account=${label}`,
+  );
 
   const effectiveProxy = await resolveConnectionProxyConfig(
     connection.providerSpecificData || {},
@@ -1527,6 +1648,9 @@ export async function warmupSingleConnection(id, options = {}) {
       const proxyError =
         proxyResult.error ||
         `Proxy test failed with status ${proxyResult.status}`;
+      console.warn(
+        `[WARMUP] ${connection.provider}:${id}: proxy failed: ${proxyError}`,
+      );
       await updateProviderConnection(id, {
         testStatus: "error",
         lastError: proxyError,
@@ -1567,14 +1691,38 @@ export async function warmupSingleConnection(id, options = {}) {
     updateData.accessToken = result.newTokens.accessToken;
     if (result.newTokens.refreshToken)
       updateData.refreshToken = result.newTokens.refreshToken;
+    if (result.newTokens.idToken) updateData.idToken = result.newTokens.idToken;
     if (result.newTokens.expiresIn) {
+      updateData.expiresIn = result.newTokens.expiresIn;
       updateData.expiresAt = new Date(
         Date.now() + result.newTokens.expiresIn * 1000,
       ).toISOString();
+    } else if (result.newTokens.expiresAt) {
+      updateData.expiresAt = result.newTokens.expiresAt;
+    }
+    // Persist lastRefreshAt so Codex chat stale-rotation does not re-fire next call.
+    if (result.newTokens.lastRefreshAt) {
+      updateData.lastRefreshAt = result.newTokens.lastRefreshAt;
+    }
+    if (result.newTokens.providerSpecificData) {
+      updateData.providerSpecificData = {
+        ...(connection.providerSpecificData || {}),
+        ...result.newTokens.providerSpecificData,
+      };
     }
   }
 
   await updateProviderConnection(id, updateData);
+
+  if (result.valid) {
+    console.log(
+      `[WARMUP] ${connection.provider}:${id}: ok intensity=${intensity} ${latencyMs}ms account=${label}`,
+    );
+  } else {
+    console.warn(
+      `[WARMUP] ${connection.provider}:${id}: failed intensity=${intensity} ${latencyMs}ms: ${result.error || "unknown"}`,
+    );
+  }
 
   return {
     valid: result.valid,

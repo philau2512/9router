@@ -50,6 +50,8 @@ export function useProviderLimits() {
   const [providerFilter, setProviderFilter] = useState("all");
   const [providerOptions, setProviderOptions] = useState([]);
   const [accountFilter, setAccountFilter] = useState("all");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [quotaSortMode, setQuotaSortMode] = useState("default");
   const [expiringFirst, setExpiringFirst] = useState(false);
   const [providerMenuOpen, setProviderMenuOpen] = useState(false);
@@ -68,10 +70,24 @@ export function useProviderLimits() {
   const [totals, setTotals] = useState({
     eligibleConnections: 0,
     providerFilteredConnections: 0,
+    filteredConnections: 0,
   });
 
   const intervalRef = useRef(null);
   const countdownRef = useRef(null);
+
+  // Debounce search so typing does not refetch on every keystroke.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const nextQuery = searchInput.trim();
+      setSearchQuery((prev) => {
+        if (prev === nextQuery) return prev;
+        setPage(1);
+        return nextQuery;
+      });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   const fetchConnections = useCallback(
     async (targetPage = page) => {
@@ -85,6 +101,9 @@ export function useProviderLimits() {
 
         if (providerFilter !== "all") {
           params.set("provider", providerFilter);
+        }
+        if (searchQuery) {
+          params.set("search", searchQuery);
         }
 
         const response = await fetch(
@@ -108,11 +127,15 @@ export function useProviderLimits() {
         setConnections([]);
         setProviderOptions([]);
         setPagination({ page: 1, pageSize, total: 0, totalPages: 1 });
-        setTotals({ eligibleConnections: 0, providerFilteredConnections: 0 });
+        setTotals({
+          eligibleConnections: 0,
+          providerFilteredConnections: 0,
+          filteredConnections: 0,
+        });
         return [];
       }
     },
-    [accountFilter, page, pageSize, providerFilter],
+    [accountFilter, page, pageSize, providerFilter, searchQuery],
   );
 
   // Fetch quota for a specific connection
@@ -721,6 +744,9 @@ export function useProviderLimits() {
     providerOptions,
     accountFilter,
     setAccountFilter,
+    searchInput,
+    setSearchInput,
+    searchQuery,
     quotaSortMode,
     setQuotaSortMode,
     expiringFirst,

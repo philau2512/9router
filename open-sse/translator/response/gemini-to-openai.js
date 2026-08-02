@@ -159,6 +159,11 @@ export function geminiToOpenAIResponse(chunk, state) {
               arguments: JSON.stringify(fcArgs),
             },
           };
+          // Preserve provider thoughtSignature for tool-loop continuity across
+          // the OpenAI/Responses bridge (empty STOP without it on AG).
+          if (typeof hasThoughtSig === "string" && hasThoughtSig.length > 0) {
+            toolCall.thought_signature = hasThoughtSig;
+          }
 
           // Track Gemini function calls separately — do NOT write to state.toolCalls,
           // which the downstream openai-to-claude translator uses for Claude block metadata.

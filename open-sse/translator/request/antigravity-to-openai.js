@@ -175,8 +175,14 @@ function convertContent(content, contentIndex, unmatchedToolCallIds) {
       continue;
     }
 
-    // Text with thoughtSignature = regular text after thinking (skip empty)
-    if (part.thoughtSignature && part.text !== undefined) {
+    // Text with thoughtSignature = regular text after thinking (skip empty).
+    // Do not continue early when functionCall is co-located — tool continuity
+    // needs the signed functionCall preserved.
+    if (
+      part.thoughtSignature &&
+      part.text !== undefined &&
+      !part.functionCall
+    ) {
       if (part.text) textParts.push({ type: "text", text: part.text });
       continue;
     }
@@ -204,14 +210,19 @@ function convertContent(content, contentIndex, unmatchedToolCallIds) {
       const ids = unmatchedToolCallIds.get(name) || [];
       ids.push(id);
       unmatchedToolCallIds.set(name, ids);
-      toolCalls.push({
+      const toolCall = {
         id,
         type: "function",
         function: {
           name,
           arguments: JSON.stringify(part.functionCall.args || {}),
         },
-      });
+      };
+      const thoughtSig = part.thoughtSignature || part.thought_signature;
+      if (typeof thoughtSig === "string" && thoughtSig.length > 0) {
+        toolCall.thought_signature = thoughtSig;
+      }
+      toolCalls.push(toolCall);
     }
 
     // Function response → collect all, each becomes a separate tool message

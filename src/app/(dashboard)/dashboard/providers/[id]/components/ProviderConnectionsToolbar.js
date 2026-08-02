@@ -308,21 +308,57 @@ export default function ProviderConnectionsToolbar({
                 More
               </Button>
               {showMoreDropdown && (
-                <div className="absolute right-0 top-full z-50 mt-1 min-w-[180px] rounded-lg border border-border bg-bg py-1 shadow-lg">
-                  {/* Warmup action */}
+                <div className="absolute right-0 top-full z-50 mt-1 min-w-[200px] rounded-lg border border-border bg-bg py-1 shadow-lg">
+                  {/* Warmup selected — intensity submenu (same levels as per-row Warmup) */}
+                  <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+                    Warmup Selected
+                  </div>
                   <button
                     onClick={() => {
-                      handleWarmupSelected();
+                      handleWarmupSelected({ intensity: "light" });
                       setShowMoreDropdown(false);
                     }}
                     disabled={warmupRunning}
-                    className="w-full text-left px-3 py-2 text-xs text-orange-500 hover:bg-orange-500/10 flex items-center gap-2"
+                    className="w-full text-left px-3 py-2 text-xs text-text-main hover:bg-orange-500/10 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <span className="material-symbols-outlined text-[16px]">
+                    <span className="material-symbols-outlined text-[16px] text-green-500">
+                      bolt
+                    </span>
+                    {warmupRunning ? "Warming up..." : "Light (1 token)"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleWarmupSelected({ intensity: "medium" });
+                      setShowMoreDropdown(false);
+                    }}
+                    disabled={warmupRunning}
+                    className="w-full text-left px-3 py-2 text-xs text-text-main hover:bg-orange-500/10 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <span className="material-symbols-outlined text-[16px] text-orange-500">
                       local_fire_department
                     </span>
-                    {warmupRunning ? "Warming up..." : "Warmup Selected"}
+                    Medium (~500 tokens)
                   </button>
+                  <button
+                    onClick={() => {
+                      if (
+                        confirm(
+                          `WARNING: Heavy warmup will consume ~2,000 tokens per selected account (${selectedConnectionIds.length} accounts) and may cost money. Proceed?`,
+                        )
+                      ) {
+                        handleWarmupSelected({ intensity: "heavy" });
+                      }
+                      setShowMoreDropdown(false);
+                    }}
+                    disabled={warmupRunning}
+                    className="w-full text-left px-3 py-2 text-xs text-text-main hover:bg-orange-500/10 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <span className="material-symbols-outlined text-[16px] text-red-500">
+                      warning
+                    </span>
+                    Heavy (~2,000 tokens)
+                  </button>
+                  <div className="my-1 border-t border-border" />
 
                   {/* Set testStatus to Active */}
                   <button

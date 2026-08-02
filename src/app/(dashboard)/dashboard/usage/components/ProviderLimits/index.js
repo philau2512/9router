@@ -45,6 +45,9 @@ export default function ProviderLimits() {
     providerOptions,
     accountFilter,
     setAccountFilter,
+    searchInput,
+    setSearchInput,
+    searchQuery,
     quotaSortMode,
     setQuotaSortMode,
     expiringFirst,
@@ -109,6 +112,12 @@ export default function ProviderLimits() {
       title: "No Providers Connected",
       description: "Connect to providers with OAuth to track your API quota limits and usage.",
     };
+  } else if (searchQuery && !hasVisibleConnections) {
+    emptyState = {
+      icon: "search_off",
+      title: "No Accounts Match Search",
+      description: `No accounts found for “${searchQuery}”. Try a different name or email.`,
+    };
   } else if (!totals.providerFilteredConnections) {
     emptyState = {
       icon: "filter_alt_off",
@@ -130,6 +139,8 @@ export default function ProviderLimits() {
         providerOptions={providerOptions}
         accountFilter={accountFilter}
         setAccountFilter={setAccountFilter}
+        searchInput={searchInput}
+        setSearchInput={setSearchInput}
         quotaSortMode={quotaSortMode}
         setQuotaSortMode={setQuotaSortMode}
         expiringFirst={expiringFirst}
