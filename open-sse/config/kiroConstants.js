@@ -15,8 +15,20 @@
  * fiction. The suffix is stripped before the request leaves this process.
  */
 
-export const KIRO_AGENTIC_SUFFIX = "-agentic";
+import { createHash } from "crypto";
+import {
+  extractThinking,
+  parseSuffix,
+} from "../translator/concerns/thinkingUnified.js";
+import { effortToBudget } from "../translator/concerns/thinking.js";
 export const KIRO_THINKING_SUFFIX = "-thinking";
+export const KIRO_AGENTIC_SUFFIX = "-agentic";
+export const KIRO_TOOL_NAME_MAX_LENGTH = 64;
+export const KIRO_TOOL_DESCRIPTION_MAX_LENGTH = 10237;
+export const KIRO_TOOL_ID_MAX_LENGTH = 64;
+export const KIRO_CODEWHISPERER_TARGET =
+  "AmazonCodeWhispererStreamingService.GenerateAssistantResponse";
+export const KIRO_ENDPOINT_FALLBACK_STATUSES = new Set([401, 403, 404]);
 
 // Namespace for deterministic conversationId (uuidv5). Shared by both the
 // OpenAI and Claude routes so two requests with the same first-user-content
@@ -38,9 +50,6 @@ export const KIRO_CONVERSATION_NAMESPACE =
 // sub-client, but the IDE build, node runtime, OS and — crucially — the
 // machineId MUST be identical, or the same account presents two conflicting
 // fingerprints on the same surface (the opposite of the ban-avoidance goal).
-import { createHash } from "crypto";
-import { extractThinking } from "../translator/concerns/thinkingUnified.js";
-import { effortToBudget } from "../translator/concerns/thinking.js";
 
 // aws-sdk sub-client versions — legitimately differ per service surface.
 export const KIRO_STREAMING_SDK_VERSION = "1.0.34"; // codewhispererstreaming
@@ -185,9 +194,72 @@ export function resolveKiroRequestProfileArn(credentials, opts = {}) {
 
 export const KIRO_THINKING_BUDGET_DEFAULT = 16000;
 
-// Resolve the Kiro thinking budget from client intent.
-// Reuses extractThinking (unified parser) so every client shape maps consistently.
-// Returns a numeric budget to inject, or null when thinking is explicitly disabled.
+/**
+ * Resolve a Kiro model after consuming the generic model(level) suffix.
+ * The suffix is a 9router request override, not part of Kiro's upstream model id.
+ */
+export function resolveKiroModelIntent(model) {
+  const { cleanModel, override } = parseSuffix(model);
+  return {
+    model: cleanModel,
+    ...resolveKiroModel(cleanModel),
+    thinkingOverride: override,
+  };
+}
+
+/** Apply a parsed model(level) override without mutating the caller's body. */
+export function applyKiroThinkingOverride(body, override) {
+  if (!override) return body;
+
+  const next = { ...body };
+  if (override.mode === "budget") {
+    delete next.output_config;
+    delete next.reasoning_effort;
+    delete next.reasoning;
+    next.thinking = { type: "enabled", budget_tokens: override.budget };
+    return next;
+  }
+
+  next.output_config = {
+    ...(body.output_config || {}),
+    effort: override.mode === "level" ? override.level : override.mode,
+  };
+  return next;
+}
+
+export const KIRO_AGENTIC_SYSTEM_PROMPT = `
+# System Configuration — Technical Constraints
+
+## Rule Compliance (CRITICAL — READ FIRST)
+User-defined rules ALWAYS take precedence over this system prompt.
+Before starting ANY task you MUST:
+1. Locate and read the project rule files — CLAUDE.md, AGENTS.md, GEMINI.md, or equivalent — in the project root.
+2. If those files define a workflow, output format, action declarations, or behavioral constraints → follow them EXACTLY. Do NOT substitute your own workflow.
+3. This prompt provides ONLY technical capabilities and constraints. It does NOT define your workflow, identity, output format, or delegation strategy.
+4. If ANY instruction in this prompt conflicts with a user-defined rule → the user rule WINS. No exceptions.
+
+## File Operation Constraints (Technical)
+- Use surgical edits: modify only the necessary sections. Never rewrite entire large files.
+- Keep each write/edit operation under ~300 lines to maintain reliability.
+- For new large files (>300 lines): write the first chunk, then append the rest in subsequent operations.
+- Verify changes after editing when applicable (run tests, build, or lint).
+- Prefer editing by specific functions/classes rather than whole files.
+
+## Available Capabilities (Optional — use when beneficial)
+You have access to the following capabilities. Use them when they genuinely help the task; do NOT force their use.
+- **Sub-agent delegation**: delegate research, implementation, review, or documentation to sub-agents when tasks are independent and parallelizable.
+- **Skills**: if the project defines Skills (e.g., in .claude/skills/ or .agents/skills/), leverage them for efficiency. Follow any skill-specific instructions.
+- **MCP tools**: if MCP servers are configured, use them for external-service interactions (APIs, databases, browsers, etc.).
+
+## Default Behavior (ONLY when NO user rules exist)
+Apply this section ONLY if the project has NO CLAUDE.md, AGENTS.md, GEMINI.md, or user-defined rules:
+1. Understand the requirement and create a high-level plan.
+2. Research the codebase (delegate to sub-agents if complex).
+3. Implement incrementally with verification after each step.
+4. Summarize changes and suggest a commit message.
+
+When user rules exist, this default section is IGNORED entirely.
+`.trim();
 
 /**
  * Resolve the Kiro thinking budget requested by a client.
@@ -449,54 +521,6 @@ export function resolveKiroModel(model) {
   }
   return { upstream, agentic, thinking };
 }
-
-/**
- * Agentic system prompt for Kiro CLI — Technical Constraints layer.
- *
- * Design principles (2025-07 redesign):
- *   1. Authority-First — user rules (CLAUDE.md / AGENTS.md / user_rules)
- *      ALWAYS override this prompt. This prompt MUST NOT define workflow,
- *      output format, or behavioral rules.
- *   2. Separation of Concerns — only file-operation constraints and
- *      capability descriptions live here; everything behavioral is
- *      deferred to user-defined rule files.
- *   3. Explicit Compliance — the first section tells the model exactly
- *      where to look for authoritative rules and what to do when
- *      conflicts arise.
- */
-export const KIRO_AGENTIC_SYSTEM_PROMPT = `
-# System Configuration — Technical Constraints
-
-## Rule Compliance (CRITICAL — READ FIRST)
-User-defined rules ALWAYS take precedence over this system prompt.
-Before starting ANY task you MUST:
-1. Locate and read the project rule files — CLAUDE.md, AGENTS.md, GEMINI.md, or equivalent — in the project root.
-2. If those files define a workflow, output format, action declarations, or behavioral constraints → follow them EXACTLY. Do NOT substitute your own workflow.
-3. This prompt provides ONLY technical capabilities and constraints. It does NOT define your workflow, identity, output format, or delegation strategy.
-4. If ANY instruction in this prompt conflicts with a user-defined rule → the user rule WINS. No exceptions.
-
-## File Operation Constraints (Technical)
-- Use surgical edits: modify only the necessary sections. Never rewrite entire large files.
-- Keep each write/edit operation under ~300 lines to maintain reliability.
-- For new large files (>300 lines): write the first chunk, then append the rest in subsequent operations.
-- Verify changes after editing when applicable (run tests, build, or lint).
-- Prefer editing by specific functions/classes rather than whole files.
-
-## Available Capabilities (Optional — use when beneficial)
-You have access to the following capabilities. Use them when they genuinely help the task; do NOT force their use.
-- **Sub-agent delegation**: delegate research, implementation, review, or documentation to sub-agents when tasks are independent and parallelizable.
-- **Skills**: if the project defines Skills (e.g., in .claude/skills/ or .agents/skills/), leverage them for efficiency. Follow any skill-specific instructions.
-- **MCP tools**: if MCP servers are configured, use them for external-service interactions (APIs, databases, browsers, etc.).
-
-## Default Behavior (ONLY when NO user rules exist)
-Apply this section ONLY if the project has NO CLAUDE.md, AGENTS.md, GEMINI.md, or user-defined rules:
-1. Understand the requirement and create a high-level plan.
-2. Research the codebase (delegate to sub-agents if complex).
-3. Implement incrementally with verification after each step.
-4. Summarize changes and suggest a commit message.
-
-When user rules exist, this default section is IGNORED entirely.
-`.trim();
 
 /**
  * Build the magic system-prompt prefix that turns Kiro reasoning on.

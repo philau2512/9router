@@ -1,118 +1,236 @@
-// Auto-generated registry index. Keep this list aligned with registry/*.js;
-// entries own their transport, metadata, and model definitions.
-import alicodeIntl from "./alicode-intl.js";
-import alicode from "./alicode.js";
-import alimsIntl from "./alims-intl.js";
-import anthropic from "./anthropic.js";
-import antigravity from "./antigravity.js";
-import assemblyai from "./assemblyai.js";
-import awsPolly from "./aws-polly.js";
-import azure from "./azure.js";
-import blackForestLabs from "./black-forest-labs.js";
-import blackbox from "./blackbox.js";
-import braveSearch from "./brave-search.js";
-import byteplus from "./byteplus.js";
-import cartesia from "./cartesia.js";
-import cerebras from "./cerebras.js";
-import chutes from "./chutes.js";
-import claude from "./claude.js";
-import cline from "./cline.js";
-import clinepass from "./clinepass.js";
-import cloudflareAi from "./cloudflare-ai.js";
-import codebuddyCn from "./codebuddy-cn.js";
-import codex from "./codex.js";
-import cohere from "./cohere.js";
-import comfyui from "./comfyui.js";
-import commandcode from "./commandcode.js";
-import coqui from "./coqui.js";
-import cursor from "./cursor.js";
-import deepgram from "./deepgram.js";
-import deepseek from "./deepseek.js";
-import edgeTts from "./edge-tts.js";
-import elevenlabs from "./elevenlabs.js";
-import exa from "./exa.js";
-import falAi from "./fal-ai.js";
-import featherless from "./featherless.js";
-import firecrawl from "./firecrawl.js";
-import fireworks from "./fireworks.js";
-import geminiCli from "./gemini-cli.js";
-import gemini from "./gemini.js";
-import github from "./github.js";
-import gitlab from "./gitlab.js";
-import glmCn from "./glm-cn.js";
-import glm from "./glm.js";
-import googlePse from "./google-pse.js";
-import googleTts from "./google-tts.js";
-import grokCli from "./grok-cli.js";
-import grokWeb from "./grok-web.js";
-import groq from "./groq.js";
-import huggingface from "./huggingface.js";
-import hyperbolic from "./hyperbolic.js";
-import iflow from "./iflow.js";
-import inworld from "./inworld.js";
-import jinaAi from "./jina-ai.js";
-import jinaReader from "./jina-reader.js";
-import kilocode from "./kilocode.js";
-import kimchi from "./kimchi.js";
-import kimi from "./kimi.js";
-import kiro from "./kiro.js";
-import linkup from "./linkup.js";
-import localDevice from "./local-device.js";
-import mimoFree from "./mimo-free.js";
-import minimaxCn from "./minimax-cn.js";
-import minimax from "./minimax.js";
-import mistral from "./mistral.js";
-import mmf from "./mmf.js";
-import nanobanana from "./nanobanana.js";
-import nebius from "./nebius.js";
-import nvidia from "./nvidia.js";
-import ollamaLocal from "./ollama-local.js";
-import ollama from "./ollama.js";
-import openai from "./openai.js";
-import opencodeGo from "./opencode-go.js";
-import opencode from "./opencode.js";
-import openrouter from "./openrouter.js";
-import perplexityWeb from "./perplexity-web.js";
-import perplexity from "./perplexity.js";
-import perplexityAgent from "./perplexity-agent.js";
-import playht from "./playht.js";
-import qoder from "./qoder.js";
-import qwen from "./qwen.js";
-import recraft from "./recraft.js";
-import runwayml from "./runwayml.js";
-import sdwebui from "./sdwebui.js";
-import searchapi from "./searchapi.js";
-import searxng from "./searxng.js";
-import serper from "./serper.js";
-import siliconflow from "./siliconflow.js";
-import stabilityAi from "./stability-ai.js";
-import tavily from "./tavily.js";
-import together from "./together.js";
-import topaz from "./topaz.js";
-import tortoise from "./tortoise.js";
-import venice from "./venice.js";
-import vercelAiGateway from "./vercel-ai-gateway.js";
-import vertexPartner from "./vertex-partner.js";
-import vertex from "./vertex.js";
-import volcengineArk from "./volcengine-ark.js";
-import voyageAi from "./voyage-ai.js";
-import xai from "./xai.js";
-import xiaomiMimo from "./xiaomi-mimo.js";
-import xiaomiTokenplan from "./xiaomi-tokenplan.js";
-import youcom from "./youcom.js";
+// Auto-generated: static imports for all registry entries
+import p0 from "./alicode-intl.js";
+import p1 from "./alicode.js";
+import p2 from "./anthropic.js";
+import p3 from "./antigravity.js";
+import p4 from "./assemblyai.js";
+import p5 from "./aws-polly.js";
+import p6 from "./azure.js";
+import p7 from "./black-forest-labs.js";
+import p8 from "./blackbox.js";
+import p9 from "./brave-search.js";
+import p10 from "./byteplus.js";
+import p11 from "./cartesia.js";
+import p12 from "./cerebras.js";
+import p13 from "./chutes.js";
+import p14 from "./claude.js";
+import p15 from "./cline.js";
+import p16 from "./clinepass.js";
+import p17 from "./cloudflare-ai.js";
+import p18 from "./codebuddy-cn.js";
+import p19 from "./codex.js";
+import p20 from "./cohere.js";
+import p21 from "./comfyui.js";
+import p22 from "./commandcode.js";
+import p23 from "./coqui.js";
+import p24 from "./cursor.js";
+import p25 from "./deepgram.js";
+import p26 from "./deepseek.js";
+import p27 from "./edge-tts.js";
+import p28 from "./elevenlabs.js";
+import p29 from "./exa.js";
+import p30 from "./fal-ai.js";
+import p31 from "./featherless.js";
+import p32 from "./firecrawl.js";
+import p33 from "./fireworks.js";
+import p34 from "./gemini-cli.js";
+import p35 from "./gemini.js";
+import p36 from "./github.js";
+import p37 from "./gitlab.js";
+import p38 from "./glm-cn.js";
+import p39 from "./glm.js";
+import p40 from "./google-pse.js";
+import p41 from "./google-tts.js";
+import p42 from "./grok-cli.js";
+import p43 from "./grok-web.js";
+import p44 from "./groq.js";
+import p45 from "./huggingface.js";
+import p46 from "./hyperbolic.js";
+import p47 from "./iflow.js";
+import p48 from "./inworld.js";
+import p49 from "./jina-ai.js";
+import p50 from "./jina-reader.js";
+import p51 from "./kilocode.js";
+import p52 from "./kimchi.js";
+import p53 from "./kimi.js";
+import p54 from "./kiro.js";
+import p55 from "./linkup.js";
+import p56 from "./local-device.js";
+import p57 from "./mimo-free.js";
+import p58 from "./minimax-cn.js";
+import p59 from "./minimax.js";
+import p60 from "./mistral.js";
+import p61 from "./mmf.js";
+import p62 from "./nanobanana.js";
+import p63 from "./nebius.js";
+import p64 from "./nvidia.js";
+import p65 from "./ollama-local.js";
+import p66 from "./ollama.js";
+import p67 from "./openai.js";
+import p68 from "./opencode-go.js";
+import p69 from "./opencode.js";
+import p70 from "./openrouter.js";
+import p71 from "./perplexity-web.js";
+import p72 from "./perplexity.js";
+import p73 from "./perplexity-agent.js";
+import p74 from "./playht.js";
+import p75 from "./qoder.js";
+import p76 from "./qwen.js";
+import p77 from "./recraft.js";
+import p78 from "./runwayml.js";
+import p79 from "./sdwebui.js";
+import p80 from "./searchapi.js";
+import p81 from "./searxng.js";
+import p82 from "./serper.js";
+import p83 from "./siliconflow.js";
+import p84 from "./stability-ai.js";
+import p85 from "./tavily.js";
+import p86 from "./together.js";
+import p87 from "./topaz.js";
+import p88 from "./tortoise.js";
+import p89 from "./venice.js";
+import p90 from "./vercel-ai-gateway.js";
+import p91 from "./vertex-partner.js";
+import p92 from "./vertex.js";
+import p93 from "./volcengine-ark.js";
+import p94 from "./voyage-ai.js";
+import p95 from "./xai.js";
+import p96 from "./xiaomi-mimo.js";
+import p97 from "./xiaomi-tokenplan.js";
+import p98 from "./youcom.js";
+import p99 from "./alims-intl.js";
+import p100 from "./codebuddy-intl.js";
+// Temporarily hidden — no tool calling support (trae SOLO agent / windsurf gRPC skip ToolCallChunk).
+// Re-enable by uncommenting both the import and the array entry below.
+// import p102 from "./trae.js";
+import p103 from "./zed.js";
+import p105 from "./api-airforce.js";
+import p106 from "./baidu.js";
+import p107 from "./bazaarlink.js";
+import p108 from "./bluesminds.js";
+import p109 from "./kilo-gateway.js";
+import p110 from "./llm7.js";
+import p111 from "./sambanova.js";
+import p112 from "./tencent.js";
+import p113 from "./morph.js";
+// import p114 from "./devin-cli.js";
+// import p104 from "./windsurf.js";
+import p115 from "./poolside.js";
 
 export default [
-  alicodeIntl, alicode, alimsIntl, anthropic, antigravity, assemblyai, awsPolly,
-  azure, blackForestLabs, blackbox, braveSearch, byteplus, cartesia, cerebras,
-  chutes, claude, cline, clinepass, cloudflareAi, codebuddyCn, codex, cohere,
-  comfyui, commandcode, coqui, cursor, deepgram, deepseek, edgeTts, elevenlabs,
-  exa, falAi, featherless, firecrawl, fireworks, geminiCli, gemini, github,
-  gitlab, glmCn, glm, googlePse, googleTts, grokCli, grokWeb, groq, huggingface,
-  hyperbolic, iflow, inworld, jinaAi, jinaReader, kilocode, kimchi, kimi, kiro,
-  linkup, localDevice, mimoFree, minimaxCn, minimax, mistral, mmf, nanobanana,
-  nebius, nvidia, ollamaLocal, ollama, openai, opencodeGo, opencode, openrouter,
-  perplexityWeb, perplexity, perplexityAgent, playht, qoder, qwen, recraft,
-  runwayml, sdwebui, searchapi, searxng, serper, siliconflow, stabilityAi,
-  tavily, together, topaz, tortoise, venice, vercelAiGateway, vertexPartner,
-  vertex, volcengineArk, voyageAi, xai, xiaomiMimo, xiaomiTokenplan, youcom
+  p0,
+  p1,
+  p2,
+  p3,
+  p4,
+  p5,
+  p6,
+  p7,
+  p8,
+  p9,
+  p10,
+  p11,
+  p12,
+  p13,
+  p14,
+  p15,
+  p16,
+  p17,
+  p18,
+  p19,
+  p20,
+  p21,
+  p22,
+  p23,
+  p24,
+  p25,
+  p26,
+  p27,
+  p28,
+  p29,
+  p30,
+  p31,
+  p32,
+  p33,
+  p34,
+  p35,
+  p36,
+  p37,
+  p38,
+  p39,
+  p40,
+  p41,
+  p42,
+  p43,
+  p44,
+  p45,
+  p46,
+  p47,
+  p48,
+  p49,
+  p50,
+  p51,
+  p52,
+  p53,
+  p54,
+  p55,
+  p56,
+  p57,
+  p58,
+  p59,
+  p60,
+  p61,
+  p62,
+  p63,
+  p64,
+  p65,
+  p66,
+  p67,
+  p68,
+  p69,
+  p70,
+  p71,
+  p72,
+  p73,
+  p74,
+  p75,
+  p76,
+  p77,
+  p78,
+  p79,
+  p80,
+  p81,
+  p82,
+  p83,
+  p84,
+  p85,
+  p86,
+  p87,
+  p88,
+  p89,
+  p90,
+  p91,
+  p92,
+  p93,
+  p94,
+  p95,
+  p96,
+  p97,
+  p98,
+  p99,
+  p100,
+  // p102, // trae — hidden, no tool calling
+  p103,
+  p105,
+  p106,
+  p107,
+  p108,
+  p109,
+  p110,
+  p111,
+  p112,
+  p113,
+  // p114, // devin-cli — hidden, spawns local agent with shell/fs access
+  // p104, // windsurf — hidden, no tool calling
+  p115,
 ];

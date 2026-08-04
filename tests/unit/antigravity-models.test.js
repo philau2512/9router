@@ -74,34 +74,23 @@ describe("Antigravity live model catalog", () => {
     );
   });
 
-  it("falls through production failures to a later endpoint", async () => {
-    proxyAwareFetch
-      .mockResolvedValueOnce(jsonResponse({ error: "unavailable" }, 503))
-      .mockRejectedValueOnce(new Error("daily unreachable"))
-      .mockResolvedValueOnce(
-        jsonResponse({ models: { "gemini-3-flash": { displayName: "Fallback" } } }),
-      );
-
-    await expect(resolveAntigravityModels(credentials)).resolves.toEqual({
-      models: [{ id: "gemini-3-flash", name: "Fallback", isLive: true }],
-    });
-    expect(proxyAwareFetch.mock.calls.map(([url]) => url)).toEqual(
-      ANTIGRAVITY_BASE_URLS.map(
-        (base) => `${base}${ANTIGRAVITY_OPERATIONS.fetchAvailableModels}`,
-      ),
-    );
-  });
-
-  it("treats invalid or empty catalog responses as fallback candidates", async () => {
-    proxyAwareFetch
-      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockRejectedValue(new Error("bad json")) })
-      .mockResolvedValueOnce(
-        jsonResponse({ models: { tab_flash_lite_preview: { displayName: "Skip" } } }),
-      )
-      .mockResolvedValueOnce(jsonResponse({ models: {} }));
+  it("returns null after the daily discovery endpoint fails", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(jsonResponse({ error: "unavailable" }, 503));
 
     await expect(resolveAntigravityModels(credentials)).resolves.toBeNull();
-    expect(proxyAwareFetch).toHaveBeenCalledTimes(3);
+    expect(proxyAwareFetch.mock.calls.map(([url]) => url)).toEqual([
+      `${ANTIGRAVITY_BASE_URLS[0]}${ANTIGRAVITY_OPERATIONS.fetchAvailableModels}`,
+    ]);
+  });
+
+  it("treats invalid or empty catalog responses as fail-open results", async () => {
+    proxyAwareFetch.mockResolvedValueOnce({
+      ok: true,
+      json: vi.fn().mockRejectedValue(new Error("bad json")),
+    });
+
+    await expect(resolveAntigravityModels(credentials)).resolves.toBeNull();
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
   });
 
   it("caches by credential and supports force refresh and explicit clearing", async () => {

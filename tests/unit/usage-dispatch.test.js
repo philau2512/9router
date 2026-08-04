@@ -28,6 +28,11 @@ const SUPPORTED = [
   "minimax",
   "minimax-cn",
   "vercel-ai-gateway",
+  "grok-cli",
+  "gcli",
+  "xai",
+  "kimi",
+  "deepseek",
 ];
 
 describe("usage dispatch", () => {
@@ -51,9 +56,7 @@ describe("usage dispatch", () => {
       });
       // Routed handler must return an object and never the unsupported fallback
       expect(res, `${provider} routed`).toBeTypeOf("object");
-      expect(res?.message).not.toBe(
-        `Usage API not implemented for ${provider}`,
-      );
+      expect(res?.message).not.toBe(`Usage API not implemented for ${provider}`);
     }
   });
 });

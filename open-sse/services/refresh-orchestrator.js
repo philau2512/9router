@@ -12,6 +12,12 @@ import {
   refreshXaiToken,
   refreshCodebuddyToken,
 } from "./refresh-providers.js";
+import {
+  refreshCodebuddyIntlToken,
+  refreshTraeToken,
+  refreshZedToken,
+  refreshWindsurfToken,
+} from "./tokenRefresh/providers.js";
 import { parseVertexSaJson, refreshVertexToken } from "./refresh-vertex.js";
 
 /**
@@ -172,6 +178,18 @@ async function _getAccessTokenInternal(provider, credentials, log) {
     case "codebuddy-cn":
       return await refreshCodebuddyToken(credentials.refreshToken, log);
 
+    case "codebuddy-intl":
+      return await refreshCodebuddyIntlToken(credentials.refreshToken, log);
+
+    case "trae":
+      return await refreshTraeToken(credentials.refreshToken, credentials, log);
+
+    case "zed":
+      return await refreshZedToken();
+
+    case "windsurf":
+      return await refreshWindsurfToken(credentials, log);
+
     case "vertex":
     case "vertex-partner": {
       const saJson = parseVertexSaJson(credentials.apiKey);
@@ -228,6 +246,14 @@ export async function refreshTokenByProvider(provider, credentials, log) {
       return refreshXaiToken(credentials.refreshToken, refreshLog);
     case "codebuddy-cn":
       return refreshCodebuddyToken(credentials.refreshToken, refreshLog);
+    case "codebuddy-intl":
+      return refreshCodebuddyIntlToken(credentials.refreshToken, refreshLog);
+    case "trae":
+      return refreshTraeToken(credentials.refreshToken, credentials, refreshLog);
+    case "zed":
+      return refreshZedToken();
+    case "windsurf":
+      return refreshWindsurfToken(credentials, refreshLog);
     case "vertex":
     case "vertex-partner": {
       const saJson = parseVertexSaJson(credentials.apiKey);

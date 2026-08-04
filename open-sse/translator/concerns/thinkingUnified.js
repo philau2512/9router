@@ -35,7 +35,7 @@ export function parseSuffix(model) {
   if (!m) return { cleanModel: model, override: null };
   const cleanModel = m[1].trim();
   const raw = m[2].trim().toLowerCase();
-  if (raw === "none" || raw === "off") return { cleanModel, override: { mode: "none" } };
+  if (raw === "none" || raw === "off" || raw === "disabled") return { cleanModel, override: { mode: "none" } };
   if (raw === "auto") return { cleanModel, override: { mode: "auto" } };
   if (/^\d+$/.test(raw)) return { cleanModel, override: { mode: "budget", budget: Number(raw) } };
   if (LEVEL_TO_BUDGET[raw] !== undefined) return { cleanModel, override: { mode: "level", level: raw } };
@@ -51,7 +51,7 @@ export function extractThinking(body) {
   const oc = body.output_config?.effort;
   if (typeof oc === "string" && oc) {
     const e = oc.toLowerCase();
-    if (e === "none" || e === "off") return { mode: "none" };
+    if (e === "none" || e === "off" || e === "disabled") return { mode: "none" };
     if (e === "auto") return { mode: "auto" };
     return { mode: "level", level: e };
   }
@@ -71,7 +71,7 @@ export function extractThinking(body) {
   const effort = body.reasoning_effort ?? (typeof body.reasoning === "object" ? body.reasoning?.effort : null);
   if (typeof effort === "string" && effort) {
     const e = effort.toLowerCase();
-    if (e === "none" || e === "off") return { mode: "none" };
+    if (e === "none" || e === "off" || e === "disabled") return { mode: "none" };
     if (e === "auto") return { mode: "auto" };
     return { mode: "level", level: e };
   }

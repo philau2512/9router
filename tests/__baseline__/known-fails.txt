@@ -1,1 +1,4 @@
 # Keep this list empty unless a current fork limitation has been manually reviewed.
+
+# Upstream baseline limitations retained during the merge; each entry is
+# reviewed against the current test output before release.

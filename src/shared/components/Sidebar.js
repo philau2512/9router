@@ -447,8 +447,20 @@ export default function Sidebar({
               <span className="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors shrink-0">
                 computer
               </span>
-              <NavLabel collapsed={collapsed}>Remote</NavLabel>
+              <NavLabel collapsed={collapsed}>9Remote</NavLabel>
             </button>
+
+            <a
+              href="https://9english.net/"
+              target="_blank"
+              rel="noreferrer"
+              onClick={onClose}
+              title="9English"
+              className={navItemClass(false, collapsed)}
+            >
+              <span className={navIconClass(false)}>translate</span>
+              <NavLabel collapsed={collapsed}>9English</NavLabel>
+            </a>
 
             {/* Settings */}
             <Link

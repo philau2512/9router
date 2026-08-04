@@ -12,13 +12,6 @@ import {
   ANTIGRAVITY_BASE_URLS,
 } from "../../open-sse/providers/antigravity-provider-metadata.js";
 
-function jsonResponse(body, status = 200, headers = {}) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json", ...headers },
-  });
-}
-
 const credentials = {
   accessToken: "ag-token",
   projectId: "ag-project",
@@ -34,7 +27,7 @@ const log = { debug: vi.fn(), info: vi.fn(), error: vi.fn() };
 
 describe("AntigravityExecutor", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     vi.useRealTimers();
   });
 
@@ -237,39 +230,26 @@ describe("AntigravityExecutor", () => {
     expect(transform(1024).request.generationConfig.maxOutputTokens).toBe(16384);
   });
 
-  it("falls through production network failure and long-retry quota response", async () => {
+  it("fails fast when the single daily chat endpoint is unavailable", async () => {
     const executor = new AntigravityExecutor();
-    proxyAwareFetch
-      .mockRejectedValueOnce(new Error("production offline"))
-      .mockResolvedValueOnce(
-        jsonResponse({ error: { message: "quota" } }, 429, { "retry-after": "60" }),
-      )
-      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    proxyAwareFetch.mockRejectedValueOnce(new Error("daily offline"));
 
-    const result = await executor.execute({
-      model: "gemini-3-flash",
-      body,
-      stream: true,
-      credentials,
-      log,
-      proxyOptions: { proxy: "http://proxy.test" },
-    });
+    await expect(
+      executor.execute({
+        model: "gemini-3-flash",
+        body,
+        stream: true,
+        credentials,
+        log,
+        proxyOptions: { proxy: "http://proxy.test" },
+      }),
+    ).rejects.toThrow("daily offline");
 
-    expect(result.url).toBe(
-      `${ANTIGRAVITY_BASE_URLS[2]}/v1internal:streamGenerateContent?alt=sse`,
-    );
-    expect(proxyAwareFetch.mock.calls.map(([url]) => url)).toEqual(
-      ANTIGRAVITY_BASE_URLS.map(
-        (base) => `${base}/v1internal:streamGenerateContent?alt=sse`,
-      ),
-    );
-    expect(result.headers).toMatchObject({
-      Authorization: "Bearer ag-token",
-      Accept: "text/event-stream",
-    });
+    const chatUrl = `${ANTIGRAVITY_BASE_URLS[0]}/v1internal:streamGenerateContent?alt=sse`;
+    expect(proxyAwareFetch.mock.calls.map(([url]) => url)).toEqual([chatUrl]);
   });
 
-  it("throws after every fallback URL fails", async () => {
+  it("throws when the daily chat endpoint fails", async () => {
     const executor = new AntigravityExecutor();
     proxyAwareFetch.mockRejectedValue(new Error("unreachable"));
 

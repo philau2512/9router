@@ -187,7 +187,7 @@ export class BaseExecutor {
         stream,
         credentials,
       );
-      const headers = this.buildHeaders(credentials, stream);
+      const headers = this.buildHeaders(credentials, stream, url);
 
       if (!retryAttemptsByUrl[urlIndex]) retryAttemptsByUrl[urlIndex] = 0;
 
@@ -313,7 +313,7 @@ export class BaseExecutor {
           continue;
         }
 
-        if (this.shouldRetry(response.status, urlIndex)) {
+        if (this.shouldRetry(response.status, urlIndex, credentials)) {
           log?.debug?.(
             "RETRY",
             `${response.status} on ${url}, trying fallback ${urlIndex + 1}`,

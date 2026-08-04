@@ -4,6 +4,7 @@ const getProviderConnectionById = vi.fn();
 const getProviderConnections = vi.fn();
 const updateProviderConnection = vi.fn(async (_id, updates) => updates);
 const getAccessToken = vi.fn();
+const refreshProviderCredentials = vi.fn();
 
 vi.mock("../../src/lib/localDb.js", () => ({
   getProviderConnectionById: (...args) => getProviderConnectionById(...args),
@@ -38,7 +39,7 @@ vi.mock("open-sse/services/tokenRefresh.js", () => ({
 }));
 
 vi.mock("open-sse/services/oauthCredentialManager.js", () => ({
-  refreshProviderCredentials: vi.fn(),
+  refreshProviderCredentials: (...args) => refreshProviderCredentials(...args),
   shouldRefreshCredentials: vi.fn(),
 }));
 
@@ -63,19 +64,19 @@ describe("Codex proactive refresh", () => {
     vi.useRealTimers();
   });
 
-  it("selects enabled connections expiring within the 5-hour window", async () => {
+  it("selects enabled connections expiring within the 2-day window", async () => {
     const {
       CODEX_PROACTIVE_REFRESH_LEAD_MS,
       isCodexAutoRefreshCandidate,
     } = await load();
     const now = Date.now();
 
-    expect(CODEX_PROACTIVE_REFRESH_LEAD_MS).toBe(5 * 60 * 60 * 1000);
+    expect(CODEX_PROACTIVE_REFRESH_LEAD_MS).toBe(2 * 24 * 60 * 60 * 1000);
     expect(
       isCodexAutoRefreshCandidate(
         {
           ...connection,
-          expiresAt: new Date(now + 4 * 60 * 60 * 1000).toISOString(),
+          expiresAt: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
         },
         now,
       ),
@@ -84,7 +85,7 @@ describe("Codex proactive refresh", () => {
       isCodexAutoRefreshCandidate(
         {
           ...connection,
-          expiresAt: new Date(now + 5 * 60 * 60 * 1000 + 1).toISOString(),
+          expiresAt: new Date(now + 2 * 24 * 60 * 60 * 1000 + 1).toISOString(),
         },
         now,
       ),
@@ -122,11 +123,42 @@ describe("Codex proactive refresh", () => {
     );
   });
 
-  it("does not retry an unrecoverable Codex refresh token", async () => {
+  it("marks a Codex connection when the shared chat refresh gets a 401", async () => {
+    const credentials = {
+      ...connection,
+      connectionId: connection.id,
+      expiresAt: new Date(Date.now() - 1).toISOString(),
+    };
+    const { shouldRefreshCredentials } = await import(
+      "open-sse/services/oauthCredentialManager.js"
+    );
+    shouldRefreshCredentials.mockReturnValue(true);
+    refreshProviderCredentials.mockResolvedValue({
+      error: "unrecoverable_refresh_error",
+      code: "refresh_token_invalidated",
+      status: 401,
+    });
+    const { checkAndRefreshToken } = await load();
+
+    const result = await checkAndRefreshToken("codex", credentials);
+
+    expect(result).toEqual(credentials);
+    expect(updateProviderConnection).toHaveBeenCalledWith(
+      connection.id,
+      expect.objectContaining({
+        testStatus: "401",
+        errorCode: "401",
+        lastError: "Refresh token invalid or already used. Re-auth required.",
+        lastErrorAt: expect.any(String),
+      }),
+    );
+  });
+  it("persists a 401 re-auth status without retrying an invalidated refresh token", async () => {
     getProviderConnectionById.mockResolvedValue(connection);
     getAccessToken.mockResolvedValue({
       error: "unrecoverable_refresh_error",
-      code: "invalid_grant",
+      code: "refresh_token_invalidated",
+      status: 401,
     });
     const { refreshCodexConnection } = await load();
 
@@ -134,6 +166,58 @@ describe("Codex proactive refresh", () => {
 
     expect(getAccessToken).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ ok: false, unrecoverable: true });
-    expect(updateProviderConnection).not.toHaveBeenCalled();
+    expect(updateProviderConnection).toHaveBeenCalledWith(
+      connection.id,
+      expect.objectContaining({
+        testStatus: "401",
+        errorCode: "401",
+        lastError: "Refresh token invalid or already used. Re-auth required.",
+        lastErrorAt: expect.any(String),
+      }),
+    );
+  });
+
+  it("marks code-only refresh_token_invalidated failures as 401", async () => {
+    getProviderConnectionById.mockResolvedValue(connection);
+    getAccessToken.mockResolvedValue({
+      error: "unrecoverable_refresh_error",
+      code: "refresh_token_invalidated",
+    });
+    const { refreshCodexConnection } = await load();
+
+    await refreshCodexConnection(connection);
+
+    expect(updateProviderConnection).toHaveBeenCalledWith(
+      connection.id,
+      expect.objectContaining({
+        testStatus: "401",
+        errorCode: "refresh_token_invalidated",
+      }),
+    );
+  });
+  it("clears a previous 401 status after a successful refresh", async () => {
+    getProviderConnectionById.mockResolvedValue({
+      ...connection,
+      testStatus: "401",
+      errorCode: "401",
+    });
+    getAccessToken.mockResolvedValue({
+      accessToken: "new-access-token",
+      refreshToken: "new-refresh-token",
+      expiresIn: 86_400,
+    });
+    const { refreshCodexConnection } = await load();
+
+    await refreshCodexConnection(connection);
+
+    expect(updateProviderConnection).toHaveBeenCalledWith(
+      connection.id,
+      expect.objectContaining({
+        testStatus: "active",
+        errorCode: null,
+        lastError: null,
+        lastErrorAt: null,
+      }),
+    );
   });
 });

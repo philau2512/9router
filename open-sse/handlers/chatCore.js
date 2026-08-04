@@ -630,11 +630,23 @@ export async function handleChatCore({
       providerResponse.status === HTTP_STATUS.FORBIDDEN)
   ) {
     try {
-      const newCredentials = await refreshWithRetry(
-        () => executor.refreshCredentials(credentials, log, proxyOptions),
-        3,
-        log,
-      );
+      // Persist a rotating refresh token between retry attempts while retaining
+      // connection-level proxy routing for every provider refresh request.
+      const newCredentials = await refreshWithRetry(async () => {
+        const result = await executor.refreshCredentials(
+          credentials,
+          log,
+          proxyOptions,
+        );
+        if (
+          result?.refreshToken &&
+          result.refreshToken !== credentials.refreshToken
+        ) {
+          if (result.accessToken) credentials.accessToken = result.accessToken;
+          credentials.refreshToken = result.refreshToken;
+        }
+        return result;
+      }, 3, log);
       if (newCredentials?.accessToken || newCredentials?.copilotToken) {
         log?.info?.("TOKEN", `${provider.toUpperCase()} | refreshed`);
         Object.assign(credentials, newCredentials);

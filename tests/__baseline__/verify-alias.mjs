@@ -13,7 +13,9 @@ import { cloneNormalized, collectDiffs, writeSnapshot } from "./baseline-utils.m
 
 const here = dirname(fileURLToPath(import.meta.url));
 const snapshotPath = join(here, "alias-baseline.json");
-const aliasTokens = Object.keys(PROVIDER_ALIASES).sort();
+const aliasTokens = Array.from(
+  new Set([...Object.keys(PROVIDER_ALIASES), ...Object.keys(PROVIDER_ID_TO_ALIAS)]),
+).sort();
 const current = cloneNormalized({
   aliasToId: Object.fromEntries(
     aliasTokens.map((alias) => [alias, resolveProviderAlias(alias)]),

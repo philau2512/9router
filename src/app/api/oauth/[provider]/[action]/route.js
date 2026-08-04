@@ -18,7 +18,24 @@ import {
   registerXaiSession,
   getXaiSessionStatus,
   clearXaiSession,
+  startTraeProxy,
+  stopTraeProxy,
+  registerTraeSession,
+  getTraeSessionStatus,
+  clearTraeSession,
+  startWindsurfProxy,
+  stopWindsurfProxy,
+  registerWindsurfSession,
+  getWindsurfSessionStatus,
+  clearWindsurfSession,
+  startZedProxy,
+  stopZedProxy,
+  registerZedSession,
+  getZedSessionStatus,
+  clearZedSession,
 } from "@/lib/oauth/utils/server";
+import { detectIdeInstalled } from "@/lib/oauth/utils/ideDetect";
+import { ZED_HOSTED_CONFIG } from "@/lib/oauth/constants/oauth";
 
 async function completeXaiManualCode(code, state) {
   const session = state ? getXaiSessionStatus(state) : null;
@@ -82,6 +99,14 @@ export async function GET(request, { params }) {
       searchParams.forEach((value, key) => {
         if (!reservedParams.has(key)) meta[key] = value;
       });
+      if (provider === "zed") {
+        try {
+          const port = new URL(redirectUri).port;
+          if (port) meta.nativeAppPort = port;
+        } catch {
+          // Ignore malformed redirect URLs; provider validation reports them later.
+        }
+      }
       const authData = await generateAuthData(
         provider,
         redirectUri,
@@ -91,9 +116,25 @@ export async function GET(request, { params }) {
     }
 
     if (action === "start-proxy") {
+      // Trae/Windsurf/Zed use a dynamic-port local callback server (singleton session,
+      // state is registered separately via /register-session after /authorize).
+      if (provider === "trae") {
+        const result = await startTraeProxy();
+        return NextResponse.json(result);
+      }
+      if (provider === "windsurf") {
+        const result = await startWindsurfProxy();
+        return NextResponse.json(result);
+      }
+      if (provider === "zed") {
+        // Prefer ZED_HOSTED_CONFIG.defaultNativeAppPort (58443) so the browser redirect
+        // matches what Zed expects; falls back to a random port if it's busy.
+        const result = await startZedProxy(searchParams.get("native_app_port") || ZED_HOSTED_CONFIG.defaultNativeAppPort);
+        return NextResponse.json(result);
+      }
       if (!["codex", "xai"].includes(provider)) {
         return NextResponse.json(
-          { error: "Proxy only supported for codex/xai" },
+          { error: "Proxy only supported for codex/xai/trae/windsurf/zed" },
           { status: 400 },
         );
       }
@@ -122,24 +163,29 @@ export async function GET(request, { params }) {
     }
 
     if (action === "poll-status") {
-      if (!["codex", "xai"].includes(provider)) {
-        return NextResponse.json(
-          { error: "Poll only supported for codex/xai" },
-          { status: 400 },
-        );
-      }
       const state = searchParams.get("state");
       if (!state) {
         return NextResponse.json({ error: "Missing state" }, { status: 400 });
       }
-      const session =
-        provider === "xai"
-          ? getXaiSessionStatus(state)
-          : getCodexSessionStatus(state);
+      let session;
+      if (provider === "trae") session = getTraeSessionStatus(state);
+      else if (provider === "windsurf") session = getWindsurfSessionStatus(state);
+      else if (provider === "zed") session = getZedSessionStatus(state);
+      else if (provider === "xai") session = getXaiSessionStatus(state);
+      else if (provider === "codex") session = getCodexSessionStatus(state);
+      else {
+        return NextResponse.json(
+          { error: "Poll only supported for codex/xai/trae/windsurf/zed" },
+          { status: 400 },
+        );
+      }
       if (!session) return NextResponse.json({ status: "unknown" });
       if (session.status === "done" || session.status === "error") {
         const payload = { ...session };
-        if (provider === "xai") clearXaiSession(state);
+        if (provider === "trae") clearTraeSession(state);
+        else if (provider === "windsurf") clearWindsurfSession(state);
+        else if (provider === "zed") clearZedSession(state);
+        else if (provider === "xai") clearXaiSession(state);
         else clearCodexSession(state);
         return NextResponse.json(payload);
       }
@@ -147,15 +193,27 @@ export async function GET(request, { params }) {
     }
 
     if (action === "stop-proxy") {
-      if (!["codex", "xai"].includes(provider)) {
+      if (provider === "trae") stopTraeProxy();
+      else if (provider === "windsurf") stopWindsurfProxy();
+      else if (provider === "zed") stopZedProxy();
+      else if (provider === "xai") stopXaiProxy();
+      else if (provider === "codex") stopCodexProxy();
+      else {
         return NextResponse.json(
-          { error: "Proxy only supported for codex/xai" },
+          { error: "Proxy only supported for codex/xai/trae/windsurf/zed" },
           { status: 400 },
         );
       }
-      if (provider === "xai") stopXaiProxy();
-      else stopCodexProxy();
       return NextResponse.json({ success: true });
+    }
+
+    if (action === "ide-status") {
+      // Detect whether the IDE is installed locally (used by import-token UX).
+      if (provider !== "trae" && provider !== "windsurf") {
+        return NextResponse.json({ error: "ide-status only supported for trae/windsurf" }, { status: 400 });
+      }
+      const status = await detectIdeInstalled(provider);
+      return NextResponse.json(status);
     }
 
     if (action === "device-code") {
@@ -188,6 +246,9 @@ export async function GET(request, { params }) {
         "kimi-coding",
         "kilocode",
         "codebuddy-cn",
+        "codebuddy-intl",
+        "qoder",
+        "grok-cli",
       ];
       let deviceData;
       if (noPkceDeviceProviders.includes(provider)) {
@@ -223,6 +284,7 @@ export async function GET(request, { params }) {
 export async function POST(request, { params }) {
   try {
     const { provider, action } = await params;
+    const { searchParams } = new URL(request.url);
     let body;
     try {
       body = await request.json();
@@ -233,8 +295,53 @@ export async function POST(request, { params }) {
       );
     }
 
+    if (action === "register-session") {
+      // Register proxy session out of URL query (state) + body (codeVerifier).
+      // Zed's codeVerifier encodes the RSA private key — must stay out of URL/logs.
+      const state = searchParams.get("state") || body?.state;
+      if (!state) return NextResponse.json({ error: "Missing state" }, { status: 400 });
+      let ok = false;
+      if (provider === "trae") ok = registerTraeSession({ state });
+      else if (provider === "windsurf") ok = registerWindsurfSession({ state });
+      else if (provider === "zed") ok = registerZedSession({ state, codeVerifier: body?.codeVerifier });
+      else return NextResponse.json({ error: "register-session only supported for trae/windsurf/zed" }, { status: 400 });
+      return NextResponse.json({ success: ok });
+    }
+
     if (action === "exchange") {
       const { code, redirectUri, codeVerifier, state, meta } = body;
+
+      // Trae/Windsurf: code is either a raw callback URL or a pasted token.
+      // exchangeTokens() handles both paths; no PKCE, skip codex JWT extraction.
+      if (provider === "trae" || provider === "windsurf") {
+        const token = typeof code === "string" ? code.trim() : "";
+        if (!token) {
+          return NextResponse.json({ error: "Missing token or callback URL" }, { status: 400 });
+        }
+        try {
+          const tokenData = await exchangeTokens(provider, token, null, null, state);
+          const connection = await createProviderConnection({
+            provider,
+            authType: provider === "windsurf" ? "api_key" : "oauth",
+            ...tokenData,
+            expiresAt: tokenData.expiresIn
+              ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString()
+              : null,
+            testStatus: "active",
+          });
+          return NextResponse.json({
+            success: true,
+            connection: {
+              id: connection.id,
+              provider: connection.provider,
+              email: connection.email,
+              displayName: connection.displayName,
+            }
+          });
+        } catch (err) {
+          return NextResponse.json({ error: err.message }, { status: 500 });
+        }
+      }
 
       // Detect if "code" is actually a raw JWT access token (starts with eyJ)
       if (code && code.startsWith("eyJ") && code.includes(".")) {
@@ -282,7 +389,7 @@ export async function POST(request, { params }) {
       }
 
       // Cline and ClinePass use authorization_code without PKCE
-      const noPkceExchangeProviders = ["cline", "clinepass"];
+      const noPkceExchangeProviders = ["cline", "clinepass", "kimchi"];
       if (
         !code ||
         !redirectUri ||
@@ -343,6 +450,7 @@ export async function POST(request, { params }) {
         "kimi-coding",
         "kilocode",
         "codebuddy-cn",
+        "codebuddy-intl",
       ];
       let result;
       if (noPkceProviders.includes(provider)) {
@@ -351,6 +459,14 @@ export async function POST(request, { params }) {
       } else if (provider === "kiro") {
         // Kiro needs extraData (clientId, clientSecret) from device code response
         result = await pollForToken(provider, deviceCode, null, extraData);
+      } else if (provider === "qoder") {
+        if (!codeVerifier) {
+          return NextResponse.json(
+            { error: "Missing code verifier" },
+            { status: 400 },
+          );
+        }
+        result = await pollForToken(provider, deviceCode, codeVerifier, extraData);
       } else {
         // Qwen and other PKCE providers
         if (!codeVerifier) {

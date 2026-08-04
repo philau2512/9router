@@ -140,11 +140,19 @@ export const ANTIGRAVITY_HEADERS = {
   "User-Agent": `antigravity/1.107.0 ${platform()}/${arch()}`,
 };
 
-// Cloud Code Assist API
+// Cloud Code Assist API endpoints differ by client ecosystem.
 export const CLOUD_CODE_API = {
-  loadCodeAssist:
-    "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
-  onboardUser: "https://cloudcode-pa.googleapis.com/v1internal:onboardUser",
+  "gemini-cli": {
+    loadCodeAssist: "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
+    onboardUser: "https://cloudcode-pa.googleapis.com/v1internal:onboardUser",
+  },
+  // Project discovery (loadCodeAssist/onboardUser) stays on PROD — the daily host
+  // rejects these auth/onboarding calls. Only chat traffic uses the daily host
+  // (see transport.apiEndpoint in registry/antigravity.js, set to bypass prod 429).
+  antigravity: {
+    loadCodeAssist: "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
+    onboardUser: "https://cloudcode-pa.googleapis.com/v1internal:onboardUser",
+  },
 };
 
 export const LOAD_CODE_ASSIST_HEADERS = {
@@ -182,9 +190,9 @@ export const REFRESH_LEAD_MS = {
 };
 
 // Codex background auto-refresh: scan every 15 minutes and rotate eligible tokens
-// two day before expiry. Temporary upstream failures retry with short backoff.
+// two days before expiry. Temporary upstream failures retry with short backoff.
 export const CODEX_AUTO_REFRESH = {
-  leadMs: 2 * 24 * 60 * 60 * 1000, // 2 day
+  leadMs: 2 * 24 * 60 * 60 * 1000, // 2 days
   maxAttempts: 3,
   retryDelayMs: 1_000,
 };

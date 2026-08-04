@@ -19,7 +19,6 @@ export {
 export {
   refreshXaiToken,
   refreshAccessToken,
-  refreshKimiToken,
   refreshClaudeOAuthToken,
   refreshGoogleToken,
   refreshQwenToken,
@@ -29,6 +28,14 @@ export {
   refreshGitHubToken,
   refreshCopilotToken,
   refreshCodebuddyToken,
+} from "./refresh-providers.js";
+
+export {
+  refreshKimiToken,
+  refreshCodebuddyIntlToken,
+  refreshTraeToken,
+  refreshZedToken,
+  refreshWindsurfToken,
 } from "./tokenRefresh/providers.js";
 
 export { parseVertexSaJson, refreshVertexToken } from "./refresh-vertex.js";

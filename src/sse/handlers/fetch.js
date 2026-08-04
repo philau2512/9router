@@ -264,12 +264,10 @@ async function handleSingleProviderFetch(
           testStatus: "active",
         });
       },
-      onRequestSuccess: async () => {
-        await clearAccountError(credentials.connectionId, credentials);
-      },
     });
 
     if (result.success) {
+      await clearAccountError(credentials.connectionId, credentials);
       return new Response(JSON.stringify(result.data), {
         headers: {
           "Content-Type": "application/json",

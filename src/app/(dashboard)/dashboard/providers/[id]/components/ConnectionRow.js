@@ -261,14 +261,28 @@ export default function ConnectionRow({
         ? "active"
         : connection.testStatus;
 
+  const isCodexReauthRequired =
+    connection.provider === "codex" &&
+    (connection.testStatus === "401" ||
+      [
+        "401",
+        "refresh_token_expired",
+        "refresh_token_reused",
+        "refresh_token_invalidated",
+        "invalid_grant",
+      ].includes(connection.errorCode));
+  const displayedStatus = isCodexReauthRequired ? "401" : effectiveStatus;
+
   const getStatusVariant = () => {
+    if (isCodexReauthRequired) return "error";
     if (connection.isActive === false) return "default";
-    if (effectiveStatus === "active" || effectiveStatus === "success")
+    if (displayedStatus === "active" || displayedStatus === "success")
       return "success";
     if (
-      effectiveStatus === "error" ||
-      effectiveStatus === "expired" ||
-      effectiveStatus === "unavailable"
+      displayedStatus === "401" ||
+      displayedStatus === "error" ||
+      displayedStatus === "expired" ||
+      displayedStatus === "unavailable"
     )
       return "error";
     return "default";
@@ -383,7 +397,7 @@ export default function ConnectionRow({
             <Badge variant={getStatusVariant()} size="sm" dot>
               {connection.isActive === false
                 ? "disabled"
-                : effectiveStatus || "Unknown"}
+                : displayedStatus || "Unknown"}
             </Badge>
             <Badge variant="default" size="sm">
               {authLabel}

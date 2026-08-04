@@ -194,11 +194,7 @@ export default function ProvidersPage() {
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
             {freeEntries.map(([key, info]) => {
-              // Kiro accepts OAuth + headless api-key; count/toggle both so the
-              // card total matches the provider detail page. Headless flow uses
-              // authType "api_key"; generic providers use "apikey".
-              const freeAuthTypes =
-                key === "kiro" ? ["oauth", "apikey", "api_key"] : "oauth";
+              const freeAuthTypes = key === "kiro" ? ["oauth", "apikey", "api_key"] : "oauth";
               return (
                 <ProviderCard
                   key={key}
