@@ -54,13 +54,13 @@ describe("KiroExecutor.buildHeaders — client fidelity", () => {
     expect(a["User-Agent"]).not.toBe(b["User-Agent"]);
   });
 
-  it("preserves the api_key auth branch (tokentype API_KEY)", () => {
+  it("preserves the api_key auth branch (TokenType API_KEY)", () => {
     const h = exec.buildHeaders({
       accessToken: "key",
       providerSpecificData: { authMethod: "api_key" },
     });
     expect(h["Authorization"]).toBe("Bearer key");
-    expect(h["tokentype"]).toBe("API_KEY");
+    expect(h["TokenType"]).toBe("API_KEY");
   });
 
   it("preserves the external_idp auth branch (TokenType EXTERNAL_IDP)", () => {
@@ -72,10 +72,20 @@ describe("KiroExecutor.buildHeaders — client fidelity", () => {
     expect(h["TokenType"]).toBe("EXTERNAL_IDP");
   });
 
-  it("still sets Accept + X-Amz-Target eventstream headers", () => {
-    const h = exec.buildHeaders({ accessToken: "tok" });
-    expect(h["Accept"]).toBe("application/vnd.amazon.eventstream");
-    expect(h["X-Amz-Target"]).toContain("GenerateAssistantResponse");
+  it("sets X-Amz-Target only for the CodeWhisperer surface", () => {
+    const runtimeHeaders = exec.buildHeaders(
+      { accessToken: "tok" },
+      true,
+      "https://runtime.us-east-1.kiro.dev/generateAssistantResponse",
+    );
+    const codeWhispererHeaders = exec.buildHeaders(
+      { accessToken: "tok" },
+      true,
+      "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse",
+    );
+    expect(runtimeHeaders["Accept"]).toBe("application/vnd.amazon.eventstream");
+    expect(runtimeHeaders["X-Amz-Target"]).toBeUndefined();
+    expect(codeWhispererHeaders["X-Amz-Target"]).toContain("GenerateAssistantResponse");
   });
 
   it("helper builds both UA strings for the streaming surface with a derived machineId", () => {

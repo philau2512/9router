@@ -13,6 +13,7 @@ import { deriveSessionId } from "../utils/sessionManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { cleanJSONSchemaForAntigravity } from "../translator/helpers/geminiHelper.js";
 import { ANTIGRAVITY_MODEL_ALIASES } from "../providers/antigravity-provider-metadata.js";
+import { DEFAULT_THINKING_AG_SIGNATURE } from "../config/defaultThinkingSignature.js";
 
 // Sanitize function name: Gemini requires [a-zA-Z_][a-zA-Z0-9_.:\-]{0,63}
 function sanitizeFunctionName(name) {
@@ -144,6 +145,10 @@ export class AntigravityExecutor extends BaseExecutor {
   transformRequest(model, body, stream, credentials) {
     const projectId = credentials?.projectId || this.generateProjectId();
 
+    // OpenAI clients may include stream_options even for non-streaming calls.
+    // Google generateContent rejects that combination before processing the request.
+    if (stream !== true) delete body.stream_options;
+
     // ─── Image generation: completely different request structure ───
     if (isImageModel(model)) {
       const imageConfig = parseImageConfig(model);
@@ -206,8 +211,24 @@ export class AntigravityExecutor extends BaseExecutor {
         if (p.thoughtSignature && !p.functionCall && !p.text) return false;
         return true;
       });
-      if (role !== c.role || parts?.length !== c.parts?.length) {
-        return { ...c, role, parts };
+      const needsBackfill =
+        parts?.some((p) => p.functionCall && !p.thoughtSignature) ?? false;
+      if (
+        role !== c.role ||
+        parts?.length !== c.parts?.length ||
+        needsBackfill
+      ) {
+        return {
+          ...c,
+          role,
+          parts: needsBackfill
+            ? parts.map((p) =>
+                p.functionCall && !p.thoughtSignature
+                  ? { ...p, thoughtSignature: DEFAULT_THINKING_AG_SIGNATURE }
+                  : p,
+              )
+            : parts,
+        };
       }
       return c;
     });

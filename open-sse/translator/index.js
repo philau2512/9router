@@ -1,17 +1,13 @@
 import { FORMATS } from "./formats.js";
-import {
-  ensureToolCallIds,
-  fixMissingToolResponses,
-} from "./helpers/toolCallHelper.js";
-import { prepareClaudeRequest } from "./helpers/claudeHelper.js";
+import { ensureToolCallIds, fixMissingToolResponses } from "./concerns/toolCall.js";
+import { prepareClaudeRequest } from "./formats/claude.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
-import { filterToOpenAIFormat } from "./helpers/openaiHelper.js";
+import { filterToOpenAIFormat } from "./formats/openai.js";
 import { normalizeThinkingConfig } from "../services/provider.js";
-import {
-  applyThinking,
-  captureThinking,
-} from "./concerns/thinkingUnified.js";
+import { applyThinking, captureThinking } from "./concerns/thinkingUnified.js";
+import { captureSessionId } from "../utils/sessionManager.js";
 import { AntigravityExecutor } from "../executors/antigravity.js";
+import { PROVIDERS } from "../providers/index.js";
 
 // Registry for translators. Lazy-init guards against circular-import order:
 // translator modules call register() (side-effect) before this module's body runs.
@@ -37,8 +33,7 @@ function ensureInitialized() {}
 
 // Strip specific content types from messages (explicit opt-in via strip[] in PROVIDER_MODELS)
 function stripContentTypes(body, stripList = []) {
-  if (!stripList.length || !body.messages || !Array.isArray(body.messages))
-    return;
+  if (!stripList.length || !body.messages || !Array.isArray(body.messages)) return;
   const imageTypes = new Set(["image_url", "image"]);
   const audioTypes = new Set(["audio_url", "input_audio"]);
   const shouldStrip = (type) => {
@@ -48,25 +43,13 @@ function stripContentTypes(body, stripList = []) {
   };
   for (const msg of body.messages) {
     if (!Array.isArray(msg.content)) continue;
-    msg.content = msg.content.filter((part) => !shouldStrip(part.type));
+    msg.content = msg.content.filter(part => !shouldStrip(part.type));
     if (msg.content.length === 0) msg.content = "";
   }
 }
 
 // Translate request: source -> openai -> target
-export function translateRequest(
-  sourceFormat,
-  targetFormat,
-  model,
-  body,
-  stream = true,
-  credentials = null,
-  provider = null,
-  reqLogger = null,
-  stripList = [],
-  connectionId = null,
-  clientTool = null,
-) {
+export function translateRequest(sourceFormat, targetFormat, model, body, stream = true, credentials = null, provider = null, reqLogger = null, stripList = [], connectionId = null, clientTool = null) {
   ensureInitialized();
   let result = body;
 
@@ -79,20 +62,31 @@ export function translateRequest(
   // Always ensure tool_calls have id (some providers require it)
   ensureToolCallIds(result);
 
-  // Fix missing tool responses (insert empty tool_result if needed)
-  fixMissingToolResponses(result);
+  // Kiro performs stricter source-aware reconciliation after session replay.
+  // The generic helper inserts OpenAI `role: tool` messages, which a direct
+  // Claude→Kiro translator cannot consume and which cannot repair partial
+  // parallel tool results.
+  if (targetFormat !== FORMATS.KIRO) {
+    fixMissingToolResponses(result);
+  }
 
   // Capture thinking intent from the original (pre-translation) body, before any
   // format conversion strips/renames the fields. Applied after translation.
   const thinkingIntent = captureThinking(result);
 
+  // Capture session id from the original body (envelope still intact, e.g. antigravity request.sessionId)
+  const clientSessionId = captureSessionId(result, credentials, connectionId, targetFormat);
+  // Expose to downstream translators (gemini-cli/antigravity envelopes) that run after envelope is stripped
+  if (credentials) credentials._clientSessionId = clientSessionId;
+
   // If same format, skip translation steps
   if (sourceFormat !== targetFormat) {
-    // Step 0: check direct source→target route (bypasses OpenAI pivot).
-    // Used by direct routes like claude→kiro that must not go through openai translation.
-    const directRoute = requestRegistry.get(`${sourceFormat}:${targetFormat}`);
-    if (directRoute) {
-      result = directRoute(model, result, stream, credentials);
+    // Direct route: if a translator is registered for this exact source:target
+    // pair, use it instead of pivoting through OpenAI. This is lossless for
+    // pairs like claude:kiro (avoids the claude->openai->kiro double-hop).
+    const directFn = requestRegistry.get(`${sourceFormat}:${targetFormat}`);
+    if (directFn) {
+      result = directFn(model, result, stream, credentials);
     } else {
       // Step 1: source -> openai (if source is not openai)
       if (sourceFormat !== FORMATS.OPENAI) {
@@ -106,9 +100,7 @@ export function translateRequest(
 
       // Step 2: openai -> target (if target is not openai)
       if (targetFormat !== FORMATS.OPENAI) {
-        const fromOpenAI = requestRegistry.get(
-          `${FORMATS.OPENAI}:${targetFormat}`,
-        );
+        const fromOpenAI = requestRegistry.get(`${FORMATS.OPENAI}:${targetFormat}`);
         if (fromOpenAI) {
           result = fromOpenAI(model, result, stream, credentials);
         }
@@ -130,18 +122,20 @@ export function translateRequest(
   // Always normalize to clean OpenAI format when target is OpenAI
   // This handles hybrid requests (e.g., OpenAI messages + Claude tools)
   if (targetFormat === FORMATS.OPENAI) {
-    result = filterToOpenAIFormat(result);
+    result = filterToOpenAIFormat(result, {
+      preserveCacheControl: !!PROVIDERS[provider]?.quirks?.preserveCacheControl,
+    });
   }
 
   // Final step: prepare request for Claude format endpoints
   if (targetFormat === FORMATS.CLAUDE) {
     const apiKey = credentials?.accessToken || credentials?.apiKey || null;
-    result = prepareClaudeRequest(result, provider, apiKey, connectionId);
+    result = prepareClaudeRequest(result, provider, apiKey, connectionId, credentials?.rawHeaders, clientSessionId);
   }
 
   // Claude cloaking: rename client tools with _cc suffix (anti-ban)
-  // Only for claude provider (not anthropic-compatible-*) with OAuth token
-  if (provider === "claude") {
+  // quirk: only providers flagged cloakToolsOnOAuth, and only with an OAuth token
+  if (PROVIDERS[provider]?.quirks?.cloakToolsOnOAuth) {
     const apiKey = credentials?.accessToken || credentials?.apiKey || null;
     if (apiKey?.includes("sk-ant-oat")) {
       const { body: cloakedBody, toolNameMap } = cloakClaudeTools(result);
@@ -167,10 +161,7 @@ export function translateRequest(
 // Translate response chunk: target -> openai -> source
 export function translateResponse(targetFormat, sourceFormat, chunk, state) {
   ensureInitialized();
-  // The target format identifies the upstream provider while response
-  // translators share one state object across direct and pivot routes.
   state.responseTargetFormat = targetFormat;
-
   // If same format, return as-is
   if (sourceFormat === targetFormat) {
     return chunk == null ? [] : [chunk];
@@ -179,16 +170,14 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
   let results = [chunk];
   let openaiResults = null; // Store OpenAI intermediate results
 
-  // Step 0: check direct target→source route (bypasses OpenAI pivot).
-  // Used by direct routes like kiro→claude that must not go through openai translation.
-  const directRoute = responseRegistry.get(`${targetFormat}:${sourceFormat}`);
-  if (directRoute) {
-    const converted = directRoute(chunk, state);
-    return converted == null
-      ? []
-      : Array.isArray(converted)
-        ? converted
-        : [converted];
+  // Direct route: if a response translator is registered for this exact
+  // target:source pair, use it instead of pivoting through OpenAI. Mirrors the
+  // request-side direct route (e.g. kiro:claude — KiroExecutor already emits
+  // OpenAI-shaped chunks, so this converts them straight to Claude SSE).
+  const directFn = responseRegistry.get(`${targetFormat}:${sourceFormat}`);
+  if (directFn) {
+    const converted = directFn(chunk, state);
+    return converted ? (Array.isArray(converted) ? converted : [converted]) : [];
   }
 
   // Step 1: target -> openai (if target is not openai)
@@ -206,17 +195,13 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
 
   // Step 2: openai -> source (if source is not openai)
   if (sourceFormat !== FORMATS.OPENAI) {
-    const fromOpenAI = responseRegistry.get(
-      `${FORMATS.OPENAI}:${sourceFormat}`,
-    );
+    const fromOpenAI = responseRegistry.get(`${FORMATS.OPENAI}:${sourceFormat}`);
     if (fromOpenAI) {
       const finalResults = [];
       for (const r of results) {
         const converted = fromOpenAI(r, state);
         if (converted) {
-          finalResults.push(
-            ...(Array.isArray(converted) ? converted : [converted]),
-          );
+          finalResults.push(...(Array.isArray(converted) ? converted : [converted]));
         }
       }
       results = finalResults;
@@ -224,11 +209,7 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
   }
 
   // Attach OpenAI intermediate results for logging
-  if (
-    openaiResults &&
-    sourceFormat !== FORMATS.OPENAI &&
-    targetFormat !== FORMATS.OPENAI
-  ) {
+  if (openaiResults && sourceFormat !== FORMATS.OPENAI && targetFormat !== FORMATS.OPENAI) {
     results._openaiIntermediate = openaiResults;
   }
 
@@ -254,8 +235,7 @@ export function initState(sourceFormat) {
     finishReason: null,
     finishReasonSent: false,
     usage: null,
-    contentBlockIndex: -1,
-    parseBuffer: "",
+    contentBlockIndex: -1
   };
 
   // Add openai-responses specific fields
@@ -281,14 +261,14 @@ export function initState(sourceFormat) {
       funcCallIds: {},
       funcArgsDone: {},
       funcItemDone: {},
-      completedSent: false,
+      completedSent: false
     };
   }
 
   return base;
 }
 
-// Initialize all translators (kept for backward compatibility)
+// Kept for backward compatibility; translators are already registered at import time.
 export function initTranslators() {
   ensureInitialized();
 }
@@ -296,7 +276,6 @@ export function initTranslators() {
 // Static side-effect imports: each module calls register() at load (works in ESM + bundler).
 import "./request/claude-to-openai.js";
 import "./request/openai-to-claude.js";
-import "./request/claude-to-kiro.js";
 import "./request/gemini-to-openai.js";
 import "./request/openai-to-gemini.js";
 import "./request/openai-to-vertex.js";
@@ -306,14 +285,14 @@ import "./request/openai-to-kiro.js";
 import "./request/openai-to-cursor.js";
 import "./request/openai-to-ollama.js";
 import "./request/openai-to-commandcode.js";
+import "./request/claude-to-kiro.js";
 import "./response/claude-to-openai.js";
 import "./response/openai-to-claude.js";
 import "./response/gemini-to-openai.js";
 import "./response/openai-to-antigravity.js";
 import "./response/openai-responses.js";
 import "./response/kiro-to-openai.js";
-import "./response/kiro-to-claude.js";
 import "./response/cursor-to-openai.js";
 import "./response/ollama-to-openai.js";
 import "./response/commandcode-to-openai.js";
-import "./response/openai-to-gemini.js";
+import "./response/kiro-to-claude.js";

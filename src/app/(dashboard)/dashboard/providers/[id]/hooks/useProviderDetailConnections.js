@@ -24,7 +24,12 @@ import {
   fetchRawProviderConnection,
 } from "../utils/providerDetailPageApi";
 
-const ACCOUNT_STATUS_FILTER_OPTIONS = ["all", "active", "inactive"];
+const ACCOUNT_STATUS_FILTER_OPTIONS = [
+  "all",
+  "active",
+  "inactive",
+  "reauth-required",
+];
 const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
   codex: "codexAutoPing",
@@ -36,6 +41,20 @@ function filterConnectionsByAccountStatus(connections, accountStatusFilter) {
   }
   if (accountStatusFilter === "inactive") {
     return connections.filter((connection) => connection.isActive === false);
+  }
+  if (accountStatusFilter === "reauth-required") {
+    return connections.filter(
+      (connection) =>
+        connection.provider === "codex" &&
+        (connection.testStatus === "401" ||
+          [
+            "401",
+            "refresh_token_expired",
+            "refresh_token_reused",
+            "refresh_token_invalidated",
+            "invalid_grant",
+          ].includes(connection.errorCode)),
+    );
   }
   return connections;
 }
@@ -337,6 +356,7 @@ export function useProviderDetailConnections({
       const payload = { isActive };
       if (isActive) {
         payload.testStatus = "active";
+        payload.errorCode = null;
         payload.lastError = null;
         payload.lastErrorAt = null;
       }
@@ -349,7 +369,12 @@ export function useProviderDetailConnections({
                   ...c,
                   isActive,
                   ...(isActive
-                    ? { testStatus: "active", lastError: null, lastErrorAt: null }
+                    ? {
+                        testStatus: "active",
+                        errorCode: null,
+                        lastError: null,
+                        lastErrorAt: null,
+                      }
                     : {}),
                 }
               : c,
@@ -1033,6 +1058,7 @@ export function useProviderDetailConnections({
           const res = await updateProviderConnection(connectionId, {
             lastError: null,
             lastErrorAt: null,
+            errorCode: null,
             testStatus: null,
           });
           if (!res.ok) failed += 1;
@@ -1047,7 +1073,13 @@ export function useProviderDetailConnections({
       applyConnections(
         connectionsRef.current.map((conn) =>
           clearedIds.has(conn.id)
-            ? { ...conn, lastError: null, lastErrorAt: null, testStatus: null }
+            ? {
+                ...conn,
+                lastError: null,
+                lastErrorAt: null,
+                errorCode: null,
+                testStatus: null,
+              }
             : conn,
         ),
       );

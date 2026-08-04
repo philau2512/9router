@@ -5,10 +5,12 @@ const ACCOUNT_STATUS_FILTERS = [
   { value: "all", label: "All accounts" },
   { value: "active", label: "Active" },
   { value: "inactive", label: "Turned off" },
+  { value: "reauth-required", label: "401 / Re-auth required" },
 ];
 
 export default function ProviderConnectionsToolbar({
   connectionsCount,
+  enabledConnectionsCount,
   providerId,
   allSelected,
   selectionSummary,
@@ -100,7 +102,10 @@ export default function ProviderConnectionsToolbar({
               className="h-7 rounded-[8px] border border-border bg-surface-2 px-2 text-xs text-text-main outline-none transition-colors hover:bg-surface-3 disabled:opacity-50"
               aria-label="Filter accounts by status"
             >
-              {ACCOUNT_STATUS_FILTERS.map((option) => (
+              {ACCOUNT_STATUS_FILTERS.filter(
+                (option) =>
+                  option.value !== "reauth-required" || providerId === "codex",
+              ).map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -171,7 +176,7 @@ export default function ProviderConnectionsToolbar({
           {/* Routing Configuration */}
           <div className="flex items-center gap-2 rounded-[8px] border border-border bg-surface-2 px-3 py-0.5 h-7">
             <span className="text-xs font-medium text-text-muted">
-              Round Robin
+              Round Robin ({enabledConnectionsCount})
             </span>
             <Toggle
               checked={providerStrategy === "round-robin"}

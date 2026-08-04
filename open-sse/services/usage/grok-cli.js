@@ -24,6 +24,12 @@
 
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { U, parseResetTime, toFiniteNumber } from "./shared.js";
+import {
+  GROK_CLI_CLIENT_IDENTIFIER,
+  GROK_CLI_USER_AGENT,
+  GROK_CLI_VERSION,
+} from "../../config/grokCli.js";
+import { decodeGrokCreditsFrame } from "./grokCliQuotaFrame.js";
 
 const USAGE = U("grok-cli");
 // CLIProxyAPI parity: quota needs BOTH billing shapes.
@@ -36,6 +42,13 @@ const PLAIN_URL = "https://cli-chat-proxy.grok.com/v1/billing";
 const USER_URL =
   USAGE.userUrl ||
   "https://cli-chat-proxy.grok.com/v1/user?include=subscription";
+
+// SuperGrok weekly pool.
+const GRPC_CREDITS_URL =
+  "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig";
+// Empty gRPC-web request frame (flag 0 + length 0). Without it upstream returns
+// grpc-status 13 "Missing request message." with a 0-byte body.
+const GRPC_WEB_EMPTY_REQUEST_FRAME = Buffer.from([0, 0, 0, 0, 0]);
 
 /** Unwrap protobuf-json `{ val: n }` or plain numbers/strings. */
 function unwrapVal(value, fallback = 0) {
@@ -51,10 +64,10 @@ function buildGrokCliHeaders(accessToken, providerSpecificData = {}) {
   const headers = {
     Authorization: `Bearer ${accessToken}`,
     Accept: "application/json",
-    "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+    "User-Agent": GROK_CLI_USER_AGENT,
     "x-xai-token-auth": "xai-grok-cli",
-    "x-grok-client-identifier": "grok-pager",
-    "x-grok-client-version": "0.2.93",
+    "x-grok-client-identifier": GROK_CLI_CLIENT_IDENTIFIER,
+    "x-grok-client-version": GROK_CLI_VERSION,
   };
   const email = psd.email;
   const userId = psd.userId || psd.principalId;
@@ -193,8 +206,11 @@ export function buildMergedGrokQuotas(
   const creditsConfig = creditsBilling?.config || creditsBilling || {};
   const plainConfig = plainBilling?.config || plainBilling || {};
 
-  const { quotas: creditQuotas, payAsYouGo } =
-    parseGrokCreditsShape(creditsConfig);
+  const { quotas: creditQuotas } = parseGrokCreditsShape(creditsConfig);
+  const onDemandCap = [creditsConfig, plainConfig]
+    .map((config) => unwrapVal(config.onDemandCap, NaN))
+    .find(Number.isFinite);
+  const payAsYouGo = onDemandCap > 0 ? "Enabled" : "Disabled";
 
   const quotas = {};
   if (creditQuotas["Weekly limit"])
@@ -408,6 +424,21 @@ export function parseGrokCliBilling(billing, user = null) {
     };
   }
 
+  // SuperGrok weekly shared-pool usage (subscription tier). creditUsagePercent is
+  // the single total used %; productUsage is a breakdown legend, NOT independent
+  // quotas — never split it into separate bars.
+  const usedPct = unwrapVal(
+    config.creditUsagePercent ?? config.credit_usage_percent ?? root.creditUsagePercent,
+    NaN,
+  );
+  if (Number.isFinite(usedPct) && usedPct >= 0) {
+    quotas["Weekly SuperGrok"] = makeQuota({
+      used: Math.max(0, Math.min(100, usedPct)),
+      total: 100,
+      resetAt: periodEnd,
+    });
+  }
+
   // Opportunistic richer credit envelopes (future / other account types)
   const creditBags = [
     root.credits,
@@ -468,6 +499,37 @@ export function parseGrokCliBilling(billing, user = null) {
     exhausted,
     rawConfig: config,
   };
+}
+
+/**
+ * Live SuperGrok weekly pool via gRPC-web GetGrokCreditsConfig.
+ * Fail-open: any network/auth/parse failure returns null.
+ * @returns {{ percentUsed: number, resetAt: string|null } | null}
+ */
+export async function fetchGrokCliCreditsConfig(accessToken, proxyOptions = null) {
+  if (!accessToken) return null;
+  try {
+    const res = await proxyAwareFetch(
+      GRPC_CREDITS_URL,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/grpc-web+proto",
+          "X-Grpc-Web": "1",
+          Accept: "application/grpc-web+proto",
+        },
+        body: GRPC_WEB_EMPTY_REQUEST_FRAME,
+      },
+      proxyOptions,
+    );
+    if (!res?.ok) return null;
+    const arrayBuffer = await res.arrayBuffer().catch(() => null);
+    if (!arrayBuffer) return null;
+    return decodeGrokCreditsFrame(Buffer.from(arrayBuffer));
+  } catch {
+    return null;
+  }
 }
 
 /**

@@ -2,8 +2,10 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import {
   buildKiroClientUserAgent,
+  KIRO_CODEWHISPERER_TARGET,
+  KIRO_ENDPOINT_FALLBACK_STATUSES,
   resolveKiroModel,
-  resolveKiroRequestProfileArn
+  resolveKiroRequestProfileArn,
 } from "../config/kiroConstants.js";
 import { randomUUID } from "crypto";
 import { refreshKiroToken, withRefreshAccountLog } from "../services/tokenRefresh.js";
@@ -304,7 +306,7 @@ export class KiroExecutor extends BaseExecutor {
     super("kiro", PROVIDERS.kiro);
   }
 
-  buildHeaders(credentials, stream = true) {
+  buildHeaders(credentials, stream = true, url = "") {
     const ua = buildKiroClientUserAgent({ credentials, surface: "streaming" });
     const headers = {
       ...this.config.headers,
@@ -313,22 +315,60 @@ export class KiroExecutor extends BaseExecutor {
       "x-amzn-kiro-agent-mode": "vibe",
       "x-amzn-codewhisperer-optout": "true",
       "Amz-Sdk-Request": "attempt=1; max=3",
-      "Amz-Sdk-Invocation-Id": randomUUID()
+      "Amz-Sdk-Invocation-Id": randomUUID(),
     };
+    delete headers["X-Amz-Target"];
+    if (url.includes("://codewhisperer.")) {
+      headers["X-Amz-Target"] = KIRO_CODEWHISPERER_TARGET;
+    }
+
     const authMethod = credentials?.providerSpecificData?.authMethod;
     const isApiKey = authMethod === "api_key";
-    const isExternalIdp = authMethod === "external_idp";
     const apiKey = credentials?.apiKey || (isApiKey ? credentials?.accessToken : null);
     if (isApiKey && apiKey) {
       headers.Authorization = `Bearer ${apiKey}`;
-      headers.tokentype = "API_KEY";
-    } else if (credentials.accessToken) {
+      headers.TokenType = "API_KEY";
+    } else if (credentials?.accessToken) {
       headers.Authorization = `Bearer ${credentials.accessToken}`;
-      if (isExternalIdp) headers.TokenType = "EXTERNAL_IDP";
+      if (authMethod === "external_idp") headers.TokenType = "EXTERNAL_IDP";
     }
-    const profileArn = resolveKiroRequestProfileArn(credentials, { endpoint: credentials?.__kiroResolvedUrl });
+
+    const profileArn = resolveKiroRequestProfileArn(credentials, { endpoint: url });
     if (profileArn) headers["x-amzn-codewhisperer-profile-arn"] = profileArn;
     return headers;
+  }
+
+  getOrderedBaseUrls(credentials) {
+    const baseUrls = this.getBaseUrls();
+    const authMethod = credentials?.providerSpecificData?.authMethod;
+    const needsAmazonSurface = ["api_key", "external_idp", "idc"].includes(authMethod);
+    if (!needsAmazonSurface) return baseUrls;
+
+    const region = (credentials?.providerSpecificData?.region || "us-east-1").trim();
+    const regionalize = (url) =>
+      region !== "us-east-1" && url.includes("amazonaws.com")
+        ? url.replace(/([a-z]+)\.[a-z0-9-]+\.amazonaws\.com/, `$1.${region}.amazonaws.com`)
+        : url;
+    const amazon = baseUrls.filter((url) => url.includes("amazonaws.com")).map(regionalize);
+    const others = baseUrls.filter((url) => !url.includes("amazonaws.com"));
+    if (authMethod === "api_key") {
+      const q = amazon.filter((url) => url.includes("://q."));
+      return q.length > 0 ? [...q, ...amazon.filter((url) => !url.includes("://q.")), ...others] : [...amazon, ...others];
+    }
+    return amazon.length > 0 ? [...amazon, ...others] : baseUrls;
+  }
+
+  buildUrl(model, stream, urlIndex = 0, credentials = null) {
+    const baseUrls = this.getOrderedBaseUrls(credentials);
+    const resolved = baseUrls[urlIndex] || baseUrls[0] || this.config.baseUrl;
+    if (credentials) credentials.__kiroResolvedUrl = resolved;
+    return resolved;
+  }
+
+  shouldRetry(status, urlIndex, credentials = null) {
+    if (credentials?.__kiroDisableEndpointFallback) return false;
+    const hasFallback = urlIndex + 1 < this.getFallbackCount();
+    return super.shouldRetry(status, urlIndex) || (hasFallback && KIRO_ENDPOINT_FALLBACK_STATUSES.has(status));
   }
 
   transformRequest(model, body, stream, credentials) {
@@ -338,25 +378,6 @@ export class KiroExecutor extends BaseExecutor {
       else delete body.profileArn;
     }
     return body;
-  }
-
-  buildUrl(model, stream, urlIndex = 0, credentials = null) {
-    const authMethod = credentials?.providerSpecificData?.authMethod;
-    const needsCodeWhispererSurface = ["api_key", "external_idp", "idc"].includes(authMethod);
-    const baseUrls = this.getBaseUrls();
-    const region = (credentials?.providerSpecificData?.region || "us-east-1").trim();
-    const regionalize = (url) => region && region !== "us-east-1" && url.includes("amazonaws.com")
-      ? url.replace(/([a-z]+)\.[a-z0-9-]+\.amazonaws\.com/, `$1.${region}.amazonaws.com`)
-      : url;
-    const amazon = baseUrls.filter((url) => url.includes("amazonaws.com")).map(regionalize);
-    const ordered = needsCodeWhispererSurface && amazon.length > 0
-      ? [...amazon, ...baseUrls.filter((url) => !url.includes("amazonaws.com"))]
-      : baseUrls;
-    const resolved = needsCodeWhispererSurface
-      ? ordered[urlIndex] || ordered[0]
-      : super.buildUrl(model, stream, urlIndex, credentials);
-    if (credentials) credentials.__kiroResolvedUrl = resolved;
-    return resolved;
   }
 
   async execute(args) {
@@ -457,8 +478,13 @@ export class KiroExecutor extends BaseExecutor {
       return encodeSSEError("invalid_kiro_tool_call", first.message, first.diagnostics);
     }
     const repairKind = ["ellipsis", "short_final", "invalid_tool"].includes(first.kind) ? first.kind : null;
+    const retryCredentials = {
+      ...args.credentials,
+      __kiroDisableEndpointFallback: true,
+    };
     const retry = await BaseExecutor.prototype.execute.call(this, {
       ...args,
+      credentials: retryCredentials,
       body: repairKind
         ? appendRepairInstruction(args.body, repairKind === "invalid_tool" ? "tool" : repairKind)
         : structuredClone(args.body || {}),

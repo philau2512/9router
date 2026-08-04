@@ -216,6 +216,14 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
       };
     }
     if (newCredentials.projectId) updates.projectId = newCredentials.projectId;
+    if (newCredentials.testStatus !== undefined)
+      updates.testStatus = newCredentials.testStatus;
+    if (newCredentials.errorCode !== undefined)
+      updates.errorCode = newCredentials.errorCode;
+    if (newCredentials.lastError !== undefined)
+      updates.lastError = newCredentials.lastError;
+    if (newCredentials.lastErrorAt !== undefined)
+      updates.lastErrorAt = newCredentials.lastErrorAt;
 
     const account =
       newCredentials.connectionName ||
@@ -291,7 +299,19 @@ export async function checkAndRefreshToken(provider, credentials) {
     });
 
     const newCreds = await _refreshProviderCredentials(provider, creds, log);
-    if (newCreds?.accessToken || newCreds?.apiKey || newCreds?.copilotToken) {
+    if (provider === "codex" && isCodexReauthRequired(newCreds)) {
+      await updateProviderCredentials(creds.connectionId, {
+        testStatus: getCodexRefreshFailureStatus(newCreds),
+        errorCode: getCodexRefreshFailureCode(newCreds),
+        lastError: "Refresh token invalid or already used. Re-auth required.",
+        lastErrorAt: new Date().toISOString(),
+        connectionId: creds.connectionId,
+        connectionName: creds.connectionName,
+        name: creds.name,
+        email: creds.email,
+        displayName: creds.displayName,
+      });
+    } else if (newCreds?.accessToken || newCreds?.apiKey || newCreds?.copilotToken) {
       const mergedCreds = {
         ...newCreds,
         existingProviderSpecificData: creds.providerSpecificData,
@@ -397,6 +417,18 @@ function hasCodexRefreshCredentials(result) {
   return Boolean(result?.accessToken);
 }
 
+function isCodexReauthRequired(result) {
+  return isUnrecoverableRefreshError(result);
+}
+
+function getCodexRefreshFailureStatus(result) {
+  return isCodexReauthRequired(result) ? "401" : "error";
+}
+
+function getCodexRefreshFailureCode(result) {
+  return result?.status ? String(result.status) : result?.code || null;
+}
+
 async function refreshCodexWithRetry(credentials) {
   for (let attempt = 1; attempt <= CODEX_AUTO_REFRESH.maxAttempts; attempt++) {
     let result = null;
@@ -471,13 +503,25 @@ export async function refreshCodexConnection(connection, options = {}) {
     });
 
     if (!result?.accessToken) {
-      const errorMessage = isUnrecoverableRefreshError(result)
+      const unrecoverable = isCodexReauthRequired(result);
+      const errorMessage = unrecoverable
         ? "Refresh token invalid or already used. Re-auth required."
         : "Failed to refresh Codex token";
+
+      if (unrecoverable) {
+        await updateProviderCredentials(connection.id, {
+          testStatus: getCodexRefreshFailureStatus(result),
+          errorCode: getCodexRefreshFailureCode(result),
+          lastError: errorMessage,
+          lastErrorAt: new Date().toISOString(),
+          ...accountMeta,
+        });
+      }
+
       return {
         ok: false,
         error: errorMessage,
-        unrecoverable: isUnrecoverableRefreshError(result),
+        unrecoverable,
       };
     }
 
@@ -494,6 +538,7 @@ export async function refreshCodexConnection(connection, options = {}) {
       providerSpecificData: mergedProviderSpecificData,
       existingProviderSpecificData: freshConnection.providerSpecificData,
       testStatus: "active",
+      errorCode: null,
       lastError: null,
       lastErrorAt: null,
       // Log-only identity (not persisted as credential fields)

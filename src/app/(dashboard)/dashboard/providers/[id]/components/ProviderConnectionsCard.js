@@ -84,10 +84,15 @@ export default function ProviderConnectionsCard({
     return <NoAuthProxyCard providerId={providerId} />;
   }
 
+  const enabledConnectionsCount = connections.filter(
+    (connection) => connection?.isActive !== false,
+  ).length;
+
   return (
     <Card>
       <ProviderConnectionsToolbar
         connectionsCount={connections.length}
+        enabledConnectionsCount={enabledConnectionsCount}
         providerId={providerId}
         allSelected={allSelected}
         selectionSummary={selectionSummary}

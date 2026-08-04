@@ -1,3 +1,10 @@
+import {
+  ensureToolCallIds,
+  fixMissingToolResponses,
+} from "../helpers/toolCallHelper.js";
+
+export { ensureToolCallIds, fixMissingToolResponses };
+
 /**
  * Strip orphaned tool results from a request body before upstream dispatch.
  *

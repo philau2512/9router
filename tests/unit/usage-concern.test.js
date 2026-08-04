@@ -71,10 +71,7 @@ describe("toOpenAIUsage", () => {
   });
 
   it("commandcode: keeps totalTokens fallback", () => {
-    const u = toOpenAIUsage(
-      { inputTokens: 8, outputTokens: 2, totalTokens: 99 },
-      "commandcode",
-    );
+    const u = toOpenAIUsage({ inputTokens: 8, outputTokens: 2, totalTokens: 99 }, "commandcode");
     expect(u.prompt_tokens).toBe(8);
     expect(u.completion_tokens).toBe(2);
     expect(u.total_tokens).toBe(99);

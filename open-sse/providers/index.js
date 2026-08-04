@@ -18,12 +18,7 @@ import {
 } from "../config/providerModels.js";
 
 export const PROVIDERS = TRANSPORTS;
-export const PROVIDER_MODELS = { ...CONFIG_PROVIDER_MODELS };
-// The runtime config retains model tables by provider id; upstream callers use
-// the short Grok CLI alias defined by its registry entry.
-if (PROVIDER_MODELS["grok-cli"] && !PROVIDER_MODELS.gcli) {
-  PROVIDER_MODELS.gcli = PROVIDER_MODELS["grok-cli"];
-}
+export const PROVIDER_MODELS = CONFIG_PROVIDER_MODELS;
 
 export { PROVIDER_ID_TO_ALIAS, getModelsByProviderId, getModelTargetFormat };
 

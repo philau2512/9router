@@ -449,6 +449,7 @@ async function handleSingleModelChat(
       const pid = await getProjectIdForConnection(
         credentials.connectionId,
         refreshedCredentials.accessToken,
+        provider,
       );
       if (pid) {
         refreshedCredentials.projectId = pid;

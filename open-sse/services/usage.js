@@ -20,6 +20,10 @@ import { getClaudeUsage } from "./usage/claude.js";
 import { getCodexUsage, getCodexRateLimitResetCredits } from "./usage/codex.js";
 import { getKiroUsage } from "./usage/kiro.js";
 import { getMiniMaxUsage } from "./usage/minimax.js";
+import { getCodeBuddyCnUsage } from "./usage/codebuddy-cn.js";
+import { getGrokCliUsage } from "./usage/grok-cli.js";
+import { getKimiUsage } from "./usage/kimi.js";
+import { getDeepseekUsage } from "./usage/deepseek.js";
 import {
   getQwenUsage,
   getIflowUsage,
@@ -27,8 +31,8 @@ import {
   getGlmUsage,
 } from "./usage/misc.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { getCodeBuddyCnUsage } from "./usage/codebuddy-cn.js";
-import { getGrokCliUsage } from "./usage/grok-cli.js";
+
+export { getCodexRateLimitResetCredits };
 
 // Vercel AI Gateway credits endpoint
 // Returns { balance: "95.50", total_used: "4.50" } (USD as decimal strings).
@@ -39,6 +43,30 @@ const VERCEL_AI_GATEWAY_CREDITS_URL = "https://ai-gateway.vercel.sh/v1/credits";
  * @param {Object} connection - Provider connection with accessToken
  * @returns {Object} Usage data with quotas
  */
+// provider → usage handler (ctx carries every arg each handler needs)
+const USAGE_HANDLERS = {
+  github: (c) => getGitHubUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
+  "gemini-cli": (c) => getGeminiUsage(c.accessToken, c.providerDataWithProjectId, c.proxyOptions),
+  antigravity: (c) => getAntigravityUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
+  claude: (c) => getClaudeUsage(c.accessToken, c.proxyOptions),
+  codex: (c) => getCodexUsage(c.accessToken, c.proxyOptions),
+  kiro: (c) => getKiroUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
+  qoder: (c) => getQoderUsage(c.accessToken, c.proxyOptions),
+  qwen: (c) => getQwenUsage(c.accessToken, c.providerSpecificData),
+  iflow: (c) => getIflowUsage(c.accessToken),
+  ollama: (c) => getOllamaUsage(c.accessToken),
+  glm: (c) => getGlmUsage(c.apiKey, c.provider, c.proxyOptions),
+  "glm-cn": (c) => getGlmUsage(c.apiKey, c.provider, c.proxyOptions),
+  minimax: (c) => getMiniMaxUsage(c.apiKey, c.provider, c.proxyOptions),
+  "minimax-cn": (c) => getMiniMaxUsage(c.apiKey, c.provider, c.proxyOptions),
+  "vercel-ai-gateway": (c) => getVercelAiGatewayUsage(c.apiKey, c.proxyOptions),
+  "codebuddy-cn": (c) => getCodeBuddyCnUsage(c.accessToken, c.apiKey, c.providerSpecificData, c.proxyOptions),
+  "grok-cli": (c) => getGrokCliUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
+  gcli: (c) => getGrokCliUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
+  xai: (c) => getGrokCliUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
+  kimi: (c) => getKimiUsage(c.accessToken, c.apiKey, c.proxyOptions, c.providerSpecificData),
+  deepseek: (c) => getDeepseekUsage(c.apiKey, c.proxyOptions),
+};
 export async function getUsageForProvider(connection, proxyOptions = null) {
   const { provider, accessToken, apiKey, providerSpecificData, projectId } =
     connection;
@@ -47,72 +75,18 @@ export async function getUsageForProvider(connection, proxyOptions = null) {
     ...(projectId ? { projectId } : {}),
   };
 
-  switch (provider) {
-    case "github":
-      return await getGitHubUsage(
-        accessToken,
-        providerSpecificData,
-        proxyOptions,
-      );
-    case "gemini-cli":
-      return await getGeminiUsage(
-        accessToken,
-        providerDataWithProjectId,
-        proxyOptions,
-      );
-    case "antigravity":
-      return await getAntigravityUsage(
-        accessToken,
-        providerSpecificData,
-        proxyOptions,
-      );
-    case "claude":
-      return await getClaudeUsage(accessToken, proxyOptions);
-    case "codex":
-      return await getCodexUsage(accessToken, proxyOptions);
-    case "kiro":
-      return await getKiroUsage(
-        accessToken,
-        providerSpecificData,
-        proxyOptions,
-      );
-    case "qwen":
-      return await getQwenUsage(accessToken, providerSpecificData);
-    case "iflow":
-      return await getIflowUsage(accessToken);
-    case "ollama":
-      return await getOllamaUsage(accessToken);
-    case "glm":
-    case "glm-cn":
-      return await getGlmUsage(apiKey, provider, proxyOptions);
-    case "minimax":
-    case "minimax-cn":
-      return await getMiniMaxUsage(apiKey, provider, proxyOptions);
-    case "qoder":
-      return await getQoderUsage(accessToken, proxyOptions);
-    case "vercel-ai-gateway":
-      return await getVercelAiGatewayUsage(apiKey, proxyOptions);
-    case "codebuddy-cn":
-      return await getCodeBuddyCnUsage(
-        accessToken,
-        apiKey,
-        providerSpecificData,
-        proxyOptions,
-      );
-    case "grok-cli":
-    case "gcli":
-    case "xai":
-      // Grok Build OAuth accounts are stored under provider "xai" (authType
-      // oauth); "grok-cli"/"gcli" are the CLI aliases. All share the same
-      // cli-chat-proxy.grok.com/v1/billing endpoint. See upstream a11937cdd.
-      return await getGrokCliUsage(
-        accessToken,
-        providerSpecificData,
-        proxyOptions,
-      );
-    default:
-      return { message: `Usage API not implemented for ${provider}` };
+  const handler = USAGE_HANDLERS[provider];
+  if (handler) {
+    return handler({
+      provider,
+      accessToken,
+      apiKey,
+      providerSpecificData,
+      providerDataWithProjectId,
+      proxyOptions,
+    });
   }
+  return { message: `Usage API not implemented for ${provider}` };
 }
 
 async function getVercelAiGatewayUsage(apiKey, proxyOptions = null) {

@@ -10,7 +10,9 @@ export const USAGE_SUPPORTED_PROVIDERS = [
   "kiro",
   "github",
   "codex",
+  "kimi",
   "kimi-coding",
+  "deepseek",
   "ollama",
   "gemini-cli",
   "glm",
@@ -33,4 +35,6 @@ export const USAGE_APIKEY_PROVIDERS = [
   "minimax-cn",
   "vercel-ai-gateway",
   "kiro",
+  "kimi",
+  "deepseek",
 ];

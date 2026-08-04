@@ -102,6 +102,36 @@ describe("provider and quota UI reachability", () => {
     expect(quotaCard).toContain('conn.authType === "oauth"');
   });
 
+  it("keeps the enabled-account count visible in the Round Robin toolbar", async () => {
+    const [card, toolbar] = await Promise.all([
+      source(
+        "src/app/(dashboard)/dashboard/providers/[id]/components/ProviderConnectionsCard.js",
+      ),
+      source(
+        "src/app/(dashboard)/dashboard/providers/[id]/components/ProviderConnectionsToolbar.js",
+      ),
+    ]);
+
+    expect(card).toContain("connection?.isActive !== false");
+    expect(card).toContain("enabledConnectionsCount={enabledConnectionsCount}");
+    expect(toolbar).toContain("Round Robin ({enabledConnectionsCount})");
+  });
+
+  it("keeps the Round Robin label tied to enabled connection count", async () => {
+    const [card, toolbar] = await Promise.all([
+      source(
+        "src/app/(dashboard)/dashboard/providers/[id]/components/ProviderConnectionsCard.js",
+      ),
+      source(
+        "src/app/(dashboard)/dashboard/providers/[id]/components/ProviderConnectionsToolbar.js",
+      ),
+    ]);
+
+    expect(card).toContain("connection?.isActive !== false");
+    expect(card).toContain("enabledConnectionsCount={enabledConnectionsCount}");
+    expect(toolbar).toContain("Round Robin ({enabledConnectionsCount})");
+  });
+
   it("keeps Codex access-token connections eligible for quota tracking", async () => {
     const [connectionsRoute, usageRoute] = await Promise.all([
       source("src/app/api/providers/client/route.js"),

@@ -20,7 +20,9 @@ const {
   URL_PATTERNS,
   MODEL_SYNONYMS,
   MODEL_PATTERNS,
+  MODEL_NO_MAP,
   getToolForHost,
+  extractModel,
 } = require("./config");
 const { DATA_DIR, MITM_DIR } = require("./paths");
 const { getCertForDomain } = require("./cert/generate");
@@ -106,47 +108,6 @@ function collectBodyRaw(req) {
     req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
-}
-
-// Extract model from URL path (Gemini), body (OpenAI/Anthropic), or Kiro conversationState
-function extractModel(url, body) {
-  const urlMatch = url.match(/\/models\/([^/:]+)/);
-  if (urlMatch) return urlMatch[1];
-
-  // Skip parsing if body is binary (AWS EventStream, Protocol Buffers, etc.)
-  if (isBinaryData(body)) return null;
-
-  try {
-    const parsed = JSON.parse(body.toString());
-    if (parsed.conversationState) {
-      return (
-        parsed.conversationState.currentMessage?.userInputMessage?.modelId ||
-        null
-      );
-    }
-    return parsed.model || null;
-  } catch {
-    return null;
-  }
-}
-
-// Detect binary data vs JSON text
-function isBinaryData(buffer) {
-  if (!buffer || buffer.length === 0) return false;
-  // AWS EventStream signature: first 4 bytes = frame length (big-endian uint32)
-  // Check for non-printable chars in first 100 bytes (common in binary protocols)
-  const sample = buffer.slice(0, Math.min(100, buffer.length));
-  let nonPrintable = 0;
-  for (let i = 0; i < sample.length; i++) {
-    const byte = sample[i];
-    // Count non-ASCII printable chars (excluding whitespace)
-    if (byte < 0x20 && byte !== 0x09 && byte !== 0x0a && byte !== 0x0d) {
-      nonPrintable++;
-    }
-    if (byte > 0x7e) nonPrintable++;
-  }
-  // If >30% non-printable, treat as binary
-  return nonPrintable / sample.length > 0.3;
 }
 
 function getMappedModel(tool, model) {
@@ -472,6 +433,10 @@ const server = https.createServer(sslOptions, async (req, res) => {
     }
 
     const model = extractModel(req.url, bodyBuffer);
+    const noMapPatterns = MODEL_NO_MAP?.[tool] || [];
+    if (noMapPatterns.some((pattern) => pattern.test(model || ""))) {
+      return passthrough(req, res, bodyBuffer);
+    }
     const mappedModel = getMappedModel(tool, model);
     if (!mappedModel) {
       return passthrough(req, res, bodyBuffer);
