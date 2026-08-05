@@ -610,7 +610,7 @@ describe("openaiToKiroRequest", () => {
       expect(systemPromptOf(result)).toContain("<max_thinking_length>16000</max_thinking_length>");
     });
 
-    it("keeps top-level systemPrompt stable across turns", () => {
+    it("keeps systemPrompt metadata stable without serializing it upstream", () => {
       const first = openaiToKiroRequest(
         "claude-sonnet-4.6-thinking",
         { messages: [{ role: "user", content: "first" }] },
@@ -626,6 +626,11 @@ describe("openaiToKiroRequest", () => {
 
       expect(first.systemPrompt).toBe(second.systemPrompt);
       expect(first.systemPrompt).not.toContain("Current time");
+      expect(Object.keys(first)).not.toContain("systemPrompt");
+      expect(JSON.stringify(first)).not.toContain('"systemPrompt"');
+      expect(first.conversationState.currentMessage.userInputMessage.content).toContain(
+        "<thinking_mode>enabled</thinking_mode>",
+      );
       expect(first.conversationState.currentMessage.userInputMessage.content).toContain(
         "Current time",
       );
