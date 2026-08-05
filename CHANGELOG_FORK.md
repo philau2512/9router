@@ -1,5 +1,34 @@
 # Fork changelog
 
+## 2026-08-05 — Fix Kiro `REQUEST_BODY_INVALID` với thinking/agentic models
+
+### Vấn đề
+
+User `elza36890922` gặp lỗi `REQUEST_BODY_INVALID` khi dùng `kiro-combo → kiro/claude-sonnet-4.5-thinking` qua OpenAI Responses format với 10 messages, 22 tools và `max_output_tokens: 65536`.
+
+### Root cause
+
+Translator `openai-to-kiro.js` tự động thêm top-level field `systemPrompt` vào payload Kiro cho thinking/agentic variants. Kiro server từ chối schema này và trả về `REQUEST_BODY_INVALID`.
+
+### Fix
+
+- **File:** `open-sse/translator/request/openai-to-kiro.js`
+  - Không serialize `systemPrompt` vào outgoing payload (dùng `Object.defineProperty` với `enumerable: false`).
+  - Giữ `systemPrompt` dưới dạng metadata cho session replay compatibility.
+  - System prompt đã được prepend vào replayed conversation content, không cần gửi riêng field này lên provider wire.
+
+- **File:** `tests/unit/openai-to-kiro.test.js`
+  - Thêm assertion xác nhận `systemPrompt` không xuất hiện trong `Object.keys()` và `JSON.stringify()`.
+  - Verify thinking mode tags vẫn xuất hiện trong conversation content.
+
+### Verification
+
+- Local dev `localhost:20127`: cả `kr/claude-sonnet-4.5-agentic` và `kr/claude-sonnet-4.5-thinking` đều trả `200 OK`.
+- Regression tests: 79/79 Kiro canonical translator tests passed.
+- Production server `localhost:20128` với real API key cũng hoạt động bình thường.
+
+---
+
 ## 2026-08-04 — Merge upstream into `sync-upstream`
 
 ### Upstream integration
