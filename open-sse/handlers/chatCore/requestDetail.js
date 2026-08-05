@@ -147,3 +147,20 @@ export function saveUsageStats({
     performance: performance || null,
   }).catch(() => {});
 }
+
+export function formatDoneLine({ usage, latency }) {
+  const u = usage || {};
+  const inTok = u.prompt_tokens ?? u.input_tokens ?? 0;
+  const outTok = u.completion_tokens ?? u.output_tokens ?? 0;
+  const cacheRead = u.cache_read_input_tokens ?? u.cached_tokens ?? u.prompt_tokens_details?.cached_tokens ?? 0;
+  const cacheCreate = u.cache_creation_input_tokens ?? 0;
+  let inStr = `IN ${inTok}`;
+  if (cacheRead || cacheCreate) {
+    const parts = [];
+    if (cacheRead) parts.push(`↻${cacheRead}`);
+    if (cacheCreate) parts.push(`+${cacheCreate}`);
+    inStr += ` (CACHE ${parts.join(" ")})`;
+  }
+  const ttftStr = latency?.ttft ? ` · TTFT ${latency.ttft}ms` : "";
+  return `DONE ${latency?.total ?? 0}ms${ttftStr} · ${inStr} · OUT ${outTok}`;
+}
