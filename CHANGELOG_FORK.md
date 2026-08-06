@@ -1,5 +1,29 @@
 # Fork changelog
 
+## 2026-08-06 — Fix Kiro `REQUEST_BODY_INVALID` với Claude CLI → Kiro/auto
+
+### Vấn đề
+
+User gặp lỗi `REQUEST_BODY_INVALID` khi chat từ Claude CLI với model `kiro/auto`. Error xảy ra tương tự bug đã fix ngày 2026-08-05 nhưng ở translator route khác.
+
+### Root cause
+
+Translator `claude-to-kiro.js` (direct route, không pivot qua OpenAI) vẫn serialize `systemPrompt` vào top-level payload. Kiro server từ chối schema này với `REQUEST_BODY_INVALID`.
+
+### Fix
+
+- **File:** `open-sse/translator/request/claude-to-kiro.js`
+  - Không serialize `systemPrompt` vào outgoing payload (dùng `Object.defineProperty` với `enumerable: false`).
+  - Giữ `systemPrompt` dưới dạng metadata cho session replay compatibility.
+  - System prompt đã được prepend vào replayed conversation content.
+
+### Verification
+
+- Node test: `systemPrompt` không xuất hiện trong `Object.keys()` và `JSON.stringify()` nhưng vẫn accessible qua property access.
+- Regression: 43/43 OpenAI-to-Kiro tests passed (pattern tương tự).
+
+---
+
 ## 2026-08-05 — Fix Kiro `REQUEST_BODY_INVALID` với thinking/agentic models
 
 ### Vấn đề
