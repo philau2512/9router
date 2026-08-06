@@ -170,6 +170,57 @@ describe("runBackgroundTokenRefreshTick", () => {
     ).resolves.toBeUndefined();
     expect(refreshConnection).not.toHaveBeenCalled();
   });
+
+  it("skips tick when checkEnabled returns false", async () => {
+    const refreshConnection = vi.fn();
+    const loadConnections = vi.fn(async () => [
+      conn({ id: "c1", expiresAt: new Date(NOW + 5 * 60 * 1000).toISOString() }),
+    ]);
+    const checkEnabled = vi.fn(async () => false);
+
+    const { runBackgroundTokenRefreshTick } = await import(
+      "../../src/sse/services/backgroundTokenRefresh.js"
+    );
+
+    await runBackgroundTokenRefreshTick({
+      loadConnections,
+      refreshConnection,
+      checkEnabled,
+    });
+
+    expect(checkEnabled).toHaveBeenCalled();
+    expect(loadConnections).not.toHaveBeenCalled();
+    expect(refreshConnection).not.toHaveBeenCalled();
+  });
+
+  it("refreshes connections in chunked batches", async () => {
+    const list = Array.from({ length: 7 }, (_, i) =>
+      conn({
+        id: `conn-${i}`,
+        expiresAt: new Date(NOW + 5 * 60 * 1000).toISOString(),
+      })
+    );
+    const loadConnections = vi.fn(async () => list);
+    const refreshedIds = [];
+    const refreshConnection = vi.fn(async (c) => {
+      refreshedIds.push(c.id);
+    });
+
+    const { runBackgroundTokenRefreshTick } = await import(
+      "../../src/sse/services/backgroundTokenRefresh.js"
+    );
+
+    await runBackgroundTokenRefreshTick({
+      loadConnections,
+      refreshConnection,
+      concurrency: 3,
+      batchDelayMs: 0,
+    });
+
+    expect(refreshConnection).toHaveBeenCalledTimes(7);
+    expect(refreshedIds).toHaveLength(7);
+    expect(refreshedIds[0]).toBe("conn-0");
+  });
 });
 
 describe("start/stop guards", () => {

@@ -71,6 +71,23 @@ export function selectConnectionsNeedingRefresh(connections, nowMs = Date.now())
   return out;
 }
 
+export const CONCURRENCY_LIMIT = 5;
+export const BATCH_DELAY_MS = 100;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function isRefreshEnabledBySettings() {
+  try {
+    const { getSettings } = await import("../../lib/db/repos/settingsRepo.js");
+    const settings = await getSettings();
+    return settings?.backgroundTokenRefreshEnabled !== false;
+  } catch {
+    return true; // fail-open default
+  }
+}
+
 async function loadActiveConnections() {
   // Dynamic import avoids circular load with db / app graph at module eval time.
   const { getProviderConnections } = await import("../../lib/db/repos/connectionsRepo.js");
@@ -84,7 +101,8 @@ async function refreshOne(connection) {
 
 /**
  * One scheduler tick. Fail-open at top level and per connection.
- * @param {{ loadConnections?: Function, refreshConnection?: Function }} [deps]
+ * Supports concurrency control & chunking for high connection volume.
+ * @param {{ loadConnections?: Function, refreshConnection?: Function, checkEnabled?: Function, concurrency?: number, batchDelayMs?: number }} [deps]
  */
 export async function runBackgroundTokenRefreshTick(deps = {}) {
   if (tickRunning) {
@@ -93,6 +111,13 @@ export async function runBackgroundTokenRefreshTick(deps = {}) {
   }
   tickRunning = true;
   try {
+    const checkEnabled = deps.checkEnabled || isRefreshEnabledBySettings;
+    const enabled = await checkEnabled();
+    if (!enabled) {
+      log.debug("BG_TOKEN_REFRESH", "Disabled via backgroundTokenRefreshEnabled setting");
+      return;
+    }
+
     const load = deps.loadConnections || loadActiveConnections;
     const refresh = deps.refreshConnection || refreshOne;
 
@@ -106,28 +131,43 @@ export async function runBackgroundTokenRefreshTick(deps = {}) {
       return;
     }
 
+    const concurrency =
+      Number.isFinite(deps.concurrency) && deps.concurrency > 0
+        ? deps.concurrency
+        : CONCURRENCY_LIMIT;
+    const batchDelay =
+      Number.isFinite(deps.batchDelayMs) ? deps.batchDelayMs : BATCH_DELAY_MS;
+
     log.info("BG_TOKEN_REFRESH", "Refreshing due OAuth connections", {
       due: due.length,
-      ids: due.map((c) => c.id).filter(Boolean),
+      ids: due.map((c) => c.id || c.connectionId).filter(Boolean),
+      concurrency,
     });
 
-    await Promise.allSettled(
-      due.map(async (conn) => {
-        try {
-          await refresh(conn);
-          log.info("BG_TOKEN_REFRESH", "Connection refresh finished", {
-            id: conn.id,
-            provider: conn.provider,
-          });
-        } catch (err) {
-          log.warn("BG_TOKEN_REFRESH", "Connection refresh failed (swallowed)", {
-            id: conn?.id,
-            provider: conn?.provider,
-            error: err?.message ?? String(err),
-          });
-        }
-      })
-    );
+    for (let i = 0; i < due.length; i += concurrency) {
+      const chunk = due.slice(i, i + concurrency);
+      await Promise.allSettled(
+        chunk.map(async (conn) => {
+          const connId = conn.id || conn.connectionId;
+          try {
+            await refresh(conn);
+            log.info("BG_TOKEN_REFRESH", "Connection refresh finished", {
+              id: connId,
+              provider: conn.provider,
+            });
+          } catch (err) {
+            log.warn("BG_TOKEN_REFRESH", "Connection refresh failed (swallowed)", {
+              id: connId,
+              provider: conn?.provider,
+              error: err?.message ?? String(err),
+            });
+          }
+        })
+      );
+      if (i + concurrency < due.length && batchDelay > 0) {
+        await sleep(batchDelay);
+      }
+    }
   } catch (err) {
     log.warn("BG_TOKEN_REFRESH", "Tick failed (swallowed)", {
       error: err?.message ?? String(err),

@@ -10,12 +10,14 @@ export function StreamStabilityCard({
   midStreamResumeEnabled,
   debugLogEnabled,
   enableRequestLogs,
+  backgroundTokenRefreshEnabled = true,
   onAutoRetryOverloadedChange,
   onMaxRetryAttemptsChange,
   onRetryDelayMsChange,
   onMidStreamResumeEnabledChange,
   onDebugLogEnabledChange,
   onEnableRequestLogsChange,
+  onBackgroundTokenRefreshEnabledChange,
 }) {
   return (
     <Card id="stream-stability">
@@ -93,6 +95,22 @@ export function StreamStabilityCard({
 
       <div className="flex items-center justify-between pt-4 border-t border-border gap-4">
         <div className="min-w-0 flex-1">
+          <p className="font-medium">Background OAuth Token Refresh</p>
+          <p className="text-sm text-text-muted">
+            Tự động refresh access token ngầm (Kiro, Codex, Claude, Google,...)
+            trước khi hết hạn. Hỗ trợ chia đợt (chunking) cho tài khoản số lượng lớn.
+          </p>
+        </div>
+        <Toggle
+          checked={backgroundTokenRefreshEnabled}
+          onChange={() =>
+            onBackgroundTokenRefreshEnabledChange?.(!backgroundTokenRefreshEnabled)
+          }
+        />
+      </div>
+
+      <div className="flex items-center justify-between pt-4 border-t border-border gap-4">
+        <div className="min-w-0 flex-1">
           <p className="font-medium">Debug Logging</p>
           <p className="text-sm text-text-muted">
             Bật log chi tiết (DEBUG level) để chẩn đoán stream/tool. Áp dụng
@@ -131,10 +149,12 @@ StreamStabilityCard.propTypes = {
   midStreamResumeEnabled: PropTypes.bool.isRequired,
   debugLogEnabled: PropTypes.bool.isRequired,
   enableRequestLogs: PropTypes.bool.isRequired,
+  backgroundTokenRefreshEnabled: PropTypes.bool,
   onAutoRetryOverloadedChange: PropTypes.func.isRequired,
   onMaxRetryAttemptsChange: PropTypes.func.isRequired,
   onRetryDelayMsChange: PropTypes.func.isRequired,
   onMidStreamResumeEnabledChange: PropTypes.func.isRequired,
   onDebugLogEnabledChange: PropTypes.func.isRequired,
   onEnableRequestLogsChange: PropTypes.func.isRequired,
+  onBackgroundTokenRefreshEnabledChange: PropTypes.func,
 };
