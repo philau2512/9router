@@ -28,6 +28,7 @@ import {
   initState,
 } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
+import { translateNonStreamingResponse } from "../../open-sse/handlers/chatCore/nonStreamingHandler.js";
 import { AntigravityExecutor } from "../../open-sse/executors/antigravity.js";
 import {
   getAntigravitySessionKey,
@@ -192,6 +193,90 @@ describe("fix1: empty STOP candidate must not look like a successful answer", ()
       expect(hasCompleted, "empty STOP must not complete successfully").toBe(false);
     },
   );
+
+  it(
+    "Antigravity malformed function calls become response.failed with provider details",
+    () => {
+      const state = initState(FORMATS.OPENAI_RESPONSES);
+      const events = translateResponse(
+        FORMATS.ANTIGRAVITY,
+        FORMATS.OPENAI_RESPONSES,
+        {
+          response: {
+            candidates: [
+              {
+                content: {
+                  role: "model",
+                  parts: [
+                    {
+                      thought: true,
+                      text: "Thinking before selecting a tool",
+                    },
+                  ],
+                },
+                finishReason: "MALFORMED_FUNCTION_CALL",
+                finishMessage:
+                  "Malformed function call: Function call is empty - no input to parse.",
+              },
+            ],
+            usageMetadata: {
+              promptTokenCount: 27088,
+              totalTokenCount: 27131,
+              thoughtsTokenCount: 43,
+            },
+            modelVersion: "gemini-3.6-flash-tiered",
+            responseId: "malformed-function-call-fixture",
+          },
+        },
+        state,
+      );
+
+      const failed = (events || []).find(
+        (event) => event.event === "response.failed",
+      );
+      const completed = (events || []).find(
+        (event) => event.event === "response.completed",
+      );
+
+      expect(failed?.data.response.status).toBe("failed");
+      expect(failed?.data.response.error).toEqual({
+        code: "malformed_function_call",
+        message:
+          "Malformed function call: Function call is empty - no input to parse.",
+      });
+      expect(completed).toBeUndefined();
+    },
+  );
+
+  it(
+    "non-streaming Antigravity malformed function calls preserve provider errors",
+    () => {
+      const result = translateNonStreamingResponse(
+        {
+          response: {
+            candidates: [
+              {
+                content: {
+                  parts: [{ thought: true, text: "Thinking before failure" }],
+                },
+                finishReason: "MALFORMED_FUNCTION_CALL",
+                finishMessage: "Function call is empty - no input to parse.",
+              },
+            ],
+          },
+        },
+        FORMATS.ANTIGRAVITY,
+        FORMATS.OPENAI,
+      );
+
+      expect(result.choices[0].finish_reason).toBe("error");
+      expect(result.error).toEqual({
+        code: "malformed_function_call",
+        message: "Function call is empty - no input to parse.",
+      });
+    },
+  );
+
 });
 
 // ─── 2. Preserve thoughtSignature ──────────────────────────────────────────

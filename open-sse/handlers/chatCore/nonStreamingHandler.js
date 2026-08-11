@@ -9,7 +9,7 @@ import { parseSSEToOpenAIResponse } from "./sseToJsonHandler.js";
 import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
-import { ROLE, RESPONSES_ITEM } from "../../translator/schema/index.js";
+import { ROLE, RESPONSES_ITEM, GEMINI_FINISH } from "../../translator/schema/index.js";
 
 function parseToolArguments(value) {
   if (!value) return {};
@@ -119,7 +119,12 @@ function openAICompletionToResponses(responseBody, customToolNames = null) {
   }
 
   const usage = responseBody.usage || {};
-  const status = choice.finish_reason === "tool_calls" ? "completed" : (choice.finish_reason === "stop" ? "completed" : (choice.finish_reason || "completed"));
+  const isFailed = choice.finish_reason === "error";
+  const status = isFailed
+    ? "failed"
+    : choice.finish_reason === "tool_calls"
+      ? "completed"
+      : (choice.finish_reason === "stop" ? "completed" : (choice.finish_reason || "completed"));
 
   return {
     id: `resp_${responseBody.id || ""}`.replace(/^resp_chatcmpl-/, "resp_"),
@@ -128,7 +133,12 @@ function openAICompletionToResponses(responseBody, customToolNames = null) {
     model: responseBody.model || "unknown",
     status,
     background: false,
-    error: null,
+    error: isFailed
+      ? responseBody.error || {
+          code: "provider_error",
+          message: "Provider stream failed",
+        }
+      : null,
     output,
     usage: {
       input_tokens: usage.prompt_tokens || usage.input_tokens || 0,
@@ -165,16 +175,32 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     const toolCalls = [];
 
     if (content?.parts) {
+      let pendingText = "";
       for (const part of content.parts) {
-        if (part.thought === true && part.text) reasoningContent += part.text;
-        else if (part.text !== undefined) textContent += part.text;
+        if (part.thought === true) {
+          if (part.text) reasoningContent += part.text;
+          continue;
+        }
+
+        const hasThoughtSignature =
+          typeof (part.thoughtSignature || part.thought_signature) === "string";
         if (part.functionCall) {
+          if (hasThoughtSignature) pendingText = "";
+          else textContent += pendingText;
+          pendingText = "";
           toolCalls.push({
             id: `call_${part.functionCall.name}_${Date.now()}_${toolCalls.length}`,
             type: "function",
             function: { name: part.functionCall.name, arguments: JSON.stringify(part.functionCall.args || {}) }
           });
+          continue;
         }
+
+        if (part.text !== undefined) {
+          if (hasThoughtSignature) textContent += part.text;
+          else pendingText += part.text;
+        }
+
         // Handle inline image data (from image generation models)
         const inlineData = part.inlineData || part.inline_data;
         if (inlineData?.data) {
@@ -182,6 +208,9 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
           textContent += `\n![image](data:${mimeType};base64,${inlineData.data})\n`;
         }
       }
+
+      const finishReason = String(candidate.finishReason || "STOP").toUpperCase();
+      if (finishReason !== GEMINI_FINISH.MAX_TOKENS) textContent += pendingText;
     }
 
     const message = { role: "assistant" };
@@ -190,7 +219,18 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     if (toolCalls.length > 0) message.tool_calls = toolCalls;
     if (!message.content && !message.tool_calls) message.content = "";
 
-    let finishReason = (candidate.finishReason || "stop").toLowerCase();
+    const rawFinishReason = String(candidate.finishReason || "stop");
+    let finishReason = rawFinishReason.toLowerCase();
+    let providerError = null;
+    if (rawFinishReason.toUpperCase() === GEMINI_FINISH.MALFORMED_FUNCTION_CALL) {
+      providerError = {
+        code: "malformed_function_call",
+        message:
+          candidate.finishMessage ||
+          "Provider returned an empty or malformed function call",
+      };
+      finishReason = "error";
+    }
     if (finishReason === "stop" && toolCalls.length > 0) finishReason = "tool_calls";
 
     const result = {
@@ -198,7 +238,8 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
       object: "chat.completion",
       created: Math.floor(new Date(response.createTime || Date.now()).getTime() / 1000),
       model: response.modelVersion || "gemini",
-      choices: [{ index: 0, message, finish_reason: finishReason }]
+      choices: [{ index: 0, message, finish_reason: finishReason }],
+      ...(providerError ? { error: providerError } : {}),
     };
 
     if (usage) {
