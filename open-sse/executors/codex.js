@@ -68,6 +68,40 @@ function stripStoredItemReferences(body) {
   });
 }
 
+// Codex runs with store=false, so replay-only item state cannot be resolved from a
+// prior response. Convert an unmatched tool result into a user message so the
+// upstream still receives the result as context and never receives input: [].
+function sanitizeCodexReplayInput(body) {
+  if (!Array.isArray(body.input)) return;
+
+  const knownCallIds = new Set();
+  body.input = body.input.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [item];
+
+    delete item.status;
+    if (item.type === "reasoning") {
+      delete item.encrypted_content;
+      delete item.reasoning_encrypted_content;
+    }
+
+    if (item.type === "function_call" && typeof item.call_id === "string" && item.call_id) {
+      knownCallIds.add(item.call_id);
+      return [item];
+    }
+
+    if (item.type === "function_call_output" && !knownCallIds.has(item.call_id)) {
+      const output = typeof item.output === "string" ? item.output : JSON.stringify(item.output);
+      return [{
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: `Tool result from an unavailable prior call:\n${output}` }],
+      }];
+    }
+
+    return [item];
+  });
+}
+
 // Flatten Chat-Completions tool shape into Responses flat format + filter unsupported tools
 function normalizeCodexTools(body) {
   if (!Array.isArray(body.tools)) return;
@@ -408,6 +442,8 @@ export class CodexExecutor extends BaseExecutor {
     convertSystemToDeveloperRole(body);
     // Strip server-generated item IDs (rs_/fc_/resp_/msg_) — Codex /responses can't resolve when store=false
     stripStoredItemReferences(body);
+    // Remove replay-only fields and tool outputs that cannot be resolved without stored history.
+    sanitizeCodexReplayInput(body);
     // Flatten function tools + drop unsupported types
     normalizeCodexTools(body);
 

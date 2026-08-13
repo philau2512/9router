@@ -60,9 +60,9 @@ describe("CodexExecutor input sanitization", () => {
     });
   });
 
-  it("drops orphan function_call_output from replayed history", () => {
+  it("converts orphan function_call_output from replayed history into context", () => {
     // Reproduced from logs/openai-responses_openai-responses_gpt-5.6-terra_20260719_003250_104.
-    // Codex returns 400 if this output is sent without its omitted function call.
+    // Codex cannot resolve the omitted call with store=false, but must receive non-empty input.
     const result = transform({
       input: [
         {
@@ -92,13 +92,39 @@ describe("CodexExecutor input sanitization", () => {
       ],
     });
 
-    expect(result.input).toHaveLength(3);
-    expect(result.input.find((item) => item.call_id === "call-04d59318-04a5-4862-bbaf-3bfca34ba769-1")).toBeUndefined();
+    expect(result.input).toHaveLength(4);
+    expect(result.input[1]).toEqual({
+      type: "message",
+      role: "user",
+      content: [{
+        type: "input_text",
+        text: "Tool result from an unavailable prior call:\nterminal data",
+      }],
+    });
     expect(result.input.at(-1)).toMatchObject({
       type: "function_call_output",
       call_id: "call_valid",
       output: "file data",
     });
+  });
+
+  it("converts an orphan tool result into input context", () => {
+    const result = transform({
+      input: [{
+        type: "function_call_output",
+        call_id: "call_orphan",
+        output: "terminal data",
+      }],
+    });
+
+    expect(result.input).toEqual([{
+      type: "message",
+      role: "user",
+      content: [{
+        type: "input_text",
+        text: "Tool result from an unavailable prior call:\nterminal data",
+      }],
+    }]);
   });
 
   it("leaves client input without replay-only fields intact", () => {
