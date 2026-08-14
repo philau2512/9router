@@ -1,5 +1,7 @@
 const https = require("https");
+const http = require("http");
 const http2 = require("http2");
+const net = require("net");
 const tls = require("tls");
 const fs = require("fs");
 const path = require("path");
@@ -22,6 +24,8 @@ const {
   MODEL_PATTERNS,
   MODEL_NO_MAP,
   getToolForHost,
+  isQoderConnectTarget,
+  QODER_CONNECT_HOST,
   extractModel,
 } = require("./config");
 const { DATA_DIR, MITM_DIR } = require("./paths");
@@ -31,6 +35,7 @@ const {
   applyAntigravityIdeVersionOverride,
 } = require("./antigravityIdeVersion");
 const LOCAL_PORT = 443;
+const CONNECT_PROXY_PORT = Number(process.env.MITM_CONNECT_PROXY_PORT) || 20129;
 const IS_WIN = process.platform === "win32";
 const ENABLE_FILE_LOG = IS_DEV;
 
@@ -49,6 +54,7 @@ const handlers = {
   copilot: require("./handlers/copilot"),
   kiro: require("./handlers/kiro"),
   cursor: require("./handlers/cursor"),
+  qoder: require("./handlers/qoder"),
 };
 
 // ── SSL / SNI ─────────────────────────────────────────────────
@@ -76,12 +82,18 @@ function sniCallback(servername, cb) {
 
 let sslOptions;
 try {
-  const rootKey = fs.readFileSync(path.join(MITM_DIR, "rootCA.key"));
-  const rootCert = fs.readFileSync(path.join(MITM_DIR, "rootCA.crt"));
+  const rootKeyPath = path.join(MITM_DIR, "rootCA.key");
+  const rootCertPath = path.join(MITM_DIR, "rootCA.crt");
+  if (!fs.existsSync(rootKeyPath) || !fs.existsSync(rootCertPath)) {
+    const { generateRootCA } = require("./cert/rootCA");
+    generateRootCA();
+  }
+  const rootKey = fs.readFileSync(rootKeyPath);
+  const rootCert = fs.readFileSync(rootCertPath);
   rootCAPem = rootCert.toString("utf8");
   sslOptions = { key: rootKey, cert: rootCert, SNICallback: sniCallback };
 } catch (e) {
-  err(`Root CA not found: ${e.message}`);
+  err(`Root CA error: ${e.message}`);
   process.exit(1);
 }
 
@@ -132,6 +144,10 @@ function getMappedModel(tool, model) {
   } catch {
     return null;
   }
+}
+
+function isQoderChatRequest(url) {
+  return /agent_chat_generation|\/service\/pro\/sse/i.test(url || "");
 }
 
 /**
@@ -398,6 +414,98 @@ async function passthroughHttps(
   forwardReq.end();
 }
 
+function isLoopbackAddress(address) {
+  return (
+    address === "127.0.0.1" ||
+    address === "::1" ||
+    address === "::ffff:127.0.0.1"
+  );
+}
+
+function createConnectProxy() {
+  const proxy = http.createServer((_, res) => {
+    res.writeHead(405, { "Content-Type": "text/plain" });
+    res.end("CONNECT required");
+  });
+
+  proxy.on("connect", (req, clientSocket, head) => {
+    if (!isLoopbackAddress(clientSocket.remoteAddress)) {
+      clientSocket.destroy();
+      return;
+    }
+
+    const target = req.url || "";
+    const separator = target.lastIndexOf(":");
+    const hostname = target.slice(0, separator);
+    const port = Number(target.slice(separator + 1));
+    if (!hostname || !Number.isInteger(port) || port !== 443) {
+      clientSocket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
+      return;
+    }
+
+    const shouldIntercept = isQoderConnectTarget(hostname);
+    if (!shouldIntercept) {
+      const upstreamSocket = net.connect(port, hostname, () => {
+        log(`[proxy] tunnel ${target}`);
+        clientSocket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+        if (head.length) upstreamSocket.write(head);
+        clientSocket.pipe(upstreamSocket);
+        upstreamSocket.pipe(clientSocket);
+      });
+      const closeTunnel = () => {
+        clientSocket.destroy();
+        upstreamSocket.destroy();
+      };
+      clientSocket.once("error", closeTunnel);
+      upstreamSocket.once("error", closeTunnel);
+      return;
+    }
+
+    const certHostname = QODER_CONNECT_HOST;
+    const certData = getCertForDomain(certHostname);
+    if (!certData) {
+      clientSocket.end("HTTP/1.1 502 Bad Gateway\r\n\r\n");
+      return;
+    }
+
+    const secureContext = tls.createSecureContext({
+      key: certData.key,
+      cert: `${certData.cert}\n${rootCAPem}`,
+    });
+    const qoderServer = https.createServer(
+      {
+        ...sslOptions,
+        secureContext,
+        SNICallback: (servername, cb) => {
+          if (servername && !isQoderConnectTarget(servername)) {
+            cb(new Error(`Unexpected SNI for Qoder CONNECT: ${servername}`));
+            return;
+          }
+          cb(null, secureContext);
+        },
+      },
+      (request, response) => {
+        request.headers.host = certHostname;
+        server.emit("request", request, response);
+      },
+    );
+
+    clientSocket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+    if (head.length) clientSocket.unshift(head);
+    qoderServer.emit("connection", clientSocket);
+    qoderServer.once("secureConnection", () =>
+      log(`[proxy] intercepted Qoder CONNECT ${target}`),
+    );
+    qoderServer.once("tlsClientError", (error) =>
+      err(`[proxy] Qoder TLS error for ${target}: ${error.message}`),
+    );
+  });
+
+  return proxy;
+}
+
+const connectProxy = createConnectProxy();
+
 // ── Request handler ───────────────────────────────────────────
 
 const server = https.createServer(sslOptions, async (req, res) => {
@@ -424,6 +532,9 @@ const server = https.createServer(sslOptions, async (req, res) => {
 
     const patterns = URL_PATTERNS[tool] || [];
     const isChat = patterns.some((p) => req.url.includes(p));
+    if (tool === "qoder") {
+      log(`[qoder] ${req.method} ${req.url} chat=${isChat}`);
+    }
     if (!isChat) return passthrough(req, res, bodyBuffer);
 
     // Cursor uses binary proto — model extraction not possible at this layer.
@@ -432,12 +543,25 @@ const server = https.createServer(sslOptions, async (req, res) => {
       return handlers[tool].intercept(req, res, bodyBuffer, null, passthrough);
     }
 
-    const model = extractModel(req.url, bodyBuffer);
+    const model =
+      tool === "qoder"
+        ? handlers.qoder.extractQoderModel(bodyBuffer)
+        : extractModel(req.url, bodyBuffer);
+    const resolvedModel =
+      tool === "qoder" && !model && isQoderChatRequest(req.url)
+        ? "qmodel_latest"
+        : model;
     const noMapPatterns = MODEL_NO_MAP?.[tool] || [];
-    if (noMapPatterns.some((pattern) => pattern.test(model || ""))) {
+    if (noMapPatterns.some((pattern) => pattern.test(resolvedModel || ""))) {
       return passthrough(req, res, bodyBuffer);
     }
-    const mappedModel = getMappedModel(tool, model);
+    const mappedModel = getMappedModel(tool, resolvedModel);
+    if (tool === "qoder") {
+      const fallback = !model && resolvedModel ? " fallback=true" : "";
+      log(
+        `[qoder] model=${resolvedModel || "unknown"} mapped=${mappedModel || "none"}${fallback}`,
+      );
+    }
     if (!mappedModel) {
       return passthrough(req, res, bodyBuffer);
     }
@@ -506,12 +630,22 @@ try {
   process.exit(1);
 }
 
-server.listen(LOCAL_PORT, () => log(`🚀 Server ready on :${LOCAL_PORT}`));
+server.listen(LOCAL_PORT, () => {
+  log(`🚀 Server ready on :${LOCAL_PORT}`);
+  connectProxy.listen(CONNECT_PROXY_PORT, "127.0.0.1", () =>
+    log(`🔌 CONNECT proxy ready on 127.0.0.1:${CONNECT_PROXY_PORT}`),
+  );
+});
 
 server.on("error", (e) => {
   if (e.code === "EADDRINUSE") err(`Port ${LOCAL_PORT} already in use`);
   else if (e.code === "EACCES") err(`Permission denied for port ${LOCAL_PORT}`);
   else err(e.message);
+  process.exit(1);
+});
+
+connectProxy.on("error", (e) => {
+  err(`CONNECT proxy error on ${CONNECT_PROXY_PORT}: ${e.message}`);
   process.exit(1);
 });
 
@@ -523,6 +657,7 @@ const shutdown = () => {
   // Strip tool hosts from /etc/hosts so other apps aren't broken after exit
   removeAllDNSEntriesSync();
   const forceExit = setTimeout(() => process.exit(0), 1500);
+  connectProxy.close();
   server.close(() => {
     clearTimeout(forceExit);
     process.exit(0);

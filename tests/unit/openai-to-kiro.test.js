@@ -39,6 +39,25 @@ describe("openaiToKiroRequest", () => {
     });
   });
 
+  describe("system instruction forwarding", () => {
+    it("includes OpenAI system messages in the Kiro prompt", () => {
+      const result = openaiToKiroRequest(
+        "claude-sonnet-4.6",
+        {
+          messages: [
+            { role: "system", content: "Always respond in Vietnamese." },
+            { role: "user", content: "Say hello." },
+          ],
+        },
+        true,
+        {},
+      );
+
+      expect(contentOf(result)).toContain("Always respond in Vietnamese.");
+      expect(contentOf(result)).toContain("Say hello.");
+    });
+  });
+
   describe("image forwarding", () => {
     it("should forward base64 image from image_url content part", () => {
       const fakeBase64 =

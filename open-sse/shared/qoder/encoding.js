@@ -24,6 +24,15 @@ const QODER_S2C = (() => {
   return table;
 })();
 
+const QODER_C2S = (() => {
+  const table = new Int16Array(128).fill(-1);
+  for (let i = 0; i < 64; i++) {
+    table[QODER_CUSTOM_ALPHABET.charCodeAt(i)] = QODER_STD_ALPHABET.charCodeAt(i);
+  }
+  table["$".charCodeAt(0)] = "=".charCodeAt(0);
+  return table;
+})();
+
 /**
  * Encode plaintext bytes/string using Qoder's WAF-bypass scheme.
  * @param {Buffer|Uint8Array|string} plaintext
@@ -52,4 +61,28 @@ export function qoderEncodeBody(plaintext) {
     }
   }
   return out.toString("latin1");
+}
+
+/**
+ * Decode Qoder WAF-bypass encoded string back to plaintext.
+ * @param {string} encoded
+ * @returns {string} plaintext string
+ */
+export function qoderDecodeBody(encoded) {
+  if (!encoded || typeof encoded !== "string") return "";
+  const n = encoded.length;
+  const rearrangedBuf = Buffer.alloc(n);
+  for (let i = 0; i < n; i++) {
+    const c = encoded.charCodeAt(i);
+    if (c < 128 && QODER_C2S[c] >= 0) {
+      rearrangedBuf[i] = QODER_C2S[c];
+    } else {
+      rearrangedBuf[i] = c;
+    }
+  }
+  const rearranged = rearrangedBuf.toString("latin1");
+  const a = Math.floor(n / 3);
+  const std =
+    rearranged.slice(n - a) + rearranged.slice(a, n - a) + rearranged.slice(0, a);
+  return Buffer.from(std, "base64").toString("utf8");
 }

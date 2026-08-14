@@ -14,6 +14,14 @@ const TOOL_HOSTS = {
     "codewhisperer.us-east-1.amazonaws.com",
   ],
   cursor: ["api2.cursor.sh"],
+  qoder: [
+    "api2.qoder.sh",
+    "api3.qoder.sh",
+    "openapi.qoder.sh",
+    "center.qoder.sh",
+    "api.qoder.sh",
+    "repo2.qoder.sh",
+  ],
 };
 
 module.exports = { TOOL_HOSTS };

@@ -1,5 +1,6 @@
 const path = require("path");
 const fs = require("fs");
+const net = require("net");
 const forge = require("node-forge");
 const { MITM_DIR } = require("../paths");
 
@@ -158,10 +159,12 @@ function generateLeafCert(domain, rootCA) {
     },
     {
       name: "subjectAltName",
-      altNames: [
-        { type: 2, value: domain }, // DNS
-        { type: 2, value: `*.${domain}` }, // Wildcard
-      ],
+      altNames: net.isIP(domain)
+        ? [{ type: 7, ip: domain }]
+        : [
+            { type: 2, value: domain },
+            { type: 2, value: `*.${domain}` },
+          ],
     },
   ]);
 
