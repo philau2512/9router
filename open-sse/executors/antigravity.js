@@ -277,6 +277,16 @@ export class AntigravityExecutor extends BaseExecutor {
       ...requestWithoutTools
     } = body.request || {};
     stripBlacklisted(requestWithoutTools);
+    if (requestWithoutTools.systemInstruction?.parts) {
+      const oldText =
+        "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
+      for (const part of requestWithoutTools.systemInstruction.parts) {
+        if (typeof part.text === "string" && part.text.includes(oldText)) {
+          part.text = part.text.split(oldText).join("");
+        }
+      }
+    }
+
     const generationConfig = {
       ...(requestWithoutTools.generationConfig || {}),
     };

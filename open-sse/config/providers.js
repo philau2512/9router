@@ -186,6 +186,18 @@ export const PROVIDERS = {
     format: "openai",
     headers: {},
   },
+  "alims-intl": {
+    baseUrl:
+      "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
+    format: "openai",
+    headers: {},
+  },
+  "alitp-intl": {
+    baseUrl:
+      "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+    format: "openai",
+    headers: {},
+  },
   "volcengine-ark": {
     baseUrl: "https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions",
     format: "openai",
@@ -437,6 +449,28 @@ export const PROVIDERS = {
     baseUrl: "https://opencode.ai/zen/go/v1/chat/completions",
     format: "openai",
     headers: {},
+    transports: [
+      {
+        format: "openai",
+        baseUrl: "https://opencode.ai/zen/go/v1/chat/completions",
+        auth: { combined: true, header: "Authorization", scheme: "bearer" },
+      },
+      {
+        format: "claude",
+        baseUrl: "https://opencode.ai/zen/go/v1/messages",
+        auth: {
+          combined: true,
+          header: "x-api-key",
+          scheme: "raw",
+          anthropicVersion: true,
+        },
+      },
+      {
+        format: "openai-responses",
+        baseUrl: "https://opencode.ai/zen/go/v1/responses",
+        auth: { combined: true, header: "Authorization", scheme: "bearer" },
+      },
+    ],
   },
   "grok-web": {
     baseUrl: "https://grok.com/rest/app-chat/conversations/new",

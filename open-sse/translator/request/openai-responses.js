@@ -28,6 +28,13 @@ export function openaiResponsesToOpenAIRequest(
 
   const result = { ...body };
   result.messages = [];
+  const customTools = [];
+
+  const promoteCustomTool = (tool) => {
+    const name = tool?.name;
+    if (!name || typeof name !== "string" || name.trim() === "") return;
+    customTools.push({ name, description: String(tool.description || "") });
+  };
 
   // Convert instructions to system message
   if (body.instructions) {
@@ -67,7 +74,11 @@ export function openaiResponsesToOpenAIRequest(
     // Fallback: if no type but has role property, treat as message
     const itemType = item.type || (item.role ? "message" : null);
 
-    if (itemType === "message") {
+    if (itemType === "additional_tools") {
+      for (const tool of item.tools || []) {
+        if (tool?.type === "custom") promoteCustomTool(tool);
+      }
+    } else if (itemType === "message") {
       // Flush any pending assistant message with tool calls
       if (currentAssistantMsg) {
         result.messages.push(currentAssistantMsg);
@@ -107,7 +118,7 @@ export function openaiResponsesToOpenAIRequest(
       pendingEncryptedContent = null;
       pendingReasoning = "";
       result.messages.push(msg);
-    } else if (itemType === "function_call") {
+    } else if (itemType === "function_call" || itemType === "custom_tool_call") {
       // Start or append to assistant message with tool_calls
       if (!currentAssistantMsg) {
         currentAssistantMsg = {
@@ -136,7 +147,12 @@ export function openaiResponsesToOpenAIRequest(
         type: "function",
         function: {
           name: item.name,
-          arguments: item.arguments,
+          arguments:
+            typeof item.arguments === "string"
+              ? item.arguments
+              : itemType === "custom_tool_call"
+                ? JSON.stringify({ input: item.input || "" })
+                : JSON.stringify(item.arguments ?? {}),
         },
         ...(typeof item.thought_signature === "string" &&
         item.thought_signature.length > 0
@@ -146,7 +162,10 @@ export function openaiResponsesToOpenAIRequest(
             ? { thought_signature: item.thoughtSignature }
             : {}),
       });
-    } else if (itemType === "function_call_output") {
+    } else if (
+      itemType === "function_call_output" ||
+      itemType === "custom_tool_call_output"
+    ) {
       // Flush assistant message first if exists
       if (currentAssistantMsg) {
         result.messages.push(currentAssistantMsg);
@@ -196,8 +215,20 @@ export function openaiResponsesToOpenAIRequest(
   // explicit `name` field and cannot be represented as Chat Completions function declarations.
   // Filter them out to avoid sending nameless functionDeclarations to downstream providers
   // such as Gemini, which strictly validates function names.
+  const promotedCustomTools = customTools.map(({ name, description }) => ({
+    type: "function",
+    function: {
+      name,
+      description,
+      parameters: {
+        type: "object",
+        required: ["input"],
+        properties: { input: { type: "string" } },
+      },
+    },
+  }));
   if (body.tools && Array.isArray(body.tools)) {
-    result.tools = body.tools
+    const standardTools = body.tools
       .map((tool) => {
         // Already in Chat Completions format: { type: "function", function: { name, ... } }
         if (tool.function) return tool;
@@ -217,9 +248,16 @@ export function openaiResponsesToOpenAIRequest(
         };
       })
       .filter(Boolean);
+    result.tools = [
+      ...standardTools,
+      ...promotedCustomTools,
+    ];
+  } else if (promotedCustomTools.length > 0) {
+    result.tools = promotedCustomTools;
   }
-
-  // Cleanup Responses API specific fields
+  if (customTools.length > 0) {
+    result._customToolNames = [...new Set(customTools.map(({ name }) => name))];
+  }
   // Map Responses-only max_output_tokens to Chat max_tokens (avoid leaking unknown field upstream)
   if (result.max_output_tokens !== undefined) {
     if (result.max_tokens === undefined)
@@ -420,9 +458,9 @@ export function openaiToOpenAIResponsesRequest(
     result.reasoning = { effort: body.reasoning_effort, summary: "auto" };
   }
   if (body.service_tier !== undefined) result.service_tier = body.service_tier;
-  // if (body.prompt_cache_key !== undefined) {
-  //   result.prompt_cache_key = body.prompt_cache_key;
-  // }
+  if (body.prompt_cache_key !== undefined) {
+    result.prompt_cache_key = body.prompt_cache_key;
+  }
 
   return result;
 }

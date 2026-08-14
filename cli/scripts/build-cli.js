@@ -87,6 +87,58 @@ function copyRecursive(src, dest) {
   }
 }
 
+function assertRequiredApiArtifacts(cliAppDir) {
+  const serverDir = path.join(cliAppDir, buildDistDirName, "server");
+  const requiredArtifacts = [
+    "app/api/v1/chat/completions/route.js",
+    "app/api/v1/messages/route.js",
+    "chunks/openai-provider.js",
+    "chunks/anthropic-provider.js",
+  ];
+
+  for (const artifact of requiredArtifacts) {
+    const artifactPath = path.join(serverDir, artifact);
+    if (!fs.existsSync(artifactPath)) {
+      throw new Error(`Required CLI server artifact is missing: ${artifactPath}`);
+    }
+  }
+}
+
+function copyStandaloneBuild(appDir, buildDistDir, destinationDir) {
+  const roots = [
+    path.join(buildDistDir, "standalone"),
+    path.join(appDir, ".next", "standalone"),
+  ];
+  let standaloneApp = null;
+
+  for (const root of roots) {
+    if (!fs.existsSync(root)) continue;
+    const candidates = [
+      root,
+      path.join(root, "app"),
+      path.join(root, path.basename(appDir)),
+    ];
+    standaloneApp = candidates.find((candidate) =>
+      fs.existsSync(path.join(candidate, "server.js")),
+    );
+    if (standaloneApp) break;
+  }
+
+  if (!standaloneApp) {
+    throw new Error("Next.js standalone build not found");
+  }
+
+  copyRecursive(standaloneApp, destinationDir);
+}
+
+function mergeServerArtifacts(buildDistDir, cliAppDir) {
+  const serverSrc = path.join(buildDistDir, "server");
+  if (fs.existsSync(serverSrc)) {
+    copyRecursive(serverSrc, path.join(cliAppDir, buildDistDirName, "server"));
+  }
+}
+
+if (require.main === module) {
 console.log("📦 Building 9Router CLI package with Next.js...\n");
 
 fs.mkdirSync(buildHomeDir, { recursive: true });
@@ -343,3 +395,10 @@ try {
 } catch (e) {
   // Silent fail on size check
 }
+}
+
+module.exports = {
+  assertRequiredApiArtifacts,
+  copyStandaloneBuild,
+  mergeServerArtifacts,
+};

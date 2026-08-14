@@ -291,6 +291,7 @@ export function parseQuotaData(provider, data) {
 
       case "kimi":
       case "deepseek":
+      case "ollama":
         if (data.quotas) {
           Object.entries(data.quotas).forEach(([name, quota]) => {
             normalizedQuotas.push({

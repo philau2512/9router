@@ -1,5 +1,27 @@
 # Fork changelog
 
+## Sau sync upstream — Hoàn thiện regression và dashboard hydration
+
+### Regression theo contract của fork
+
+- **Antigravity:** test metadata, discovery và executor xác nhận thứ tự failover chat `daily-cloudcode-pa.googleapis.com` → `cloudcode-pa.googleapis.com`. Discovery/onboarding vẫn dùng PROD; chat bắt đầu ở daily để giảm 429 và chỉ chuyển PROD khi cần.
+- **Codex remote image:** fixture regression dùng JPEG magic bytes hợp lệ. Điều này khớp cơ chế hardening của fork: chỉ inline base64 khi remote payload qua SSRF guard, giới hạn kích thước và xác thực image signature; payload không hợp lệ tiếp tục giữ URL gốc.
+- **SAML:** chuyển test helper từ `node:test` sang Vitest để full suite nhận diện đúng test file.
+- **CLI package:** `cli/scripts/build-cli.js` chỉ thực thi build khi được gọi trực tiếp; export helper copy/merge/validate artifacts để test được mà không vô tình chạy `next build` hay tranh chấp build lock.
+
+### Dashboard console log
+
+- **File:** `src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js`
+  - Render đầu tiên luôn dùng view `feed` trên cả SSR và client.
+  - Chỉ khôi phục view đã lưu trong `localStorage` sau hydration, tránh server render feed nhưng client render terminal/table ngay từ lượt đầu.
+
+### Verification
+
+- Full Vitest suite: **207 files passed**, **2079 tests passed**.
+- `git diff --check` passed.
+
+---
+
 ## 2026-08-06 — Fix Kiro `REQUEST_BODY_INVALID` với Claude CLI → Kiro/auto
 
 ### Vấn đề

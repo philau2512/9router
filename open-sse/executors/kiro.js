@@ -170,6 +170,11 @@ function normalizeStopReason(value) {
   return reason || null;
 }
 
+const KIRO_TRUNCATION_STOP_REASONS = new Set([
+  "model_context_window_exceeded",
+  "max_tokens",
+]);
+
 function stopDisposition(stopReason, hasToolCalls) {
   if (["malformed_model_output", "invalid_model_output"].includes(stopReason)) return "retryable_protocol_failure";
   if (["cancelled", "pause_turn", "model_context_window_exceeded"].includes(stopReason)) return "terminal_incomplete";
@@ -296,6 +301,9 @@ function inspectSSEChunk(chunk, state) {
         if (typeof delta.content === "string") state.content += delta.content;
         if (typeof delta.reasoning_content === "string") state.reasoning += delta.reasoning_content;
         if (delta.tool_calls?.length) state.hasToolCalls = true;
+      }
+      if (event.error?.code === "invalid_kiro_tool_call") {
+        state.invalidToolCall = true;
       }
     } catch { /* a malformed SSE line is diagnosed by the transformer */ }
   }
@@ -478,6 +486,9 @@ export class KiroExecutor extends BaseExecutor {
       return encodeSSEError("invalid_kiro_tool_call", first.message, first.diagnostics);
     }
     const repairKind = ["ellipsis", "short_final", "invalid_tool"].includes(first.kind) ? first.kind : null;
+    const retryBody = repairKind
+      ? appendRepairInstruction(args.body, repairKind === "invalid_tool" ? "tool" : repairKind)
+      : structuredClone(args.body || {});
     const retryCredentials = {
       ...args.credentials,
       __kiroDisableEndpointFallback: true,
@@ -485,9 +496,7 @@ export class KiroExecutor extends BaseExecutor {
     const retry = await BaseExecutor.prototype.execute.call(this, {
       ...args,
       credentials: retryCredentials,
-      body: repairKind
-        ? appendRepairInstruction(args.body, repairKind === "invalid_tool" ? "tool" : repairKind)
-        : structuredClone(args.body || {}),
+      body: retryBody,
       signal: options.signal
     });
     if (!retry?.response?.ok) {
@@ -548,7 +557,13 @@ export class KiroExecutor extends BaseExecutor {
     let totalBytes = 0;
     let sawChunk = false;
     let activityVersion = 0;
-    const output = { content: "", reasoning: "", hasToolCalls: false, error: null };
+    const output = {
+      content: "",
+      reasoning: "",
+      hasToolCalls: false,
+      invalidToolCall: false,
+      error: null,
+    };
     try {
       while (true) {
         const timeoutMs = sawChunk ? options.stallTimeoutMs : options.ttftTimeoutMs;
@@ -584,6 +599,13 @@ export class KiroExecutor extends BaseExecutor {
       event_counts: diagnostics?.event_counts || {},
       incomplete_frame_bytes: diagnostics?.incomplete_frame_bytes || 0
     };
+    if (output.invalidToolCall) {
+      return {
+        kind: "invalid_tool",
+        message: output.error?.message,
+        diagnostics: safeDiagnostics,
+      };
+    }
     if (safeDiagnostics.stop_disposition === "retryable_protocol_failure") {
       return { kind: safeDiagnostics.terminal_provenance === "invalid_tool_call" ? "invalid_tool" : "retryable_stop", message: output.error?.message, diagnostics: safeDiagnostics };
     }
@@ -693,19 +715,56 @@ export class KiroExecutor extends BaseExecutor {
     };
     const emitTools = (controller) => {
       for (const tool of state.tools.values()) {
-        const input = parsedToolInput(tool);
-        if (tool.name === "tool_call") {
-          if (typeof input.name !== "string" || !input.name.trim()) throw new Error("Invalid Kiro tool_call payload: missing nested MCP tool name");
-          if (!Object.prototype.hasOwnProperty.call(input, "arguments")) throw new Error("Invalid Kiro tool_call payload: missing nested MCP tool arguments");
+        try {
+          const input = parsedToolInput(tool);
+          if (tool.name === "tool_call") {
+            if (typeof input.name !== "string" || !input.name.trim()) {
+              throw new Error(
+                "Invalid Kiro tool_call payload: missing nested MCP tool name",
+              );
+            }
+            if (!Object.prototype.hasOwnProperty.call(input, "arguments")) {
+              throw new Error(
+                "Invalid Kiro tool_call payload: missing nested MCP tool arguments",
+              );
+            }
+          }
+          const index = state.toolCounter++;
+          const argumentsText = JSON.stringify(input);
+          state.totalContentLength +=
+            tool.name.length + tool.id.length + argumentsText.length;
+          emitDelta(controller, {
+            tool_calls: [
+              {
+                index,
+                id: tool.id,
+                type: "function",
+                function: { name: tool.name, arguments: "" },
+              },
+            ],
+          });
+          emitDelta(controller, {
+            tool_calls: [{ index, function: { arguments: argumentsText } }],
+          });
+          state.hasToolCalls = true;
+        } catch (error) {
+          state.toolValidationError ||= error.message;
         }
-        const index = state.toolCounter++;
-        emitDelta(controller, { tool_calls: [{ index, id: tool.id, type: "function", function: { name: tool.name, arguments: "" } }] });
-        emitDelta(controller, { tool_calls: [{ index, function: { arguments: JSON.stringify(input) } }] });
-        state.hasToolCalls = true;
       }
       state.tools.clear();
       state.bufferedToolBytes = 0;
-      if (state.stopReason === "tool_use" && !state.hasToolCalls) throw new Error("Kiro tool_use stop reason did not include a complete tool call");
+      if (
+        state.stopReason === "tool_use" &&
+        !state.hasToolCalls &&
+        !state.hasText &&
+        !state.hasReasoning &&
+        !state.hasCode
+      ) {
+        throw new Error(
+          state.toolValidationError ||
+            "Kiro tool_use stop reason did not include a complete tool call",
+        );
+      }
     };
     const processEvent = (event, controller) => {
       const messageType = event.headers[":message-type"];
@@ -885,7 +944,40 @@ export class KiroExecutor extends BaseExecutor {
       // Emit any incomplete tag carry before terminal checks (fail-open as text/reasoning).
       flushThinkingCarry(controller);
       state.transportState = "clean_eof";
-      const declaredDisposition = stopDisposition(state.stopReason, state.sawToolUse);
+      let declaredDisposition = stopDisposition(state.stopReason, state.sawToolUse);
+      const hasPartialOutput = state.hasText || state.hasReasoning || state.hasCode;
+      if (
+        hasPartialOutput &&
+        KIRO_TRUNCATION_STOP_REASONS.has(state.stopReason)
+      ) {
+        declaredDisposition = "length";
+      }
+      if (
+        state.sawToolUse &&
+        !state.explicitStop &&
+        !state.hasText &&
+        !state.hasReasoning &&
+        !state.hasCode &&
+        !state.hasToolCalls
+      ) {
+        try {
+          emitTools(controller);
+        } catch (error) {
+          fail(controller, "invalid_tool_call", "invalid_kiro_tool_call", error.message, { transport_state: state.transportState, stop_disposition: "retryable_protocol_failure" });
+          return;
+        }
+      }
+      if (
+        state.toolValidationError &&
+        !state.explicitStop &&
+        !state.hasText &&
+        !state.hasReasoning &&
+        !state.hasCode &&
+        !state.hasToolCalls
+      ) {
+        fail(controller, "invalid_tool_call", "invalid_kiro_tool_call", state.toolValidationError, { transport_state: state.transportState, stop_disposition: "retryable_protocol_failure" });
+        return;
+      }
       if (["retryable_protocol_failure", "terminal_incomplete", "terminal_refusal", "unknown_failure"].includes(declaredDisposition)) {
         const code = declaredDisposition === "retryable_protocol_failure" ? "kiro_retryable_protocol_failure"
           : declaredDisposition === "terminal_refusal" ? "kiro_terminal_refusal"
@@ -893,7 +985,13 @@ export class KiroExecutor extends BaseExecutor {
         fail(controller, state.terminalProvenance || "metadata_stop_reason", code, `Kiro ended with non-success stop reason: ${state.stopReason}`, { transport_state: state.transportState, stop_disposition: declaredDisposition });
         return;
       }
-      if (state.toolValidationError) {
+      if (
+        state.toolValidationError &&
+        !state.hasText &&
+        !state.hasReasoning &&
+        !state.hasCode &&
+        !state.hasToolCalls
+      ) {
         fail(controller, "invalid_tool_call", "invalid_kiro_tool_call", state.toolValidationError, { transport_state: state.transportState, stop_disposition: "retryable_protocol_failure" });
         return;
       }
@@ -908,7 +1006,13 @@ export class KiroExecutor extends BaseExecutor {
         fail(controller, "empty_response_eof", "kiro_missing_terminal", "Kiro EventStream ended without model output", { transport_state: state.transportState });
         return;
       }
-      const disposition = stopDisposition(state.stopReason, state.hasToolCalls);
+      let disposition = stopDisposition(state.stopReason, state.hasToolCalls);
+      if (
+        hasPartialOutput &&
+        KIRO_TRUNCATION_STOP_REASONS.has(state.stopReason)
+      ) {
+        disposition = "length";
+      }
       if (["retryable_protocol_failure", "terminal_incomplete", "terminal_refusal", "unknown_failure"].includes(disposition)) {
         const code = disposition === "retryable_protocol_failure" ? "kiro_retryable_protocol_failure"
           : disposition === "terminal_refusal" ? "kiro_terminal_refusal"

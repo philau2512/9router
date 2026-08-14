@@ -42,6 +42,13 @@ const REFRESH_PROFILES = {
     url: () => OAUTH_ENDPOINTS.anthropic.token,
     dedupKey: "claude",
   },
+  qwen: {
+    dedupKey: "qwen",
+    parse: (tokens) =>
+      tokens.resource_url
+        ? { providerSpecificData: { resourceUrl: tokens.resource_url } }
+        : {},
+  },
   iflow: {
     url: () => OAUTH_ENDPOINTS.iflow.token,
     dedupKey: "iflow",
@@ -64,7 +71,12 @@ function resolveRefreshUrl(provider, config, profile) {
   if (profile?.url) {
     try { return profile.url(); } catch { /* fall through */ }
   }
-  return config?.refreshUrl || PROVIDER_OAUTH[provider]?.tokenUrl || null;
+  return (
+    config?.refreshUrl ||
+    config?.tokenUrl ||
+    PROVIDER_OAUTH[provider]?.tokenUrl ||
+    null
+  );
 }
 
 function buildRefreshBody(profile, config, refreshToken) {

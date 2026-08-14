@@ -47,8 +47,33 @@ export function detectRequiredCapabilities(body) {
     if (Array.isArray(content)) for (const b of content) scanBlock(b);
   };
 
-  for (const m of trailingUserItems(body.messages)) scanContent(m.content);
-  for (const it of trailingUserItems(body.input)) scanContent(it.content);
+  const scanMessage = (message) => {
+    scanContent(message?.content);
+    if (Array.isArray(message?.images) && message.images.length > 0)
+      required.add("vision");
+    if (
+      Array.isArray(message?.experimental_attachments) &&
+      message.experimental_attachments.some((attachment) =>
+        String(attachment?.contentType || "").startsWith("image/"),
+      )
+    )
+      required.add("vision");
+    if (
+      Array.isArray(message?.attachments) &&
+      message.attachments.some((attachment) =>
+        String(attachment?.mediaType || "").startsWith("image/"),
+      )
+    )
+      required.add("vision");
+    if (
+      typeof message?.content === "string" &&
+      message.content.includes("data:image/")
+    )
+      required.add("vision");
+  };
+
+  for (const m of trailingUserItems(body.messages)) scanMessage(m);
+  for (const it of trailingUserItems(body.input)) scanMessage(it);
   const contents = body.contents || body.request?.contents;
   for (const c of trailingUserItems(contents)) scanContent(c.parts);
 
@@ -593,7 +618,7 @@ export async function handleFusionChat({
   );
 
   // 1. Fan out: non-streaming, tools stripped, tool history flattened.
-  const { tools, tool_choice, ...rest } = body;
+  const { tools, tool_choice, stream_options, ...rest } = body;
   const panelBody = { ...rest, stream: false };
   if (Array.isArray(panelBody.messages)) {
     panelBody.messages = flattenToolHistory(panelBody.messages);

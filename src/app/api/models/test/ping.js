@@ -192,9 +192,8 @@ export async function pingModelByKind(
     headers,
     body: JSON.stringify({
       model,
-      // Claude-on-Copilot returns empty choices at max_tokens:1 (budget is spent
-      // before a content token emits), so a 1-token probe yields a false negative.
-      max_tokens: 16,
+      // Reasoning models can consume a small probe budget before emitting visible text.
+      max_tokens: 1024,
       stream: false,
       messages: [{ role: "user", content: "hi" }],
     }),
@@ -258,6 +257,27 @@ export async function pingModelByKind(
       latencyMs,
       status: res.status,
       error: "Provider returned no completion choices for this model",
+    };
+  }
+
+  const choice = parsed.choices[0] || {};
+  const reasoning =
+    choice.message?.reasoning ||
+    choice.message?.reasoning_content ||
+    choice.delta?.reasoning ||
+    choice.delta?.reasoning_content;
+  const visibleContent = choice.message?.content || choice.delta?.content;
+  if (
+    choice.finish_reason === "length" &&
+    !visibleContent &&
+    typeof reasoning === "string" &&
+    reasoning.trim()
+  ) {
+    return {
+      ok: true,
+      latencyMs,
+      status: res.status,
+      note: "reasoning-only response reached the probe token limit",
     };
   }
 

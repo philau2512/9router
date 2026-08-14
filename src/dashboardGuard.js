@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSettings, validateApiKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
+import { hasTrustedPeerHeaders } from "@/lib/auth/trustedPeer";
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
 const CLI_TOKEN_SALT = "9r-cli-auth";
@@ -87,19 +88,34 @@ const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 function isLoopbackHostname(h) {
   if (!h) return false;
-  const name = h
-    .split(":")[0]
-    .replace(/^\[|\]$/g, "")
-    .toLowerCase();
+  let name = String(h).trim().toLowerCase();
+  if (name.startsWith("[")) {
+    const end = name.indexOf("]");
+    if (end === -1) return false;
+    name = name.slice(1, end);
+  } else if (
+    name.indexOf(":") !== -1 &&
+    name.indexOf(":") === name.lastIndexOf(":")
+  ) {
+    name = name.slice(0, name.indexOf(":"));
+  }
+  if (name.startsWith("::ffff:")) name = name.slice(7);
   return LOOPBACK_HOSTS.has(name);
 }
 
+function isLoopbackPeer(request) {
+  if (hasTrustedPeerHeaders(request)) {
+    return isLoopbackHostname(request.headers.get("x-9r-real-ip"));
+  }
+  return (
+    (process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test") &&
+    isLoopbackHostname(request.headers.get("host"))
+  );
+}
+
 export function isLocalRequest(request) {
-  // Stamped by custom-server.js when forwarding headers exist: request came through
-  // a reverse proxy, so the loopback socket is the proxy hop, not the end-user.
   if (request.headers.get("x-9r-via-proxy")) return false;
-  // Trusted peer IP from TCP socket (custom-server.js); unspoofable. Primary anchor for "local".
-  if (!isLoopbackHostname(request.headers.get("host"))) return false;
+  if (!isLoopbackPeer(request)) return false;
   const origin = request.headers.get("origin");
   if (origin) {
     try {
