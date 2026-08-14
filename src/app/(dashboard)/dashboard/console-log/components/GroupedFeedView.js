@@ -78,7 +78,7 @@ export default function GroupedFeedView({ groups, onIdClick, onCopyText }) {
           return (
             <div
               key={group.id}
-              className={`rounded-xl border transition-all duration-200 bg-surface/50 hover:bg-surface overflow-hidden ${
+              className={`shrink-0 rounded-xl border transition-all duration-200 bg-surface/50 hover:bg-surface overflow-hidden ${
                 isError
                   ? "border-red-500/40 bg-red-500/5"
                   : isExpanded
@@ -204,9 +204,9 @@ export default function GroupedFeedView({ groups, onIdClick, onCopyText }) {
                 </div>
               </div>
 
-              {/* Expanded Timeline Body */}
+              {/* Expanded Timeline Body with Internal Scroll */}
               {isExpanded && (
-                <div className="border-t border-border/60 bg-black/40 p-3.5 text-xs font-mono">
+                <div className="border-t border-border/60 bg-black/40 p-3.5 text-xs font-mono max-h-[380px] overflow-y-auto overflow-x-auto select-text">
                   <div className="flex flex-col gap-1.5 pl-2 border-l-2 border-primary/30">
                     {group.lines.map((line, idx) => {
                       let textColor = "#cbd5e1"; // slate-300
@@ -220,12 +220,12 @@ export default function GroupedFeedView({ groups, onIdClick, onCopyText }) {
                       return (
                         <div
                           key={idx}
-                          className="flex items-start gap-2 leading-relaxed hover:bg-white/[0.02] px-1.5 py-0.5 rounded transition-colors"
+                          className="flex items-start gap-2 leading-relaxed whitespace-pre hover:bg-white/[0.02] px-1.5 py-0.5 rounded transition-colors"
                         >
                           <span className="text-text-muted/60 shrink-0 select-none">
                             {line.timestamp}
                           </span>
-                          <span style={{ color: textColor }} className="break-all">
+                          <span style={{ color: textColor }}>
                             {line.text}
                           </span>
                         </div>

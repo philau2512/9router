@@ -54,24 +54,52 @@ export function parseLogLine(rawLine) {
     metadata.msgs = epMatch[4] ? Number(epMatch[4]) : null;
   }
 
-  // Model Routing: cx/gpt-5.6-luna → codex/gpt-5.6-luna or model=gpt-5.6-luna
-  const routeMatch = text.match(/→\s+([a-z0-9._-]+\/[a-z0-9._-]+)/i);
-  if (routeMatch) {
+  // Model Routing:
+  // 1. Target Routing: cx/gpt-5.6-luna → codex/gpt-5.6-luna or → gpt-5.6-terra
+  const routeMatch = text.match(/→\s+([a-z0-9._-]+\/[a-z0-9._-]+|[a-z0-9._-]+)/i);
+  if (routeMatch && !/^\d+$/.test(routeMatch[1])) {
     metadata.targetModel = routeMatch[1];
   }
-  const modelParamMatch = text.match(/model=([a-z0-9._/-]+)/i);
-  if (modelParamMatch) {
+
+  // 2. Explicit model param with word boundary: model=gpt-5.6-terra (MUST NOT match authmodel=1)
+  const modelParamMatch = text.match(/\bmodel=([a-z0-9._/-]+)/i);
+  if (modelParamMatch && !/^\d+$/.test(modelParamMatch[1])) {
     metadata.model = modelParamMatch[1];
   }
 
-  // Account: account=fabb9953... or Using codex account: name@email.com or ACC:name@email.com
-  const accMatch = text.match(/(?:Using\s+\S+\s+account:\s*|ACC:|account=)([a-z0-9._%+-]+(?:@[a-z0-9.-]+\.[a-z]{2,})?|[a-z0-9]{8,})/i);
+  // 3. Stream or TTFT model name: [STREAM] CODEX | gpt-5.6-luna | 4429ms
+  const streamModelMatch = text.match(
+    /\[(?:STREAM|TTFT|USAGE)\]\s+[a-z0-9_-]+\s*\|\s*([a-z0-9._/-]+)/i,
+  );
+  if (
+    streamModelMatch &&
+    !/^\d+$/.test(streamModelMatch[1]) &&
+    !streamModelMatch[1].startsWith("in=")
+  ) {
+    metadata.model = streamModelMatch[1];
+  }
+
+  // Account Email or Conn ID:
+  // 1. Explicit email in Auth log: Using codex account: foo@gmail.com or ACC:foo@gmail.com
+  const emailMatch = text.match(
+    /(?:Using\s+\S+\s+account:\s*|ACC:)([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i,
+  );
+  if (emailMatch) {
+    metadata.userEmail = emailMatch[1];
+  }
+
+  // 2. Generic account or hash from [USAGE]: account=dceed7f8... or account=foo@bar.com
+  const accMatch = text.match(
+    /(?:Using\s+\S+\s+account:\s*|ACC:|account=)([a-z0-9._%+-]+(?:@[a-z0-9.-]+\.[a-z]{2,})?|[a-z0-9.]{6,})/i,
+  );
   if (accMatch) {
     metadata.account = accMatch[1];
   }
 
   // Tokens Usage: in=43858 | out=157 | cache_read=42496 (96.89%)
-  const usageMatch = text.match(/in=(\d+)(?:\s+\|\s+out=(\d+))?(?:.*?cache_read=(\d+)\s*\(([\d.]+)%\))?/i);
+  const usageMatch = text.match(
+    /in=(\d+)(?:\s+\|\s+out=(\d+))?(?:.*?cache_read=(\d+)\s*\(([\d.]+)%\))?/i,
+  );
   if (usageMatch) {
     metadata.tokensIn = Number(usageMatch[1]);
     if (usageMatch[2]) metadata.tokensOut = Number(usageMatch[2]);
@@ -102,6 +130,21 @@ export function parseLogLine(rawLine) {
   };
 }
 
+function cleanModelName(rawModel) {
+  if (!rawModel || /^\d+$/.test(rawModel)) return null;
+  const uuidPrefixMatch = rawModel.match(
+    /^[a-z0-9-]+-compatible-[a-z0-9]+-[a-f0-9-]{10,}\/(.+)$/i,
+  );
+  if (uuidPrefixMatch) {
+    return uuidPrefixMatch[1];
+  }
+  if (rawModel.includes("/")) {
+    const parts = rawModel.split("/");
+    if (parts[0].length > 20) return parts[1];
+  }
+  return rawModel;
+}
+
 /**
  * Group raw log lines into structured Request Groups.
  */
@@ -117,7 +160,13 @@ export function groupLogLines(rawLines) {
     // If line has no reqId, check if it belongs to the previous active request (e.g. stream chunk or usage log immediately after)
     let targetReqId = parsed.reqId;
     if (!targetReqId) {
-      if (lastReqId && (parsed.level === "stream" || parsed.level === "usage" || parsed.text.includes("▶ POST") || parsed.text.includes("DBG:"))) {
+      if (
+        lastReqId &&
+        (parsed.level === "stream" ||
+          parsed.level === "usage" ||
+          parsed.text.includes("▶ POST") ||
+          parsed.text.includes("DBG:"))
+      ) {
         targetReqId = lastReqId;
       }
     }
@@ -160,10 +209,36 @@ export function groupLogLines(rawLines) {
       const m = parsed.metadata;
       if (m.endpoint) group.endpoint = m.endpoint;
       if (m.method) group.method = m.method;
-      if (m.combo) group.combo = m.combo;
-      if (m.targetModel) group.model = m.targetModel;
-      else if (m.model && !group.model) group.model = m.model;
-      if (m.account) group.account = m.account;
+      if (m.combo) {
+        group.combo = m.combo;
+        if (!group.account || group.account.endsWith("...")) {
+          group.account = m.combo;
+        }
+      }
+
+      // Format model: targetModel takes highest precedence
+      if (m.targetModel) {
+        const cleaned = cleanModelName(m.targetModel);
+        if (cleaned) group.model = cleaned;
+      } else if (!group.model && m.model) {
+        const cleaned = cleanModelName(m.model);
+        if (cleaned) group.model = cleaned;
+      }
+
+      // Account name priority: Email > Combo/Profile Name > Raw Conn ID Hash
+      if (m.userEmail) {
+        group.account = m.userEmail;
+      } else if (
+        !group.account ||
+        group.account.endsWith("...") ||
+        /^[a-f0-9]{8}/i.test(group.account)
+      ) {
+        if (group.combo) {
+          group.account = group.combo;
+        } else if (m.account) {
+          group.account = m.account;
+        }
+      }
       if (m.tokensIn != null) group.tokensIn = m.tokensIn;
       if (m.tokensOut != null) group.tokensOut = m.tokensOut;
       if (m.cacheRead != null) group.cacheRead = m.cacheRead;

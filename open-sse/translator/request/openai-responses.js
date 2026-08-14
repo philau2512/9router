@@ -420,9 +420,9 @@ export function openaiToOpenAIResponsesRequest(
     result.reasoning = { effort: body.reasoning_effort, summary: "auto" };
   }
   if (body.service_tier !== undefined) result.service_tier = body.service_tier;
-  if (body.prompt_cache_key !== undefined) {
-    result.prompt_cache_key = body.prompt_cache_key;
-  }
+  // if (body.prompt_cache_key !== undefined) {
+  //   result.prompt_cache_key = body.prompt_cache_key;
+  // }
 
   return result;
 }

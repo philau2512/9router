@@ -192,16 +192,16 @@ export class DefaultExecutor extends BaseExecutor {
       }
     }
 
-    if (this.provider?.startsWith?.("openai-compatible-")) {
-      const sessionId =
-        credentials?._clientSessionId ||
-        credentials?.rawHeaders?.session_id ||
-        credentials?.rawHeaders?.["session-id"] ||
-        credentials?.rawHeaders?.["x-session-id"];
-      if (sessionId && !headers["session_id"]) {
-        headers["session_id"] = sessionId;
-      }
-    }
+    // if (this.provider?.startsWith?.("openai-compatible-")) {
+    //   const sessionId =
+    //     credentials?._clientSessionId ||
+    //     credentials?.rawHeaders?.session_id ||
+    //     credentials?.rawHeaders?.["session-id"] ||
+    //     credentials?.rawHeaders?.["x-session-id"];
+    //   if (sessionId && !headers["session_id"]) {
+    //     headers["session_id"] = sessionId;
+    //   }
+    // }
 
     if (stream) headers["Accept"] = "text/event-stream";
     return headers;
