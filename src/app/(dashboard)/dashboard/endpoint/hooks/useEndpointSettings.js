@@ -17,6 +17,7 @@ export function useEndpointSettings() {
   const [midStreamResumeEnabled, setMidStreamResumeEnabled] = useState(true);
   const [debugLogEnabled, setDebugLogEnabled] = useState(false);
   const [enableRequestLogs, setEnableRequestLogs] = useState(false);
+  const [backgroundTokenRefreshEnabled, setBackgroundTokenRefreshEnabled] = useState(true);
 
   const applySettings = async () => {
     const { ok, data } = await fetchSettings();
@@ -34,6 +35,7 @@ export function useEndpointSettings() {
     setMidStreamResumeEnabled(data.midStreamResumeEnabled !== false);
     setDebugLogEnabled(!!data.debugLogEnabled);
     setEnableRequestLogs(!!data.enableRequestLogs);
+    setBackgroundTokenRefreshEnabled(data.backgroundTokenRefreshEnabled !== false);
   };
 
   const handleTunnelDashboardAccess = async (value) => {
@@ -119,6 +121,15 @@ export function useEndpointSettings() {
     }
   };
 
+  const handleBackgroundTokenRefreshEnabled = async (value) => {
+    try {
+      const { ok } = await patchSettings({ backgroundTokenRefreshEnabled: value });
+      if (ok) setBackgroundTokenRefreshEnabled(value);
+    } catch (error) {
+      console.log("Error updating backgroundTokenRefreshEnabled:", error);
+    }
+  };
+
   const patchSetting = async (patch) => {
     try {
       await patchSettings(patch);
@@ -151,6 +162,7 @@ export function useEndpointSettings() {
     midStreamResumeEnabled,
     debugLogEnabled,
     enableRequestLogs,
+    backgroundTokenRefreshEnabled,
     applySettings,
     handleTunnelDashboardAccess,
     handleRequireApiKey,
@@ -161,6 +173,7 @@ export function useEndpointSettings() {
     handleMidStreamResumeEnabled,
     handleDebugLogEnabled,
     handleEnableRequestLogs,
+    handleBackgroundTokenRefreshEnabled,
     handleCavemanEnabled,
     handleCavemanLevel,
   };

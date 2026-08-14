@@ -107,9 +107,11 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     closeReasoning(state, emit);
     for (const i in state.funcCallIds) closeToolCall(state, emit, i);
     if (choice.finish_reason === "error") {
+      const providerError = state.providerError;
       sendFailed(state, emit, {
-        code: "empty_provider_response",
+        code: providerError?.code || "empty_provider_response",
         message:
+          providerError?.message ||
           "Provider returned an empty STOP with no content or tool calls",
       });
     } else {

@@ -67,6 +67,7 @@ export default function APIPageClient({ machineId }) {
     midStreamResumeEnabled,
     debugLogEnabled,
     enableRequestLogs,
+    backgroundTokenRefreshEnabled,
     applySettings,
     handleTunnelDashboardAccess,
     handleRequireApiKey,
@@ -77,6 +78,7 @@ export default function APIPageClient({ machineId }) {
     handleMidStreamResumeEnabled,
     handleDebugLogEnabled,
     handleEnableRequestLogs,
+    handleBackgroundTokenRefreshEnabled,
     handleCavemanEnabled,
     handleCavemanLevel,
   } = useEndpointSettings();
@@ -163,12 +165,14 @@ export default function APIPageClient({ machineId }) {
         midStreamResumeEnabled={midStreamResumeEnabled}
         debugLogEnabled={debugLogEnabled}
         enableRequestLogs={enableRequestLogs}
+        backgroundTokenRefreshEnabled={backgroundTokenRefreshEnabled}
         onAutoRetryOverloadedChange={handleAutoRetryOverloaded}
         onMaxRetryAttemptsChange={handleMaxRetryAttempts}
         onRetryDelayMsChange={handleRetryDelayMs}
         onMidStreamResumeEnabledChange={handleMidStreamResumeEnabled}
         onDebugLogEnabledChange={handleDebugLogEnabled}
         onEnableRequestLogsChange={handleEnableRequestLogs}
+        onBackgroundTokenRefreshEnabledChange={handleBackgroundTokenRefreshEnabled}
       />
 
       <ApiKeysCard

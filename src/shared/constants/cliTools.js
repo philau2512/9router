@@ -150,6 +150,55 @@ export const MITM_TOOLS = {
       { id: "simple-task", name: "Qwen3 Coder Next", alias: "simple-task" },
     ],
   },
+  qoder: {
+    id: "qoder",
+    name: "Qoder IDE",
+    image: "/providers/qoder.png",
+    color: "#6366F1",
+    description: "Qoder IDE with MITM",
+    configType: "mitm",
+    mitmDomain: "api3.qoder.sh",
+    proxyRequired: true,
+    modelAliases: [
+      "qmodel_latest",
+      "qmodel_38max",
+      "qmodel",
+      "ultimate",
+      "performance",
+      "efficient",
+      "lite",
+      "cmodel",
+      "dmodel",
+      "dfmodel",
+      "kmodel_latest",
+      "kmodel",
+      "gmodel",
+      "gm51model",
+      "mmodel",
+    ],
+    defaultModels: [
+      {
+        id: "qmodel_latest",
+        name: "Qwen 3.7 Max (Default)",
+        alias: "qmodel_latest",
+        mandatory: true,
+      },
+      { id: "qmodel_38max", name: "Qwen 3.8 Max", alias: "qmodel_38max" },
+      { id: "qmodel", name: "Qwen 3.7 Plus", alias: "qmodel" },
+      { id: "ultimate", name: "Ultimate (Reasoning)", alias: "ultimate" },
+      { id: "performance", name: "Performance", alias: "performance" },
+      { id: "efficient", name: "Efficient", alias: "efficient" },
+      { id: "lite", name: "Lite", alias: "lite" },
+      { id: "cmodel", name: "Cantus", alias: "cmodel" },
+      { id: "dmodel", name: "DeepSeek V4 Pro", alias: "dmodel" },
+      { id: "dfmodel", name: "DeepSeek V4 Flash", alias: "dfmodel" },
+      { id: "kmodel_latest", name: "Kimi K3", alias: "kmodel_latest" },
+      { id: "kmodel", name: "Kimi K2.7 Code", alias: "kmodel" },
+      { id: "gmodel", name: "GLM 5.3", alias: "gmodel" },
+      { id: "gm51model", name: "GLM 5.2", alias: "gm51model" },
+      { id: "mmodel", name: "MiniMax M3", alias: "mmodel" },
+    ],
+  },
   // cursor: {
   //   id: "cursor",
   //   name: "Cursor",
@@ -712,6 +761,45 @@ devin auth login
 
 # Verify detection (optional)
 devin --version`,
+    },
+  },
+  opendesign: {
+    id: "opendesign",
+    name: "OpenDesign",
+    image: "/providers/opendesign.png",
+    color: "#7C3AED",
+    description: "OpenDesign — claude.ai/design open-sourced! Agent-native design skills pack",
+    docsUrl: "https://github.com/manalkaff/opendesign",
+    configType: "guide",
+    notes: [
+      { type: "info", text: "OpenDesign ships as a plugin/skills pack installed into Claude Code, Cursor, OpenAI Codex, Gemini CLI, or OpenCode. It inherits the host agent's model config, so once your host points at 9Router, /opendesign design sessions route through 9Router automatically — no extra env vars needed." },
+      { type: "info", text: "Invoke with /opendesign <brief>. Covers decks, wireframes, interactive prototypes, design-system extraction, and brand systems, with a verifier subagent that checks output against the brief." },
+    ],
+    guideSteps: [
+      { step: 1, title: "Install the plugin", desc: "Pick your host below and run the matching install command from the matrix." },
+      { step: 2, title: "No config needed", desc: "OpenDesign runs inside your host agent and uses its model config. If the host already routes through 9Router, /opendesign traffic does too." },
+      { step: 3, title: "Start designing", desc: "Invoke OpenDesign from your agent:", value: "/opendesign make a pitch deck for a seed-stage AI company, 10 slides", copyable: true },
+    ],
+    codeBlock: {
+      language: "bash",
+      code: `# Claude Code
+/plugin marketplace add manalkaff/opendesign
+/plugin install opendesign@opendesign
+
+# Cursor
+/add-plugin opendesign
+
+# OpenAI Codex CLI
+/plugins   # search "opendesign" -> Install Plugin
+
+# OpenAI Codex App
+# Plugins sidebar -> OpenDesign (Design section) -> +
+
+# Gemini CLI
+gemini extensions install https://github.com/manalkaff/opendesign
+
+# OpenCode
+# Fetch and follow .opencode/INSTALL.md from the repo`,
     },
   },
   // HIDDEN: gemini-cli

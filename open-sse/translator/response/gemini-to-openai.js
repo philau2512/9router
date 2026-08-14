@@ -1,5 +1,6 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
+import { GEMINI_FINISH } from "../schema/finishReasons.js";
 
 // Convert Gemini response chunk to OpenAI format
 export function geminiToOpenAIResponse(chunk, state) {
@@ -318,7 +319,17 @@ export function geminiToOpenAIResponse(chunk, state) {
 
   // Finish reason - include usage in final chunk
   if (candidate.finishReason) {
-    let finishReason = candidate.finishReason.toLowerCase();
+    const rawFinishReason = String(candidate.finishReason);
+    let finishReason = rawFinishReason.toLowerCase();
+    if (rawFinishReason === GEMINI_FINISH.MALFORMED_FUNCTION_CALL) {
+      state.providerError = {
+        code: "malformed_function_call",
+        message:
+          candidate.finishMessage ||
+          "Provider returned an empty or malformed function call",
+      };
+      finishReason = "error";
+    }
     if (finishReason === "stop" && state.geminiToolCallCount > 0) {
       finishReason = "tool_calls";
     }

@@ -65,6 +65,10 @@ import { syncToJson as syncMitmAliasCache } from "@/lib/mitmAliasCache";
 
 process.setMaxListeners(20);
 
+// Defer heavy startup work so the first HTTP request (login → dashboard) isn't
+// starved by DB cleanup, cloudflared download, lsof/DNS probes and OAuth pings.
+const STARTUP_DEFER_MS = 3000;
+
 // Survive Next.js hot reload
 const g = (global.__appSingleton ??= {
   signalHandlersRegistered: false,
@@ -81,73 +85,74 @@ const g = (global.__appSingleton ??= {
 
 export async function initializeApp() {
   try {
-    await cleanupProviderConnections();
-    const settings = await getSettings();
-
-    // Auto-resume tunnel (once per process)
-    if (settings.tunnelEnabled && !g.tunnelAutoResumed) {
-      g.tunnelAutoResumed = true;
-      console.log("[InitApp] Tunnel was enabled, auto-resuming...");
-      safeRestartTunnel("startup").catch((e) =>
-        console.log("[InitApp] Tunnel resume failed:", e.message),
-      );
-    }
-
-    // Auto-resume tailscale (once per process)
-    if (settings.tailscaleEnabled && !g.tailscaleAutoResumed) {
-      g.tailscaleAutoResumed = true;
-      console.log("[InitApp] Tailscale was enabled, auto-resuming...");
-      safeRestartTailscale("startup").catch((e) =>
-        console.log("[InitApp] Tailscale resume failed:", e.message),
-      );
-    }
-
+    // Register cleanup + exit-respawn callback immediately so signals and
+    // unexpected cloudflared exits are handled even during the deferred window.
     if (!g.signalHandlersRegistered) {
       const cleanup = () => {
-        try {
-          removeAllDNSEntriesSync();
-        } catch {
-          /* best effort */
-        }
+        try { removeAllDNSEntriesSync(); } catch { /* best effort */ }
         killCloudflared();
         process.exit();
       };
       process.on("SIGINT", cleanup);
       process.on("SIGTERM", cleanup);
-      process.on("exit", () => {
-        try {
-          removeAllDNSEntriesSync();
-        } catch {
-          /* ignore */
-        }
-      });
+      process.on("exit", () => { try { removeAllDNSEntriesSync(); } catch { /* ignore */ } });
       g.signalHandlersRegistered = true;
     }
 
-    ensureCloudflared().catch(() => {});
-
-    // Sync mitmAlias DB → JSON cache so standalone MITM server can read it
-    syncMitmAliasCache().catch(() => {});
-
-    // Auto-respawn tunnel when cloudflared exits unexpectedly (e.g. network change drop)
     setTunnelUnexpectedExitCallback(() => {
       safeRestartTunnel("unexpected-exit").catch(() => {});
     });
 
-    configureTunnelMonitoring(settings);
-    startCodexProactiveRefreshMonitor();
-    configureQuotaAutoPing(settings);
-    autoStartMitm();
+    // Defer the heavy work — nothing here blocks incoming requests.
+    setTimeout(() => {
+      runHeavyStartup().catch((e) => console.error("[InitApp] deferred startup failed:", e.message));
+    }, STARTUP_DEFER_MS);
   } catch (error) {
     console.error("[InitApp] Error:", error);
   }
 }
 
-async function autoStartMitm() {
+async function runHeavyStartup() {
+  await cleanupProviderConnections();
+  const settings = await getSettings();
+
+  // Auto-resume tunnel (once per process)
+  if (settings.tunnelEnabled && !g.tunnelAutoResumed) {
+    g.tunnelAutoResumed = true;
+    console.log("[InitApp] Tunnel was enabled, auto-resuming...");
+    safeRestartTunnel("startup").catch((e) => console.log("[InitApp] Tunnel resume failed:", e.message));
+  }
+
+  // Auto-resume tailscale (once per process)
+  if (settings.tailscaleEnabled && !g.tailscaleAutoResumed) {
+    g.tailscaleAutoResumed = true;
+    console.log("[InitApp] Tailscale was enabled, auto-resuming...");
+    safeRestartTailscale("startup").catch((e) => console.log("[InitApp] Tailscale resume failed:", e.message));
+  }
+
+  if (settings.tunnelEnabled) ensureCloudflared().catch(() => {});
+
+  if (settings.mitmEnabled) {
+    // Sync mitmAlias DB → JSON cache so standalone MITM server can read it.
+    syncMitmAliasCache().catch(() => {});
+    autoStartMitm(settings);
+  }
+
+  configureTunnelMonitoring(settings);
+  startCodexProactiveRefreshMonitor();
+  configureQuotaAutoPing(settings);
+
+  // Proactive OAuth token refresh (e.g. grok-cli ~6h TTL). Module is idempotent
+  // and also started from custom-server.js when that entry is used.
+  import("@/sse/services/backgroundTokenRefresh.js")
+    .then(({ startBackgroundTokenRefresh }) => startBackgroundTokenRefresh())
+    .catch((e) => console.log("[BackgroundTokenRefresh] scheduler start failed:", e.message));
+}
+
+async function autoStartMitm(settings) {
   if (g.mitmStartInProgress) return;
   g.mitmStartInProgress = true;
   try {
-    const settings = await getSettings();
     if (!settings.mitmEnabled) return;
     const mitmStatus = await getMitmStatus();
     if (mitmStatus.running) return;

@@ -31,6 +31,15 @@ function getOpenAICompatibleType(provider) {
   return provider.includes("responses") ? "responses" : "chat";
 }
 
+// Resolve the API type (chat vs responses) for an openai-compatible node.
+// The stored apiType on the connection's providerSpecificData is authoritative.
+// Falls back to the node ID substring for legacy nodes.
+export function resolveOpenAICompatibleApiType(provider, credentials = null) {
+  const stored = credentials?.providerSpecificData?.apiType;
+  if (stored === "chat" || stored === "responses") return stored;
+  return typeof provider === "string" && provider.includes("responses") ? "responses" : "chat";
+}
+
 function buildOpenAICompatibleUrl(baseUrl, apiType) {
   const normalized = baseUrl.replace(/\/$/, "");
   const path = apiType === "responses" ? "/responses" : "/chat/completions";

@@ -346,6 +346,19 @@ export function openaiToKiroRequest(model, body, stream, credentials) {
   // too because the CodeWhisperer surface does not always enforce top-level
   // systemPrompt for direct calls.
   const systemPromptParts = [];
+  for (const message of messages) {
+    if (message?.role !== ROLE.SYSTEM) continue;
+    if (typeof message.content === "string" && message.content.trim()) {
+      systemPromptParts.push(message.content.trim());
+    } else if (Array.isArray(message.content)) {
+      const text = message.content
+        .map((part) => (typeof part?.text === "string" ? part.text : ""))
+        .filter(Boolean)
+        .join("\n")
+        .trim();
+      if (text) systemPromptParts.push(text);
+    }
+  }
   if (thinkingBudget !== null && !usesNativeGptEffort) {
     systemPromptParts.push(buildThinkingSystemPrefix(thinkingBudget));
   }

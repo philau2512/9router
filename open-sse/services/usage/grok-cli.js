@@ -68,6 +68,7 @@ function buildGrokCliHeaders(accessToken, providerSpecificData = {}) {
     "x-xai-token-auth": "xai-grok-cli",
     "x-grok-client-identifier": GROK_CLI_CLIENT_IDENTIFIER,
     "x-grok-client-version": GROK_CLI_VERSION,
+    "x-grok-client-mode": "headless",
   };
   const email = psd.email;
   const userId = psd.userId || psd.principalId;
@@ -87,6 +88,24 @@ function resolvePlan(user, config) {
   if (user?.hasGrokCodeAccess === true) return "Grok Code";
   if (config?.isUnifiedBillingUser === true) return "Grok Build";
   return "Grok Build";
+}
+
+// Display only; upstream remains authoritative for access and quota enforcement.
+function planFromAccessToken(accessToken) {
+  try {
+    const payload = JSON.parse(Buffer.from(accessToken.split(".")[1], "base64url"));
+    return {
+      0: "Free",
+      1: "SuperGrok",
+      2: "X Basic",
+      3: "X Premium",
+      4: "X Premium Plus",
+      5: "SuperGrok Heavy",
+      6: "SuperGrok Lite",
+    }[payload.tier] || "";
+  } catch {
+    return "";
+  }
 }
 
 function makeQuota({ used, total, resetAt, unlimited = false }) {
@@ -605,7 +624,8 @@ export async function getGrokCliUsage(
       return fb;
     }
 
-    const result = { plan: merged.plan, quotas: merged.quotas };
+    const planOverride = planFromAccessToken(accessToken);
+    const result = { plan: planOverride || merged.plan, quotas: merged.quotas };
     if (merged.payAsYouGo) result.payAsYouGo = merged.payAsYouGo;
     return result;
   } catch (error) {

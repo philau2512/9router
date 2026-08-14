@@ -259,8 +259,10 @@ export function initState(sourceFormat) {
       funcArgsBuf: {},
       funcNames: {},
       funcCallIds: {},
+      funcItemAdded: {},
       funcArgsDone: {},
       funcItemDone: {},
+      customToolNames: new Set(),
       completedSent: false
     };
   }

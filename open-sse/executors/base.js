@@ -1,6 +1,5 @@
 import {
   HTTP_STATUS,
-  RETRY_CONFIG,
   DEFAULT_RETRY_CONFIG,
   resolveRetryEntry,
   FETCH_CONNECT_TIMEOUT_MS,

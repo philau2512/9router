@@ -44,6 +44,9 @@ export default function MitmToolCard({
   const [currentEditingAlias, setCurrentEditingAlias] = useState(null);
 
   const mitmHosts = TOOL_HOSTS[tool.id] ?? [];
+  const requiresProxy = tool.proxyRequired === true;
+  const connectProxyUrl = `http://127.0.0.1:${20129}`;
+  const routingActive = requiresProxy ? serverRunning : dnsActive;
   const canRunWithoutPassword =
     isWin || hasCachedPassword || needsSudoPassword === false;
 
@@ -217,14 +220,40 @@ export default function MitmToolCard({
             )}
             {/* Info */}
             <div className="flex flex-col gap-0.5 text-[11px] text-text-muted px-1">
-              <p>
-                Toggle DNS to redirect {tool.name} traffic through 9Router via
-                MITM.
-              </p>
-              {!dnsActive && (
-                <p className="text-amber-600 text-[10px] mt-1">
-                  ⚠️ Enable DNS to edit model mappings
-                </p>
+              {requiresProxy ? (
+                <>
+                  <p>
+                    In Qoder Preferences → Qoder Settings → Advanced → Proxy
+                    Settings, select Manual and use the local HTTP proxy below.
+                  </p>
+                  <div className="mt-2 flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-2 py-1.5 font-mono text-xs text-text-main">
+                    <span className="min-w-0 flex-1 truncate">{connectProxyUrl}</span>
+                    <button
+                      type="button"
+                      onClick={() => navigator.clipboard?.writeText(connectProxyUrl)}
+                      className="rounded px-1 text-primary hover:bg-primary/10"
+                      title="Copy proxy URL"
+                    >
+                      <span className="material-symbols-outlined text-[15px]">content_copy</span>
+                    </button>
+                  </div>
+                  <p className="mt-1 text-amber-600 text-[10px]">
+                    Restart Qoder after saving the proxy setting. DNS remains useful for
+                    non-chat Qoder endpoints.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>
+                    Toggle DNS to redirect {tool.name} traffic through 9Router via
+                    MITM.
+                  </p>
+                  {!dnsActive && (
+                    <p className="text-amber-600 text-[10px] mt-1">
+                      ⚠️ Enable DNS to edit model mappings
+                    </p>
+                  )}
+                </>
               )}
             </div>
 
@@ -253,8 +282,8 @@ export default function MitmToolCard({
                           handleMappingBlur(model.alias, e.target.value)
                         }
                         placeholder="provider/model-id"
-                        disabled={!dnsActive}
-                        className={`w-full min-w-0 pl-2 pr-7 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5 ${!dnsActive ? "opacity-50 cursor-not-allowed" : ""}`}
+                        disabled={!routingActive}
+                        className={`w-full min-w-0 pl-2 pr-7 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5 ${!routingActive ? "opacity-50 cursor-not-allowed" : ""}`}
                       />
                       {modelMappings[model.alias] && (
                         <button
@@ -276,8 +305,8 @@ export default function MitmToolCard({
                     </div>
                     <button
                       onClick={() => openModelSelector(model.alias)}
-                      disabled={!hasActiveProviders || !dnsActive}
-                      className={`rounded border px-2 py-2 text-xs transition-colors sm:py-1.5 ${hasActiveProviders && dnsActive ? "bg-surface border-border hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}
+                      disabled={!hasActiveProviders || !routingActive}
+                      className={`rounded border px-2 py-2 text-xs transition-colors sm:py-1.5 ${hasActiveProviders && routingActive ? "bg-surface border-border hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}
                     >
                       Select
                     </button>

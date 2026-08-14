@@ -20,8 +20,39 @@ import * as log from "../utils/logger.js";
 import { getProxyPools } from "@/models";
 import { pickProxyPoolId } from "@/lib/network/connectionProxy";
 
-// Mutex to prevent race conditions during account selection
-let selectionMutex = Promise.resolve();
+// Serialize account selection only within a credential pool. Independent providers
+// can select accounts concurrently; xAI and Grok CLI overlap on Grok CLI accounts.
+const selectionQueues = new Map();
+
+function getCredentialPoolKey(providerId) {
+  return providerId === "xai" || providerId === "grok-cli"
+    ? "xai-grok-cli"
+    : providerId;
+}
+
+async function acquireSelectionLock(poolKey) {
+  let queue = selectionQueues.get(poolKey);
+  if (!queue) {
+    queue = { tail: Promise.resolve(), pending: 0 };
+    selectionQueues.set(poolKey, queue);
+  }
+
+  queue.pending++;
+  const previous = queue.tail;
+  let release;
+  queue.tail = new Promise((resolve) => {
+    release = resolve;
+  });
+  await previous;
+
+  return () => {
+    release();
+    queue.pending--;
+    if (queue.pending === 0 && selectionQueues.get(poolKey) === queue) {
+      selectionQueues.delete(poolKey);
+    }
+  };
+}
 
 /**
  * Get provider credentials from localDb
@@ -44,19 +75,13 @@ export async function getProviderCredentials(
         ? new Set([excludeConnectionIds])
         : new Set();
   const preferredConnectionId = options?.preferredConnectionId || null;
-  // Acquire mutex to prevent race conditions
-  const currentMutex = selectionMutex;
-  let resolveMutex;
-  selectionMutex = new Promise((resolve) => {
-    resolveMutex = resolve;
-  });
+  // Resolve before locking so independent provider pools do not contend.
+  const providerId = resolveProviderId(provider);
+  const releaseSelectionLock = await acquireSelectionLock(
+    getCredentialPoolKey(providerId),
+  );
 
   try {
-    await currentMutex;
-
-    // Resolve alias to provider ID (e.g., "kc" -> "kilocode")
-    const providerId = resolveProviderId(provider);
-
     // Inject a virtual connection for no-auth free providers (with optional proxy pool from settings)
     if (FREE_PROVIDERS[providerId]?.noAuth) {
       const settings = await getSettings();
@@ -280,7 +305,7 @@ export async function getProviderCredentials(
       _connection: connection,
     };
   } finally {
-    if (resolveMutex) resolveMutex();
+    releaseSelectionLock();
   }
 }
 

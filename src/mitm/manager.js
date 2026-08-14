@@ -27,6 +27,9 @@ const { log, err } = require("./logger");
 const { LSOF_BIN } = require("./config");
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
+// The server child runs from the temp directory. Preserve an absolute data path
+// so it uses the same root CA and alias cache that the dashboard prepared.
+const MITM_DATA_DIR = path.resolve(DATA_DIR);
 
 function shellQuoteSingle(str) {
   if (str == null || str === "") return "''";
@@ -394,6 +397,14 @@ async function killLeftoverMitm(sudoPassword) {
   } catch {
     /* ignore */
   }
+  try {
+    const owner = await getPort443Owner(sudoPassword);
+    if (owner && owner.pid && (owner.name === "node.exe" || owner.name === "node")) {
+      await killPort443Owner(owner, sudoPassword);
+    }
+  } catch {
+    /* ignore */
+  }
   if (!IS_WIN && SERVER_PATH) {
     try {
       const escaped = SERVER_PATH.replace(/'/g, "'\\''");
@@ -490,7 +501,7 @@ async function getMitmStatus() {
     ? await checkCertInstalled(rootCACertPath)
     : false;
 
-  return { running, pid, certExists, certTrusted, dnsStatus };
+  return { running, pid, certExists, certTrusted, dnsStatus, connectProxyPort: 20129 };
 }
 
 async function scheduleMitmRestart(apiKey) {
@@ -710,7 +721,12 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
 
     // Step 2: Spawn server (Root CA already installed in Step 1.5)
     // Verify server.js exists — recopy if runtime file was deleted (antivirus/cleanup)
-    let effectiveServerPath = SERVER_PATH;
+    // Resolve on every start: in development `MITM_SERVER_PATH` is set during
+    // app bootstrap, after this module may already have been loaded.
+    let effectiveServerPath = ensureRuntimeServer(resolveBundledServerPath());
+    if (!effectiveServerPath || !fs.existsSync(effectiveServerPath)) {
+      effectiveServerPath = SERVER_PATH;
+    }
     if (!effectiveServerPath || !fs.existsSync(effectiveServerPath)) {
       log(`[MITM] server.js missing at ${effectiveServerPath} → recopying`);
       effectiveServerPath = ensureRuntimeServer(resolveBundledServerPath());
@@ -751,8 +767,11 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
         env: {
           ...process.env,
           ROUTER_API_KEY: apiKey,
-          NODE_ENV: "production",
+          NODE_ENV:
+            process.env.NODE_ENV === "development" ? "development" : "production",
           MITM_ROUTER_BASE: mitmRouterBase,
+          DATA_DIR: MITM_DATA_DIR,
+      MITM_CONNECT_PROXY_PORT: "20129",
         },
       });
 
@@ -765,6 +784,7 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
         `HOME=${shellQuoteSingle(os.homedir())}`,
         `ROUTER_API_KEY=${shellQuoteSingle(apiKey)}`,
         `MITM_ROUTER_BASE=${shellQuoteSingle(mitmRouterBase)}`,
+        `DATA_DIR=${shellQuoteSingle(MITM_DATA_DIR)}`,
         "NODE_ENV=production",
         shellQuoteSingle(process.execPath),
         shellQuoteSingle(effectiveServerPath),
@@ -786,8 +806,11 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
         env: {
           ...process.env,
           ROUTER_API_KEY: apiKey,
-          NODE_ENV: "production",
+          NODE_ENV:
+            process.env.NODE_ENV === "development" ? "development" : "production",
           MITM_ROUTER_BASE: mitmRouterBase,
+          DATA_DIR: MITM_DATA_DIR,
+      MITM_CONNECT_PROXY_PORT: "20129",
         },
       });
     }
@@ -815,15 +838,28 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
         );
       }
     } else if (IS_WIN) {
-      const rootCAPath = path.join(MITM_DIR, "rootCA.crt");
+      const rootCAPath = path.join(MITM_DATA_DIR, "mitm", "rootCA.crt");
       if (fs.existsSync(rootCAPath)) {
+        const escapedRootCAPath = rootCAPath.replace(/'/g, "''");
         exec(
           `setx NODE_EXTRA_CA_CERTS "${rootCAPath}"`,
           { windowsHide: true },
           (e) => {
             if (e)
               log(`[setx] Failed to set NODE_EXTRA_CA_CERTS: ${e.message}`);
-            else log(`[setx] NODE_EXTRA_CA_CERTS set for current user`);
+            else {
+              log(`[setx] NODE_EXTRA_CA_CERTS set for current user`);
+              exec(
+                `powershell -NonInteractive -WindowStyle Hidden -Command "[Environment]::SetEnvironmentVariable('NODE_EXTRA_CA_CERTS', '${escapedRootCAPath}', 'Machine')"`,
+                { windowsHide: true },
+                (machineError) => {
+                  if (machineError)
+                    log(
+                      `[setx] Failed to set machine NODE_EXTRA_CA_CERTS: ${machineError.message}`,
+                    );
+                },
+              );
+            }
           },
         );
       }
@@ -1031,6 +1067,14 @@ async function stopServer(sudoPassword) {
       (e) => {
         if (e) log(`[reg] Failed to unset NODE_EXTRA_CA_CERTS: ${e.message}`);
         else log(`[reg] NODE_EXTRA_CA_CERTS unset`);
+      },
+    );
+    exec(
+      `powershell -NonInteractive -WindowStyle Hidden -Command "[Environment]::SetEnvironmentVariable('NODE_EXTRA_CA_CERTS', $null, 'Machine')"`,
+      { windowsHide: true },
+      (e) => {
+        if (e)
+          log(`[reg] Failed to unset machine NODE_EXTRA_CA_CERTS: ${e.message}`);
       },
     );
   }

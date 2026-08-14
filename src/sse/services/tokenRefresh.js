@@ -271,7 +271,8 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
  * @returns {Promise<object>} updated credentials object
  */
 export async function checkAndRefreshToken(provider, credentials) {
-  let creds = { ...credentials };
+  const connectionId = credentials?.connectionId || credentials?.id || null;
+  let creds = { ...credentials, ...(connectionId ? { connectionId } : {}) };
 
   // ── 1. Regular access-token expiry ────────────────────────────────────────
   if (_shouldRefreshCredentials(provider, creds)) {

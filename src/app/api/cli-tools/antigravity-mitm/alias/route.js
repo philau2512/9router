@@ -33,12 +33,13 @@ export async function PUT(request) {
       );
     }
 
-    // Check if DNS is enabled for this tool
+    // Check if MITM is running. Qoder can use the loopback CONNECT proxy
+    // without DNS because its native agent connects directly to inference IPs.
     const status = await getMitmStatus();
-    if (!status.dnsStatus || !status.dnsStatus[tool]) {
+    if (!status.running) {
       return NextResponse.json(
         {
-          error: `DNS must be enabled for ${tool} before editing model mappings`,
+          error: `MITM must be running before editing model mappings for ${tool}`,
         },
         { status: 403 },
       );

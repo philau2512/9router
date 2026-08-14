@@ -63,17 +63,20 @@ export function useProvidersState() {
         : conn.testStatus;
     };
 
-    const connected = providerConnections.filter((c) => {
-      const status = getEffectiveStatus(c);
-      return status === "active" || status === "success";
-    }).length;
+    const isErrorStatus = (status) =>
+      status === "error" || status === "expired" || status === "unavailable";
 
     const errorConns = providerConnections.filter((c) => {
       const status = getEffectiveStatus(c);
-      return (
-        status === "error" || status === "expired" || status === "unavailable"
-      );
+      return isErrorStatus(status);
     });
+
+    const connected = providerConnections.filter((c) => {
+      if (c.isActive === false) return false;
+      const status = getEffectiveStatus(c);
+      if (isErrorStatus(status)) return false;
+      return true;
+    }).length;
 
     const error = errorConns.length;
     const total = providerConnections.length;

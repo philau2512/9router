@@ -24,13 +24,23 @@ const TARGET_HOSTS = [
   "api.individual.githubcopilot.com",
   "q.us-east-1.amazonaws.com",
   "api2.cursor.sh",
+  "api2.qoder.sh",
+  "api3.qoder.sh",
+  "openapi.qoder.sh",
+  "center.qoder.sh",
+  "api.qoder.sh",
+  "repo2.qoder.sh",
 ];
+
+const QODER_DIRECT_IPS = ["47.57.243.249"];
+const QODER_CONNECT_HOST = "api3.qoder.sh";
 
 const URL_PATTERNS = {
   antigravity: [":generateContent", ":streamGenerateContent"],
   copilot: ["/chat/completions", "/v1/messages", "/responses"],
   kiro: ["/generateAssistantResponse"],
   cursor: ["/BidiAppend", "/RunSSE", "/RunPoll", "/Run"],
+  qoder: ["/agent_chat_generation", "/service/pro/sse/agent_chat_generation"],
 };
 
 // Synonym map: rawModel from request → canonical alias key in mitmAlias DB
@@ -40,6 +50,9 @@ const MODEL_SYNONYMS = {
     "gemini-3.1-pro-high": "gemini-pro-agent",
     "gemini-3-pro-high": "gemini-pro-agent",
     "gemini-3-pro-low": "gemini-3.1-pro-low",
+  },
+  qoder: {
+    "auto": "qmodel_latest",
   },
 };
 
@@ -60,6 +73,24 @@ const MODEL_PATTERNS = {
     { match: /opus/i, alias: "claude-opus-4-6-thinking" },
     { match: /sonnet|claude/i, alias: "claude-sonnet-4-6" },
     { match: /gpt.*oss|oss/i, alias: "gpt-oss-120b-medium" },
+  ],
+  qoder: [
+    { match: /qmodel_38max|qwen.*3\.8.*max/i, alias: "qmodel_38max" },
+    { match: /qmodel_latest|qwen.*3\.7.*max/i, alias: "qmodel_latest" },
+    { match: /qmodel(?!_)|qwen.*3\.7.*plus/i, alias: "qmodel" },
+    { match: /kmodel_latest|kimi.*k3/i, alias: "kmodel_latest" },
+    { match: /kmodel(?!_)|kimi.*k2\.7/i, alias: "kmodel" },
+    { match: /gm51model|glm.*5\.2/i, alias: "gm51model" },
+    { match: /gmodel|glm.*5\.3|glm/i, alias: "gmodel" },
+    { match: /dfmodel|deepseek.*flash/i, alias: "dfmodel" },
+    { match: /dmodel|deepseek.*pro|deepseek/i, alias: "dmodel" },
+    { match: /cantus|cmodel/i, alias: "cmodel" },
+    { match: /minimax|mmodel/i, alias: "mmodel" },
+    { match: /ultimate/i, alias: "ultimate" },
+    { match: /performance/i, alias: "performance" },
+    { match: /efficient/i, alias: "efficient" },
+    { match: /lite/i, alias: "lite" },
+    { match: /qwen/i, alias: "qmodel_latest" },
   ],
 };
 
@@ -82,7 +113,23 @@ function getToolForHost(host) {
     return "antigravity";
   if (h === "q.us-east-1.amazonaws.com") return "kiro";
   if (h === "api2.cursor.sh") return "cursor";
+  if (h.endsWith(".qoder.sh") || h.endsWith(".qoder.com")) return "qoder";
   return null;
+}
+
+function isQoderConnectTarget(hostname) {
+  return QODER_DIRECT_IPS.includes(hostname);
+}
+
+function isQoderPromptCacheKeyEnabled(mappedModel) {
+  const configuredModels = String(
+    process.env.MITM_QODER_PROMPT_CACHE_MODELS || "",
+  )
+    .replace(/#.*$/, "")
+    .split(",")
+    .map((model) => model.trim())
+    .filter(Boolean);
+  return configuredModels.includes("*") || configuredModels.includes(mappedModel);
 }
 
 // Patterns for models that must NOT be re-routed — pass through natively
@@ -105,42 +152,65 @@ function isBinaryData(buffer) {
   return nonPrintable / sample.length > 0.3;
 }
 
-// Extract model from URL path (Gemini), body (OpenAI/Anthropic), or Kiro conversationState.
+// Extract model from URL path (Gemini), body (OpenAI/Anthropic/Qoder), or Kiro conversationState.
 function extractModel(url, body) {
   const urlMatch = url.match(/\/models\/([^/:]+)/);
   const urlModel = urlMatch?.[1] || null;
 
   if (isBinaryData(body)) return urlModel;
 
+  const rawStr = body.toString("utf8");
+  let parsed = null;
   try {
-    const parsed = JSON.parse(body.toString());
-    if (parsed.conversationState) {
-      return parsed.conversationState.currentMessage?.userInputMessage?.modelId || null;
-    }
-    const model = urlModel || parsed.model || null;
-    if (String(model).replace(/^models\//, "") === "gemini-3.6-flash-tiered") {
-      const rawLevel = parsed.request?.generationConfig?.thinkingConfig?.thinkingLevel
-        || parsed.generationConfig?.thinkingConfig?.thinkingLevel;
-      const level = ["high", "medium", "low"].includes(String(rawLevel).toLowerCase())
-        ? String(rawLevel).toLowerCase()
-        : "medium";
-      return `gemini-3.6-flash-${level}`;
-    }
-    return model;
+    parsed = JSON.parse(rawStr);
   } catch {
-    return urlModel;
+    try {
+      const { qoderDecodeBody } = require("../lib/qoder/encoding.js");
+      const decoded = qoderDecodeBody(rawStr);
+      if (decoded) parsed = JSON.parse(decoded);
+    } catch {
+      /* ignore */
+    }
   }
+
+  if (!parsed) return urlModel;
+
+  if (parsed.conversationState) {
+    return (
+      parsed.conversationState.currentMessage?.userInputMessage?.modelId || null
+    );
+  }
+  if (parsed.chat_context?.modelConfig?.model) {
+    return parsed.chat_context.modelConfig.model;
+  }
+  const model = urlModel || parsed.model || null;
+  if (String(model).replace(/^models\//, "") === "gemini-3.6-flash-tiered") {
+    const rawLevel =
+      parsed.request?.generationConfig?.thinkingConfig?.thinkingLevel ||
+      parsed.generationConfig?.thinkingConfig?.thinkingLevel;
+    const level = ["high", "medium", "low"].includes(
+      String(rawLevel).toLowerCase(),
+    )
+      ? String(rawLevel).toLowerCase()
+      : "medium";
+    return `gemini-3.6-flash-${level}`;
+  }
+  return model;
 }
 
 module.exports = {
   IS_DEV,
   LSOF_BIN,
   TARGET_HOSTS,
+  QODER_DIRECT_IPS,
+  QODER_CONNECT_HOST,
   URL_PATTERNS,
   MODEL_SYNONYMS,
   MODEL_PATTERNS,
   MODEL_NO_MAP,
   LOG_BLACKLIST_URL_PARTS,
   getToolForHost,
+  isQoderConnectTarget,
+  isQoderPromptCacheKeyEnabled,
   extractModel,
 };
