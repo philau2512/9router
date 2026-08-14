@@ -1,8 +1,9 @@
+const crypto = require("crypto");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { err, dumpRequest, createResponseDumper } = require("../logger");
-const { IS_DEV } = require("../config");
+const { err, log, dumpRequest, createResponseDumper } = require("../logger");
+const { IS_DEV, isQoderPromptCacheKeyEnabled } = require("../config");
 const { qoderDecodeBody } = require("../../lib/qoder/encoding.js");
 const { fetchRouter } = require("./base");
 
@@ -34,11 +35,18 @@ function findQoderModel(value, seen = new WeakSet()) {
   if (seen.has(value)) return null;
   seen.add(value);
 
+  const config = value.model_config || value.modelConfig;
+  if (config && typeof config === "object") {
+    if (typeof config.key === "string" && config.key) return config.key;
+    if (typeof config.model === "string" && config.model) return config.model;
+    if (typeof config.model_id === "string" && config.model_id) return config.model_id;
+    if (typeof config.modelId === "string" && config.modelId) return config.modelId;
+    if (typeof config.display_name === "string" && config.display_name) return config.display_name;
+  }
+
   const priorityContainers = [
     value.chat_context,
     value.chatContext,
-    value.modelConfig,
-    value.model_config,
     value.request,
     value.data,
   ];
@@ -47,6 +55,16 @@ function findQoderModel(value, seen = new WeakSet()) {
     if (model) return model;
   }
 
+  if (
+    typeof value.key === "string" &&
+    value.key &&
+    (value.format === "openai" ||
+      value.max_input_tokens ||
+      value.strategies ||
+      value.source === "system")
+  ) {
+    return value.key;
+  }
   if (typeof value.model === "string" && value.model) return value.model;
   if (typeof value.modelId === "string" && value.modelId) return value.modelId;
   if (typeof value.modelName === "string" && value.modelName)
@@ -302,6 +320,164 @@ function mergeQoderHistory(previous, incoming) {
   return [...previous, ...currentWithoutRepeatedSystem];
 }
 
+function normalizeQoderToolCall(toolCall) {
+  if (!toolCall || typeof toolCall !== "object") return null;
+  const name = toolCall.function?.name;
+  if (typeof name !== "string" || !name) return null;
+  return {
+    id: typeof toolCall.id === "string" ? toolCall.id : "",
+    type: "function",
+    function: {
+      name,
+      arguments:
+        typeof toolCall.function.arguments === "string"
+          ? toolCall.function.arguments
+          : JSON.stringify(toolCall.function.arguments || {}),
+    },
+  };
+}
+
+function normalizeQoderOpenAIMessage(message) {
+  if (!isChatMessage(message)) return null;
+  const normalized = { role: message.role };
+  if (message.role === "assistant") {
+    normalized.content = typeof message.content === "string" ? message.content : null;
+    const toolCalls = (message.tool_calls || [])
+      .map(normalizeQoderToolCall)
+      .filter(Boolean);
+    if (toolCalls.length) normalized.tool_calls = toolCalls;
+  } else {
+    normalized.content = typeof message.content === "string" ? message.content : "";
+  }
+  if (message.role === "tool" && typeof message.tool_call_id === "string") {
+    normalized.tool_call_id = message.tool_call_id;
+  }
+  if (typeof message.name === "string" && message.name) normalized.name = message.name;
+  return normalized;
+}
+
+function normalizeQoderToolSchema(value) {
+  if (Array.isArray(value)) return value.map(normalizeQoderToolSchema);
+  if (!value || typeof value !== "object") return value;
+
+  const normalized = {};
+  for (const key of Object.keys(value).sort()) {
+    const child = value[key];
+    if (
+      child === null &&
+      ["allOf", "anyOf", "enum", "oneOf", "required"].includes(key)
+    ) {
+      normalized[key] = [];
+    } else {
+      normalized[key] = normalizeQoderToolSchema(child);
+    }
+  }
+  return normalized;
+}
+
+function getQoderTools(body) {
+  const request = body?.request && typeof body.request === "object" ? body.request : {};
+  const rawTools = body?.tools || request.tools;
+  if (!Array.isArray(rawTools)) return [];
+  return rawTools
+    .filter(
+      (tool) =>
+        tool?.type === "function" &&
+        typeof tool.function?.name === "string" &&
+        tool.function.name,
+    )
+    .map((tool) => ({
+      type: "function",
+      function: {
+        name: tool.function.name,
+        ...(typeof tool.function.description === "string"
+          ? { description: tool.function.description }
+          : {}),
+        ...(tool.function.parameters && typeof tool.function.parameters === "object"
+          ? { parameters: normalizeQoderToolSchema(tool.function.parameters) }
+          : {}),
+      },
+    }))
+    .sort((left, right) =>
+      left.function.name < right.function.name
+        ? -1
+        : left.function.name > right.function.name
+          ? 1
+          : 0,
+    );
+}
+
+function getQoderToolChoice(body) {
+  const request = body?.request && typeof body.request === "object" ? body.request : {};
+  const toolChoice = body?.tool_choice ?? request.tool_choice;
+  if (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") {
+    return toolChoice;
+  }
+  if (
+    toolChoice?.type === "function" &&
+    typeof toolChoice.function?.name === "string" &&
+    toolChoice.function.name
+  ) {
+    return { type: "function", function: { name: toolChoice.function.name } };
+  }
+  return null;
+}
+
+function buildQoderOpenAIRequest({ body, mappedModel, messages, sessionId }) {
+  const canonicalMessages = messages
+    .map(normalizeQoderOpenAIMessage)
+    .filter(Boolean);
+  const request = {
+    model: mappedModel,
+    messages: canonicalMessages,
+    stream: true,
+  };
+  const nativeRequest =
+    body?.request && typeof body.request === "object" ? body.request : {};
+  for (const key of ["temperature", "top_p", "max_tokens", "max_completion_tokens"]) {
+    const value = body?.[key] !== undefined ? body[key] : nativeRequest[key];
+    if (value !== undefined) request[key] = value;
+  }
+  const tools = getQoderTools(body);
+  if (tools.length) {
+    request.tools = tools;
+    const toolChoice = getQoderToolChoice(body);
+    if (toolChoice) request.tool_choice = toolChoice;
+  }
+  if (sessionId && isQoderPromptCacheKeyEnabled(mappedModel)) {
+    request.prompt_cache_key = `qoder:${sessionId}`;
+  }
+  return request;
+}
+
+function hashQoderCacheValue(value) {
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify(value))
+    .digest("hex")
+    .slice(0, 16);
+}
+
+function getQoderCacheTelemetry(request) {
+  const messages = request.messages || [];
+  const stablePrefix = {
+    messages: messages.filter((message) => message.role === "system"),
+    tools: request.tools || [],
+  };
+  const historyPrefix = {
+    messages: messages.filter((message) => message.role !== "user"),
+    tools: request.tools || [],
+  };
+  return {
+    model: request.model,
+    sessionKey: request.prompt_cache_key || null,
+    messageCount: messages.length,
+    toolCount: request.tools?.length || 0,
+    systemPrefixHash: hashQoderCacheValue(stablePrefix),
+    historyPrefixHash: hashQoderCacheValue(historyPrefix),
+  };
+}
+
 function collectAssistantDelta(data, assistant) {
   try {
     const chunk = JSON.parse(data);
@@ -447,12 +623,14 @@ async function intercept(req, res, bodyBuffer, mappedModel) {
   try {
     const body = parseQoderBody(bodyBuffer);
     const incomingMessages = extractQoderMessages(body);
+    const sessionId = findQoderSessionId(body);
     const session = getQoderSession(body);
     const messages = mergeQoderHistory(
       session?.messages || [],
       incomingMessages,
     );
-    if (!session && getQoderBusinessType(body) !== "agent") {
+    const businessType = getQoderBusinessType(body);
+    if (!session && businessType !== "agent" && businessType !== "agent_prompt_enhance") {
       res.writeHead(204);
       res.end();
       if (dumper) dumper.end();
@@ -460,15 +638,21 @@ async function intercept(req, res, bodyBuffer, mappedModel) {
     }
     const localRules = session ? getQoderLocalRules() : [];
     const sessionRules = session ? extractQoderRules(incomingMessages) : [];
-    body.messages = prependQoderRules(messages, [...localRules, ...sessionRules]);
-    if (mappedModel) {
-      body.model = mappedModel;
-      if (body.chat_context?.modelConfig) {
-        body.chat_context.modelConfig.model = mappedModel;
-      }
-      if (body.chatContext?.modelConfig) {
-        body.chatContext.modelConfig.model = mappedModel;
-      }
+    const messagesWithRules = prependQoderRules(messages, [
+      ...localRules,
+      ...sessionRules,
+    ]);
+    const routerBody = buildQoderOpenAIRequest({
+      body,
+      mappedModel,
+      messages: messagesWithRules,
+      sessionId,
+    });
+    const telemetry = getQoderCacheTelemetry(routerBody);
+    if (IS_DEV || process.env.DEBUG_MITM) {
+      log(
+        `[qoder-cache] model=${telemetry.model} sessionKey=${telemetry.sessionKey ? "present" : "absent"} messages=${telemetry.messageCount} tools=${telemetry.toolCount} systemPrefixHash=${telemetry.systemPrefixHash} historyPrefixHash=${telemetry.historyPrefixHash}`,
+      );
     }
     if (IS_DEV) {
       dumpRequest(
@@ -477,13 +661,13 @@ async function intercept(req, res, bodyBuffer, mappedModel) {
           url: "/v1/chat/completions",
           headers: { host: "9router.local" },
         },
-        Buffer.from(JSON.stringify(body)),
+        Buffer.from(JSON.stringify(routerBody)),
         "forwarded-qoder",
       );
     }
 
     const routerRes = await fetchRouter(
-      body,
+      routerBody,
       "/v1/chat/completions",
       req.headers,
     );
@@ -517,6 +701,12 @@ module.exports = {
     findQoderSessionId,
     extractQoderMessages,
     extractQoderMessageContent,
+    buildQoderOpenAIRequest,
+    getQoderCacheTelemetry,
+    hashQoderCacheValue,
+    normalizeQoderToolSchema,
+    getQoderTools,
+    getQoderToolChoice,
     getQoderLocalRules,
     getQoderBusinessType,
     normalizeQoderRuleText,

@@ -52,7 +52,7 @@ const MODEL_SYNONYMS = {
     "gemini-3-pro-low": "gemini-3.1-pro-low",
   },
   qoder: {
-    "qmodel": "qmodel_latest",
+    "auto": "qmodel_latest",
   },
 };
 
@@ -75,11 +75,22 @@ const MODEL_PATTERNS = {
     { match: /gpt.*oss|oss/i, alias: "gpt-oss-120b-medium" },
   ],
   qoder: [
-    { match: /qmodel|qwen/i, alias: "qmodel_latest" },
+    { match: /qmodel_38max|qwen.*3\.8.*max/i, alias: "qmodel_38max" },
+    { match: /qmodel_latest|qwen.*3\.7.*max/i, alias: "qmodel_latest" },
+    { match: /qmodel(?!_)|qwen.*3\.7.*plus/i, alias: "qmodel" },
+    { match: /kmodel_latest|kimi.*k3/i, alias: "kmodel_latest" },
+    { match: /kmodel(?!_)|kimi.*k2\.7/i, alias: "kmodel" },
+    { match: /gm51model|glm.*5\.2/i, alias: "gm51model" },
+    { match: /gmodel|glm.*5\.3|glm/i, alias: "gmodel" },
+    { match: /dfmodel|deepseek.*flash/i, alias: "dfmodel" },
+    { match: /dmodel|deepseek.*pro|deepseek/i, alias: "dmodel" },
+    { match: /cantus|cmodel/i, alias: "cmodel" },
+    { match: /minimax|mmodel/i, alias: "mmodel" },
     { match: /ultimate/i, alias: "ultimate" },
     { match: /performance/i, alias: "performance" },
-    { match: /cantus|cmodel/i, alias: "cmodel" },
-    { match: /deepseek|dmodel/i, alias: "dmodel" },
+    { match: /efficient/i, alias: "efficient" },
+    { match: /lite/i, alias: "lite" },
+    { match: /qwen/i, alias: "qmodel_latest" },
   ],
 };
 
@@ -108,6 +119,17 @@ function getToolForHost(host) {
 
 function isQoderConnectTarget(hostname) {
   return QODER_DIRECT_IPS.includes(hostname);
+}
+
+function isQoderPromptCacheKeyEnabled(mappedModel) {
+  const configuredModels = String(
+    process.env.MITM_QODER_PROMPT_CACHE_MODELS || "",
+  )
+    .replace(/#.*$/, "")
+    .split(",")
+    .map((model) => model.trim())
+    .filter(Boolean);
+  return configuredModels.includes("*") || configuredModels.includes(mappedModel);
 }
 
 // Patterns for models that must NOT be re-routed — pass through natively
@@ -189,5 +211,6 @@ module.exports = {
   LOG_BLACKLIST_URL_PARTS,
   getToolForHost,
   isQoderConnectTarget,
+  isQoderPromptCacheKeyEnabled,
   extractModel,
 };

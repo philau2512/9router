@@ -60,6 +60,19 @@ describe("openai ↔ responses multi-turn reasoning", () => {
     expect(out.input.find((i) => i.type === "reasoning")?.encrypted_content).toBe("alt_enc");
   });
 
+  it("passes prompt_cache_key through to Responses API format", () => {
+    const out = openaiToOpenAIResponsesRequest(
+      "gpt-5.6-luna",
+      {
+        messages: [{ role: "user", content: "hello" }],
+        prompt_cache_key: "qoder:session-12345",
+      },
+      true,
+      null,
+    );
+    expect(out.prompt_cache_key).toBe("qoder:session-12345");
+  });
+
   it("responses→openai attaches reasoning_content + encrypted_content to assistant", () => {
     const body = {
       model: "grok-4.5",
