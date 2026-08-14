@@ -295,8 +295,10 @@ export default function ProviderDetailPage() {
       if (res.ok) {
         const data = await res.json();
         const fetched = Array.isArray(data?.models) ? data.models : [];
-        if (fetched.length > 0) {
+        if (!data?.warning && fetched.length > 0) {
           setLiveModels(fetched);
+        } else if (data?.warning) {
+          setLiveModels(null);
         }
       }
     } catch {
@@ -329,8 +331,12 @@ export default function ProviderDetailPage() {
         if (!res.ok) return;
         const data = await res.json();
         const fetched = Array.isArray(data?.models) ? data.models : [];
-        if (!cancelled && fetched.length > 0) {
-          setLiveModels(fetched);
+        if (!cancelled) {
+          if (!data?.warning && fetched.length > 0) {
+            setLiveModels(fetched);
+          } else if (data?.warning) {
+            setLiveModels(null);
+          }
         }
       } catch {
         // fail-open: keep static catalog

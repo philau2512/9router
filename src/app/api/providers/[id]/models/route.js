@@ -18,6 +18,7 @@ import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveCodexModels } from "open-sse/services/codexModels.js";
 import { resolveAntigravityModels } from "open-sse/services/antigravityModels.js";
+import { ANTIGRAVITY_OAUTH_CLIENT } from "open-sse/providers/shared.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveGrokCliModels } from "open-sse/services/grokCliModels.js";
@@ -217,11 +218,40 @@ const PROVIDER_MODELS_CONFIG = {
       const resolvedProxy = await resolveConnectionProxyConfig(
         connection.providerSpecificData || {},
       );
+      let accessToken = connection.accessToken;
+      if (connection.refreshToken) {
+        try {
+          const refreshed = await refreshGoogleToken(
+            connection.refreshToken,
+            ANTIGRAVITY_OAUTH_CLIENT.clientId,
+            ANTIGRAVITY_OAUTH_CLIENT.clientSecret,
+          );
+          if (refreshed?.accessToken) {
+            accessToken = refreshed.accessToken;
+            if (refreshed.projectId) {
+              connection.projectId = refreshed.projectId;
+            }
+            updateProviderCredentials(connection.id, {
+              accessToken: refreshed.accessToken,
+              refreshToken: refreshed.refreshToken || connection.refreshToken,
+              expiresAt: new Date(
+                Date.now() + (refreshed.expiresIn || 3600) * 1000,
+              ).toISOString(),
+            }).catch(() => {});
+          }
+        } catch (e) {
+          console.log(
+            "Failed to refresh Antigravity token for models:",
+            e.message,
+          );
+        }
+      }
       let warning;
       try {
         const result = await resolveAntigravityModels(
           {
-            accessToken: connection.accessToken,
+            accessToken,
+            projectId: connection.projectId,
             providerSpecificData: connection.providerSpecificData || {},
             connectionId: connection.id,
           },

@@ -74,23 +74,25 @@ describe("Antigravity live model catalog", () => {
     );
   });
 
-  it("returns null after the daily discovery endpoint fails", async () => {
-    proxyAwareFetch.mockResolvedValueOnce(jsonResponse({ error: "unavailable" }, 503));
+  it("returns null after discovery endpoints fail", async () => {
+    proxyAwareFetch.mockResolvedValue(jsonResponse({ error: "unavailable" }, 503));
 
     await expect(resolveAntigravityModels(credentials)).resolves.toBeNull();
-    expect(proxyAwareFetch.mock.calls.map(([url]) => url)).toEqual([
-      `${ANTIGRAVITY_BASE_URLS[0]}${ANTIGRAVITY_OPERATIONS.fetchAvailableModels}`,
-    ]);
+    expect(proxyAwareFetch.mock.calls.map(([url]) => url)).toEqual(
+      ANTIGRAVITY_BASE_URLS.map(
+        (base) => `${base}${ANTIGRAVITY_OPERATIONS.fetchAvailableModels}`,
+      ),
+    );
   });
 
   it("treats invalid or empty catalog responses as fail-open results", async () => {
-    proxyAwareFetch.mockResolvedValueOnce({
+    proxyAwareFetch.mockResolvedValue({
       ok: true,
       json: vi.fn().mockRejectedValue(new Error("bad json")),
     });
 
     await expect(resolveAntigravityModels(credentials)).resolves.toBeNull();
-    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(ANTIGRAVITY_BASE_URLS.length);
   });
 
   it("caches by credential and supports force refresh and explicit clearing", async () => {

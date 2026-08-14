@@ -1,5 +1,6 @@
 export const ANTIGRAVITY_BASE_URLS = [
   "https://daily-cloudcode-pa.googleapis.com",
+  "https://cloudcode-pa.googleapis.com",
 ];
 
 export const ANTIGRAVITY_OPERATIONS = {

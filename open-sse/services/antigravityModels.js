@@ -12,6 +12,10 @@
 
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { getPlatformUserAgent } from "../config/appConstants.js";
+import {
+  ANTIGRAVITY_IDE_USER_AGENT,
+  ANTIGRAVITY_IDE_VERSION,
+} from "../providers/shared.js";
 import { fetchWithFallback, credentialCacheKey } from "./dynamicModels.js";
 import {
   ANTIGRAVITY_BASE_URLS,
@@ -23,7 +27,7 @@ import {
 const catalogCache = new Map();
 
 /**
- * @param {object} credentials - { accessToken, providerSpecificData }
+ * @param {object} credentials - { accessToken, projectId, providerSpecificData }
  * @param {object} [options] - { log, proxyOptions, forceRefresh }
  * @returns {Promise<{ models: object[] } | null>}
  */
@@ -34,6 +38,7 @@ export async function resolveAntigravityModels(credentials, options = {}) {
   }
 
   const projectId =
+    credentials?.projectId ||
     credentials?.providerSpecificData?.project_id ||
     credentials?.providerSpecificData?.projectId ||
     null;
@@ -43,7 +48,9 @@ export async function resolveAntigravityModels(credentials, options = {}) {
   const headers = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${credentials.accessToken}`,
-    "User-Agent": getPlatformUserAgent(),
+    "User-Agent": ANTIGRAVITY_IDE_USER_AGENT || getPlatformUserAgent(),
+    "X-Client-Name": "antigravity",
+    "X-Client-Version": ANTIGRAVITY_IDE_VERSION || "2.1.1",
   };
 
   return fetchWithFallback({
