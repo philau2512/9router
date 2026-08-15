@@ -531,7 +531,12 @@ const server = https.createServer(sslOptions, async (req, res) => {
     if (!tool) return passthrough(req, res, bodyBuffer);
 
     const patterns = URL_PATTERNS[tool] || [];
-    const isChat = patterns.some((p) => req.url.includes(p));
+    const isQoderPromptEnhance =
+      tool === "qoder" &&
+      bodyBuffer.length > 0 &&
+      handlers.qoder.isNativeQoderPromptEnhanceRequest(bodyBuffer);
+    const isChat =
+      patterns.some((p) => req.url.includes(p)) || isQoderPromptEnhance;
     if (tool === "qoder") {
       log(`[qoder] ${req.method} ${req.url} chat=${isChat}`);
     }
@@ -548,7 +553,9 @@ const server = https.createServer(sslOptions, async (req, res) => {
         ? handlers.qoder.extractQoderModel(bodyBuffer)
         : extractModel(req.url, bodyBuffer);
     const resolvedModel =
-      tool === "qoder" && !model && isQoderChatRequest(req.url)
+      tool === "qoder" &&
+      !model &&
+      (isQoderChatRequest(req.url) || isQoderPromptEnhance)
         ? "qmodel_latest"
         : model;
     const noMapPatterns = MODEL_NO_MAP?.[tool] || [];

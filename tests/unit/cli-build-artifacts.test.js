@@ -18,6 +18,7 @@ const {
   assertRequiredApiArtifacts,
   copyStandaloneBuild,
   mergeServerArtifacts,
+  copyServerWrapper,
 } = require("../../cli/scripts/build-cli.js");
 
 const tempDirs = [];
@@ -95,6 +96,29 @@ describe("CLI build server artifacts", () => {
       );
     });
   }
+
+  it("copies the server wrapper beside the CLI standalone server", () => {
+    const root = createTempDir();
+    const appDir = path.join(root, "9router");
+    const cliAppDir = path.join(root, "cli-app");
+    writeFixture(appDir, "custom-server.js", "server wrapper");
+
+    copyServerWrapper(appDir, cliAppDir);
+
+    assert.equal(
+      fs.readFileSync(path.join(cliAppDir, "custom-server.js"), "utf8"),
+      "server wrapper",
+    );
+  });
+
+  it("fails CLI packaging when the server wrapper is missing", () => {
+    const root = createTempDir();
+
+    assert.throws(
+      () => copyServerWrapper(path.join(root, "9router"), path.join(root, "cli-app")),
+      /Required server wrapper is missing/,
+    );
+  });
 
   it("merges idempotently without removing standalone-generated files", () => {
     const root = createTempDir();

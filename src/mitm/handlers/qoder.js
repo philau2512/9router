@@ -240,6 +240,14 @@ function getQoderBusinessType(body) {
   return body?.business?.type || body?.request?.business?.type || "agent";
 }
 
+function isNativeQoderPromptEnhanceRequest(bodyBuffer) {
+  try {
+    return getQoderBusinessType(parseQoderBody(bodyBuffer)) === "agent_prompt_enhance";
+  } catch {
+    return false;
+  }
+}
+
 function extractQoderRules(messages) {
   return messages
     .map(extractQoderRuleContent)
@@ -618,11 +626,21 @@ async function pipeQoderSSE(routerRes, res, dumper, onComplete) {
  * Intercept Qoder IDE request — forward request payload to /v1/chat/completions.
  * Router auto-detects format or handles mapped model transformation.
  */
-async function intercept(req, res, bodyBuffer, mappedModel) {
+async function intercept(req, res, bodyBuffer, mappedModel, passthrough) {
   const dumper = IS_DEV ? createResponseDumper(req, "intercept-qoder") : null;
   try {
     const body = parseQoderBody(bodyBuffer);
     const incomingMessages = extractQoderMessages(body);
+    if (!incomingMessages.length) {
+      if (typeof passthrough === "function") {
+        if (dumper) dumper.end();
+        return passthrough(req, res, bodyBuffer);
+      }
+      res.writeHead(204);
+      res.end();
+      if (dumper) dumper.end();
+      return;
+    }
     const sessionId = findQoderSessionId(body);
     const session = getQoderSession(body);
     const messages = mergeQoderHistory(
@@ -696,6 +714,7 @@ async function intercept(req, res, bodyBuffer, mappedModel) {
 module.exports = {
   intercept,
   extractQoderModel,
+  isNativeQoderPromptEnhanceRequest,
   pipeQoderSSE,
   __test__: {
     findQoderSessionId,
@@ -709,6 +728,7 @@ module.exports = {
     getQoderToolChoice,
     getQoderLocalRules,
     getQoderBusinessType,
+    isNativeQoderPromptEnhanceRequest,
     normalizeQoderRuleText,
     prependQoderRules,
     extractQoderRules,

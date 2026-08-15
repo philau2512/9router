@@ -11,6 +11,7 @@ const { qoderEncodeBody } = require("../../src/lib/qoder/encoding.js");
 const {
   intercept,
   extractQoderModel,
+  isNativeQoderPromptEnhanceRequest,
   pipeQoderSSE,
   __test__: qoderHandlerTest,
 } = require("../../src/mitm/handlers/qoder.js");
@@ -293,6 +294,57 @@ describe("Qoder IDE MITM configuration", () => {
     } finally {
       routerFetch.mockRestore();
     }
+  });
+
+  it("passes through intercepted Qoder payloads without messages", async () => {
+    const routerFetch = vi.spyOn(globalThis, "fetch");
+    const passthrough = vi.fn().mockResolvedValue(undefined);
+    const res = createResponseRecorder();
+    const body = Buffer.from(
+      qoderEncodeBody(
+        JSON.stringify({
+          payload: JSON.stringify({ workspacePath: "C:\\workspace" }),
+          encodeVersion: "1",
+        }),
+      ),
+      "latin1",
+    );
+
+    try {
+      await intercept(
+        { headers: { host: "repo2.qoder.sh" }, url: "/algo/api/v2/service/codebase/sync/initCodebase" },
+        res,
+        body,
+        "router-model",
+        passthrough,
+      );
+
+      expect(routerFetch).not.toHaveBeenCalled();
+      expect(passthrough).toHaveBeenCalledWith(
+        expect.anything(),
+        res,
+        body,
+      );
+    } finally {
+      routerFetch.mockRestore();
+    }
+  });
+
+  it("recognizes plaintext and encoded Optimize Input payloads", () => {
+    const payload = { business: { type: "agent_prompt_enhance" } };
+    const json = JSON.stringify(payload);
+
+    expect(isNativeQoderPromptEnhanceRequest(Buffer.from(json))).toBe(true);
+    expect(
+      isNativeQoderPromptEnhanceRequest(
+        Buffer.from(qoderEncodeBody(json), "latin1"),
+      ),
+    ).toBe(true);
+    expect(
+      isNativeQoderPromptEnhanceRequest(
+        Buffer.from(JSON.stringify({ business: { type: "memory" } })),
+      ),
+    ).toBe(false);
   });
 
   it("forwards agent_prompt_enhance requests to router for Optimize Input feature", async () => {
