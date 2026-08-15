@@ -581,7 +581,18 @@ async function pipeQoderSSE(routerRes, res, dumper, onComplete) {
     eventData = [];
     let statusCodeValue = status;
     try {
-      if (JSON.parse(body)?.error) statusCodeValue = status >= 400 ? status : 500;
+      const parsed = JSON.parse(body);
+      if (parsed?.error) statusCodeValue = status >= 400 ? status : 500;
+      const choice = parsed.choices?.[0];
+      if (
+        choice &&
+        choice.delta &&
+        typeof choice.delta.content !== "string" &&
+        !choice.delta.tool_calls?.length &&
+        !choice.finish_reason
+      ) {
+        return; // Skip empty content/pure reasoning delta that breaks Qoder SSE parser
+      }
     } catch {
       /* forward opaque SSE data without changing its status */
     }
@@ -654,12 +665,18 @@ async function intercept(req, res, bodyBuffer, mappedModel, passthrough) {
       if (dumper) dumper.end();
       return;
     }
-    const localRules = session ? getQoderLocalRules() : [];
-    const sessionRules = session ? extractQoderRules(incomingMessages) : [];
-    const messagesWithRules = prependQoderRules(messages, [
-      ...localRules,
-      ...sessionRules,
-    ]);
+    const localRules =
+      session && businessType !== "agent_prompt_enhance"
+        ? getQoderLocalRules()
+        : [];
+    const sessionRules =
+      session && businessType !== "agent_prompt_enhance"
+        ? extractQoderRules(incomingMessages)
+        : [];
+    const messagesWithRules =
+      businessType === "agent_prompt_enhance"
+        ? messages
+        : prependQoderRules(messages, [...localRules, ...sessionRules]);
     const routerBody = buildQoderOpenAIRequest({
       body,
       mappedModel,

@@ -198,7 +198,7 @@ export async function PATCH(request) {
     const pwd =
       getPassword(sudoPassword) || (await loadEncryptedPassword()) || "";
 
-    if (!tool || !action) {
+    if (!action || (action !== "trust-cert" && !tool)) {
       return NextResponse.json(
         { error: "tool and action required" },
         { status: 400 },

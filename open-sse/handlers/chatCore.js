@@ -71,6 +71,35 @@ import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 
+export function sanitizeQoderPromptEnhanceRequest(body) {
+  if (!body || !Array.isArray(body.messages)) return body;
+  const lastMsg = body.messages[body.messages.length - 1];
+  const lastContent = typeof lastMsg?.content === "string" ? lastMsg.content : "";
+  if (
+    lastContent.includes("<enhanced-prompt>") &&
+    lastContent.includes("<context_placeholder_instructions>")
+  ) {
+    // Disable thinking/reasoning for prompt enhance to make it instant and prevent SSE delta incompatibility
+    body.reasoning_effort = "none";
+    if (body.thinking) body.thinking = { type: "disabled" };
+
+    const sysMsg = body.messages.find((m) => m.role === "system");
+    const rule =
+      "\n\nCRITICAL OUTPUT FORMAT: If you do not suggest adding any new context files, you MUST NOT output <added_contexts> or </added_contexts> tags at all. Only output <added_contexts> if you include at least one complete <add_context> block.";
+    if (sysMsg && typeof sysMsg.content === "string") {
+      if (!sysMsg.content.includes("CRITICAL OUTPUT FORMAT")) {
+        sysMsg.content += rule;
+      }
+    } else {
+      body.messages.unshift({
+        role: "system",
+        content: rule.trim(),
+      });
+    }
+  }
+  return body;
+}
+
 export function stripContinuityFields(body) {
   if (!body || !Array.isArray(body.messages)) return body;
   for (const message of body.messages) {
@@ -271,6 +300,9 @@ export async function handleChatCore({
   // Skip all translation/normalization — only model and Bearer are swapped
   const clientTool = detectClientTool(clientRawRequest?.headers || {}, body);
   const passthrough = isNativePassthrough(clientTool, provider);
+
+  // Sanitize Qoder prompt enhance requests to prevent hallucinated orphan </added_contexts> tags
+  sanitizeQoderPromptEnhanceRequest(body);
 
   // Strip orphaned tool results before translation for non-Kiro paths.
   // Kiro has its own reconcileOrphanedToolResults inside openai-to-kiro.js.

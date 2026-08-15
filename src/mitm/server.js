@@ -443,7 +443,8 @@ function createConnectProxy() {
       return;
     }
 
-    const shouldIntercept = isQoderConnectTarget(hostname);
+    const shouldIntercept =
+      isQoderConnectTarget(hostname) || getToolForHost(hostname) === "qoder";
     if (!shouldIntercept) {
       const upstreamSocket = net.connect(port, hostname, () => {
         log(`[proxy] tunnel ${target}`);
@@ -461,31 +462,41 @@ function createConnectProxy() {
       return;
     }
 
-    const certHostname = QODER_CONNECT_HOST;
-    const certData = getCertForDomain(certHostname);
-    if (!certData) {
+    let qoderHostname = QODER_CONNECT_HOST;
+    const createQoderSecureContext = (hostname) => {
+      const qoderCert = getCertForDomain(hostname);
+      if (!qoderCert) return null;
+      return tls.createSecureContext({
+        key: qoderCert.key,
+        cert: `${qoderCert.cert}\n${rootCAPem}`,
+      });
+    };
+    const defaultSecureContext = createQoderSecureContext(qoderHostname);
+    if (!defaultSecureContext) {
       clientSocket.end("HTTP/1.1 502 Bad Gateway\r\n\r\n");
       return;
     }
 
-    const secureContext = tls.createSecureContext({
-      key: certData.key,
-      cert: `${certData.cert}\n${rootCAPem}`,
-    });
     const qoderServer = https.createServer(
       {
         ...sslOptions,
-        secureContext,
+        secureContext: defaultSecureContext,
         SNICallback: (servername, cb) => {
-          if (servername && !isQoderConnectTarget(servername)) {
+          if (getToolForHost(servername) !== "qoder") {
             cb(new Error(`Unexpected SNI for Qoder CONNECT: ${servername}`));
             return;
           }
+          const secureContext = createQoderSecureContext(servername);
+          if (!secureContext) {
+            cb(new Error(`Failed to generate Qoder certificate for ${servername}`));
+            return;
+          }
+          qoderHostname = servername;
           cb(null, secureContext);
         },
       },
       (request, response) => {
-        request.headers.host = certHostname;
+        request.headers.host = qoderHostname;
         server.emit("request", request, response);
       },
     );
