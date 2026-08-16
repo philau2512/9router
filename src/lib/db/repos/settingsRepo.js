@@ -44,7 +44,7 @@ const DEFAULT_SETTINGS = {
   samlAttributeEmail: "email",
   samlAttributeName: "name",
   enableObservability: false,
-  observabilityMaxRecords: 1000,
+  observabilityMaxRecords: 300,
   observabilityBatchSize: 20,
   observabilityFlushIntervalMs: 5000,
   observabilityMaxJsonSize: 5,

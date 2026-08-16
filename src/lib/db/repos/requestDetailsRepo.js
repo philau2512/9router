@@ -16,25 +16,12 @@ async function getObservabilityConfig() {
     return cachedConfig;
   try {
     const settings = await getSettings();
-    // ENABLE_REQUEST_LOGS env var takes priority over UI toggle (upstream port)
-    const envRequestLogs = process.env.ENABLE_REQUEST_LOGS;
-    if (envRequestLogs !== undefined) {
-      const enabled = envRequestLogs.toLowerCase() === "true";
-      cachedConfig = {
-        enabled,
-        maxRecords: settings.observabilityMaxRecords || parseInt(process.env.OBSERVABILITY_MAX_RECORDS || String(DEFAULT_MAX_RECORDS), 10),
-        batchSize: settings.observabilityBatchSize || parseInt(process.env.OBSERVABILITY_BATCH_SIZE || String(DEFAULT_BATCH_SIZE), 10),
-        flushIntervalMs: settings.observabilityFlushIntervalMs || parseInt(process.env.OBSERVABILITY_FLUSH_INTERVAL_MS || String(DEFAULT_FLUSH_INTERVAL_MS), 10),
-        maxJsonSize: (settings.observabilityMaxJsonSize || parseInt(process.env.OBSERVABILITY_MAX_JSON_SIZE || "5", 10)) * 1024,
-      };
-      cachedConfigTs = Date.now();
-      return cachedConfig;
-    }
-    const envEnabled = process.env.OBSERVABILITY_ENABLED !== "false";
+    // The dashboard toggle controls database request details. ENABLE_REQUEST_LOGS
+    // is reserved for deep request/response file logging and must not override it.
     const enabled =
       typeof settings.enableObservability === "boolean"
         ? settings.enableObservability
-        : envEnabled;
+        : process.env.OBSERVABILITY_ENABLED !== "false";
     cachedConfig = {
       enabled,
       maxRecords:
@@ -77,7 +64,7 @@ let writeBuffer = [];
 let flushTimer = null;
 let isFlushing = false;
 let flushCount = 0;
-const PRUNE_EVERY_N_BATCHES = 5; // Prune every 5 batches (5 × 50 = 250 items max over limit)
+const PRUNE_EVERY_N_BATCHES = 1; // Retain at most the configured number of newest records after each write.
 
 function sanitizeHeaders(headers) {
   if (!headers || typeof headers !== "object") return {};
@@ -96,7 +83,7 @@ function sanitizeHeaders(headers) {
   return sanitized;
 }
 
-export const __test__ = { sanitizeHeaders };
+export const __test__ = { sanitizeHeaders, getObservabilityConfig };
 
 function generateDetailId(model) {
   const timestamp = new Date().toISOString();
@@ -280,6 +267,12 @@ export async function saveRequestDetail(detail) {
       flushToDatabase().catch(() => {});
     }, config.flushIntervalMs);
   }
+}
+
+export async function deleteAllRequestDetails() {
+  const db = await getAdapter();
+  const result = db.run(`DELETE FROM requestDetails`);
+  return result?.changes ?? 0;
 }
 
 export async function getRequestDetails(filter = {}) {

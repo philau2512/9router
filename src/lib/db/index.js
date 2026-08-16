@@ -120,6 +120,7 @@ export {
   getRequestDetails,
   getRequestDetailsList,
   getRequestDetailById,
+  deleteAllRequestDetails,
   getDistinctProviders,
 } from "./repos/requestDetailsRepo.js";
 

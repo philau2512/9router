@@ -118,6 +118,7 @@ export default function RequestDetailsTab() {
     totalPages: 0,
   });
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [providers, setProviders] = useState([]);
@@ -212,6 +213,36 @@ export default function RequestDetailsTab() {
     setFilters({ provider: "", startDate: "", endDate: "" });
   };
 
+  const handleDeleteAll = async () => {
+    if (
+      !confirm(
+        "Delete all Request Details? This cannot be undone and does not delete Usage statistics.",
+      )
+    ) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/usage/request-details", {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete request details");
+
+      setDetails([]);
+      setPagination((prev) => ({ ...prev, page: 1, totalItems: 0, totalPages: 0 }));
+      setSelectedDetail(null);
+      setIsDrawerOpen(false);
+      await fetchProviders();
+    } catch (error) {
+      console.error("Failed to delete request details:", error);
+      alert(error.message || "Failed to delete request details");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <Card padding="md">
@@ -298,7 +329,7 @@ export default function RequestDetailsTab() {
               <Button
                 variant="ghost"
                 onClick={handleRefresh}
-                disabled={loading}
+                disabled={loading || deleting}
                 className="flex-1"
                 title="Refresh"
               >
@@ -315,11 +346,22 @@ export default function RequestDetailsTab() {
                 variant="ghost"
                 onClick={handleClearFilters}
                 disabled={
-                  !filters.provider && !filters.startDate && !filters.endDate
+                  deleting ||
+                  (!filters.provider && !filters.startDate && !filters.endDate)
                 }
                 className="flex-1"
               >
                 Clear Filters
+              </Button>
+              <Button
+                variant="danger"
+                onClick={handleDeleteAll}
+                disabled={deleting || pagination.totalItems === 0}
+                loading={deleting}
+                className="flex-1"
+                title="Delete all Request Details"
+              >
+                Delete All
               </Button>
             </div>
           </div>
