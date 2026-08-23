@@ -152,6 +152,7 @@ export async function handleStreamingResponse({
   // Phase 3 (option c): Kiro's object-mode decode stream when the fused path is
   // active (streaming Kiro request needing translation). Null otherwise.
   kiroObjectStream = null,
+  retryEmptyAntigravityStop = null,
 }) {
   if (onRequestSuccess) {
     Promise.resolve()
@@ -265,22 +266,24 @@ export async function handleStreamingResponse({
     requestStartTime,
   });
 
-  const resumeCtx = midStreamResumeEnabled
-    ? {
-        body,
-        provider,
-        model,
-        credentials,
-        sourceFormat,
-        targetFormat,
-        userAgent,
-        apiKey,
-        connectionId,
-        toolNameMap,
-        reqLogger,
-        clientRawRequest,
-      }
-    : null;
+  const resumeCtx =
+    midStreamResumeEnabled || retryEmptyAntigravityStop
+      ? {
+          body,
+          provider,
+          model,
+          credentials,
+          sourceFormat,
+          targetFormat,
+          userAgent,
+          apiKey,
+          connectionId,
+          toolNameMap,
+          reqLogger,
+          clientRawRequest,
+          retryEmptyAntigravityStop,
+        }
+      : null;
 
   const transformedBody = pipeWithDisconnect(
     providerResponse,

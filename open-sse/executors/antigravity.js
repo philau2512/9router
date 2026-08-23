@@ -91,6 +91,20 @@ function isImageModel(model) {
   return IMAGE_MODEL_PATTERNS.some((p) => p.test(model));
 }
 
+/**
+ * Follow an empty Antigravity STOP with an explicit user continuation while
+ * retaining the original session ID and every prior conversation item.
+ */
+export function buildAntigravityEmptyStopContinuation(body) {
+  const continuation = structuredClone(body);
+  const request = continuation?.request;
+  if (!request || !Array.isArray(request.contents)) {
+    throw new Error("Antigravity continuation requires request.contents");
+  }
+  request.contents.push({ role: "user", parts: [{ text: "continue" }] });
+  return continuation;
+}
+
 // Parse aspect ratio / resolution from model name suffixes
 // e.g. "gemini-3.1-flash-image-16x9" -> { aspectRatio: "16:9" }
 // e.g. "gemini-3.1-flash-image-1024x768" -> { aspectRatio: "4:3" }
