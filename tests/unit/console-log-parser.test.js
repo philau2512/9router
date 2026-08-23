@@ -3,8 +3,8 @@ import { parseLogLine, groupLogLines } from "@/app/(dashboard)/dashboard/console
 
 describe("console-log logParser", () => {
   describe("parseLogLine", () => {
-    it("parses request start with method, endpoint, combo, and msg count", () => {
-      const line = "[15:21:09] bfxnve 📥 POST /v1/chat/completions | codex-free | 28 msgs | 21 tools";
+    it("parses request start with method, endpoint, combo, msg, tools, and effort", () => {
+      const line = "[15:21:09] bfxnve 📥 POST /v1/chat/completions | codex-free | 28 msgs | 21 tools | effort=medium";
       const parsed = parseLogLine(line);
 
       expect(parsed.timestamp).toBe("15:21:09");
@@ -14,6 +14,17 @@ describe("console-log logParser", () => {
       expect(parsed.metadata.endpoint).toBe("/v1/chat/completions");
       expect(parsed.metadata.combo).toBe("codex-free");
       expect(parsed.metadata.msgs).toBe(28);
+      expect(parsed.metadata.tools).toBe(21);
+      expect(parsed.metadata.effort).toBe("medium");
+    });
+
+    it("parses compact uppercase MSG, TOOL, THINK formats", () => {
+      const line = "[21:34:38] ⚪ ▶ POST agy → antigravity/gemini-3.7-flash-medium · FMT:openai-responses→antigravity · STREAM · 0MSG · 22TOOL · THINK:high · ACC:pvpjvlgl3149899@gmail.com";
+      const parsed = parseLogLine(line);
+
+      expect(parsed.metadata.msgs).toBe(0);
+      expect(parsed.metadata.tools).toBe(22);
+      expect(parsed.metadata.effort).toBe("high");
     });
 
     it("parses model routing and does NOT match authmodel=1 as model", () => {
@@ -125,6 +136,9 @@ describe("console-log logParser", () => {
       expect(req.isAborted).toBe(true);
       expect(req.statusCode).toBe(499);
       expect(req.disconnectReason).toBe("ResponseAborted");
+      expect(req.msgs).toBe(532);
+      expect(req.tools).toBe(22);
+      expect(req.effort).toBe("high");
     });
   });
 });

@@ -159,6 +159,27 @@ export default function GroupedFeedView({ groups, onIdClick, onCopyText }) {
                       → {group.model}
                     </span>
                   )}
+
+                  {/* Msg / Tool / Effort */}
+                  {(group.msgs != null || group.tools != null || group.effort) && (
+                    <span className="font-mono text-[11px] text-text-muted bg-sidebar px-2 py-0.5 rounded border border-border hidden sm:inline-flex items-center gap-1">
+                      {group.msgs != null && <span>{group.msgs} msgs</span>}
+                      {group.tools != null && (
+                        <span>
+                          {group.msgs != null && "· "}
+                          <strong className="text-blue-400 font-normal">
+                            {group.tools} tools
+                          </strong>
+                        </span>
+                      )}
+                      {group.effort && (
+                        <span className="text-purple-400">
+                          {(group.msgs != null || group.tools != null) && "· "}
+                          {group.effort}
+                        </span>
+                      )}
+                    </span>
+                  )}
                 </div>
 
                 {/* Right details: Badges for Latency, Tokens, Cache, Account */}
