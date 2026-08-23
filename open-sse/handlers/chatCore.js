@@ -635,6 +635,7 @@ export async function handleChatCore({
       proxyOptions,
       emitObjects: wantKiroObjects,
       onProfileArnDiscovered,
+      timing,
     });
   try {
     if (timing && !timing.upstreamFetchStartedAt) {
