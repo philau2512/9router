@@ -1,10 +1,12 @@
 export const ANTIGRAVITY_BASE_URLS = [
+  "https://daily-cloudcode-pa.sandbox.googleapis.com",
   "https://daily-cloudcode-pa.googleapis.com",
   "https://cloudcode-pa.googleapis.com",
 ];
 
 export const ANTIGRAVITY_OPERATIONS = {
   fetchAvailableModels: "/v1internal:fetchAvailableModels",
+  retrieveUserQuotaSummary: "/v1internal:retrieveUserQuotaSummary",
   loadCodeAssist: "/v1internal:loadCodeAssist",
 };
 
@@ -12,7 +14,20 @@ const ANTIGRAVITY_DISCOVERY_BASE_URL = "https://cloudcode-pa.googleapis.com";
 
 export const ANTIGRAVITY_USAGE_ENDPOINTS = {
   quotaApiUrl: `${ANTIGRAVITY_DISCOVERY_BASE_URL}${ANTIGRAVITY_OPERATIONS.fetchAvailableModels}`,
+  quotaSummaryApiUrl: `${ANTIGRAVITY_DISCOVERY_BASE_URL}${ANTIGRAVITY_OPERATIONS.retrieveUserQuotaSummary}`,
   loadProjectApiUrl: `${ANTIGRAVITY_DISCOVERY_BASE_URL}${ANTIGRAVITY_OPERATIONS.loadCodeAssist}`,
+};
+
+export const ANTIGRAVITY_USAGE_ENDPOINT_SETS = {
+  quota: ANTIGRAVITY_BASE_URLS.map(
+    (baseUrl) => `${baseUrl}${ANTIGRAVITY_OPERATIONS.fetchAvailableModels}`,
+  ),
+  quotaSummary: ANTIGRAVITY_BASE_URLS.map(
+    (baseUrl) => `${baseUrl}${ANTIGRAVITY_OPERATIONS.retrieveUserQuotaSummary}`,
+  ),
+  loadProject: ANTIGRAVITY_BASE_URLS.map(
+    (baseUrl) => `${baseUrl}${ANTIGRAVITY_OPERATIONS.loadCodeAssist}`,
+  ),
 };
 
 export const ANTIGRAVITY_MODEL_ALIASES = {
@@ -24,6 +39,21 @@ export const ANTIGRAVITY_MODEL_ALIASES = {
 };
 
 export const ANTIGRAVITY_STATIC_MODELS = [
+  {
+    id: "gemini-3.7-flash-high",
+    name: "Gemini 3.7 Flash (High)",
+    upstreamModelId: "gemini-3.7-flash-tiered(high)",
+  },
+  {
+    id: "gemini-3.7-flash-medium",
+    name: "Gemini 3.7 Flash (Medium)",
+    upstreamModelId: "gemini-3.7-flash-tiered(medium)",
+  },
+  {
+    id: "gemini-3.7-flash-low",
+    name: "Gemini 3.7 Flash (Low)",
+    upstreamModelId: "gemini-3.7-flash-tiered(low)",
+  },
   {
     id: "gemini-3.6-flash-high",
     name: "Gemini 3.6 Flash (High)",

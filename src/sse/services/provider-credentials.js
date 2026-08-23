@@ -385,6 +385,27 @@ export async function markAccountUnavailable(
     lowerError.includes("verify your identity") ||
     lowerError.includes("support_form");
 
+  const isGitHubMonthlyUsageLimit =
+    provider === "github" &&
+    status === 402 &&
+    lowerError.includes("additional usage limit");
+
+  if (isGitHubMonthlyUsageLimit) {
+    const now = new Date();
+    const nextMonth = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
+    ).toISOString();
+    await updateProviderConnection(connectionId, {
+      modelLock___all: nextMonth,
+      testStatus: "unavailable",
+      errorCode: status,
+      lastError: `Quota reached: ${String(errorText).slice(0, 100)}`,
+      lastErrorAt: now.toISOString(),
+      backoffLevel: 0,
+    });
+    return { shouldFallback: true, cooldownMs: new Date(nextMonth) - now };
+  }
+
   if (isReachLimit || isInvalidToken || isSuspended) {
     const reason =
       typeof errorText === "string"

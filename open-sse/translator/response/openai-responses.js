@@ -93,8 +93,8 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     }
   }
 
-  // Handle tool_calls
-  if (delta.tool_calls) {
+  // Handle tool_calls (empty array is truthy; require a real call)
+  if (delta.tool_calls && delta.tool_calls.length) {
     closeMessage(state, emit, idx);
     for (const tc of delta.tool_calls) {
       emitToolCall(state, emit, tc);
@@ -302,40 +302,58 @@ function emitToolCall(state, emit, tc) {
     state.funcThoughtSigs[tcIdx] = thoughtSig;
   }
 
-  if (!state.funcCallIds[tcIdx] && newCallId) {
-    state.funcCallIds[tcIdx] = newCallId;
-    const outputIndex = getOutputIndex(state, "tool", tcIdx);
-    const item = {
-      id: `fc_${newCallId}`,
-      type: "function_call",
-      arguments: "",
-      call_id: newCallId,
-      name: state.funcNames[tcIdx] || "",
-    };
-    if (state.funcThoughtSigs?.[tcIdx]) {
-      item.thought_signature = state.funcThoughtSigs[tcIdx];
+  const emitAdded = () => {
+    if (state.funcCallIds[tcIdx] && state.funcNames[tcIdx] && !state.funcItemAdded?.[tcIdx]) {
+      state.funcItemAdded ??= {};
+      state.funcItemAdded[tcIdx] = true;
+      const callId = state.funcCallIds[tcIdx];
+      const outputIndex = getOutputIndex(state, "tool", tcIdx);
+      const isCustom = state.customToolNames?.has(state.funcNames[tcIdx]);
+      const item = isCustom
+        ? {
+            id: `fc_${callId}`,
+            type: "custom_tool_call",
+            call_id: callId,
+            name: state.funcNames[tcIdx],
+            input: "",
+          }
+        : {
+            id: `fc_${callId}`,
+            type: "function_call",
+            arguments: "",
+            call_id: callId,
+            name: state.funcNames[tcIdx],
+          };
+      if (state.funcThoughtSigs?.[tcIdx]) item.thought_signature = state.funcThoughtSigs[tcIdx];
+      emit("response.output_item.added", { type: "response.output_item.added", output_index: outputIndex, item });
     }
+  };
 
-    emit("response.output_item.added", {
-      type: "response.output_item.added",
-      output_index: outputIndex,
-      item,
-    });
-  }
+  if (!state.funcCallIds[tcIdx] && newCallId) state.funcCallIds[tcIdx] = newCallId;
+  emitAdded();
 
   if (!state.funcArgsBuf[tcIdx]) state.funcArgsBuf[tcIdx] = "";
 
   if (tc.function?.arguments) {
-    const refCallId = state.funcCallIds[tcIdx] || newCallId;
-    if (refCallId) {
-      emit("response.function_call_arguments.delta", {
-        type: "response.function_call_arguments.delta",
-        item_id: `fc_${refCallId}`,
-        output_index: getOutputIndex(state, "tool", tcIdx),
-        delta: tc.function.arguments,
-      });
+    const callId = state.funcCallIds[tcIdx];
+    const isCustom = state.customToolNames?.has(state.funcNames[tcIdx]);
+    const raw = tc.function.arguments;
+    const input = isCustom ? parseCustomToolInput(raw) : raw;
+    if (callId) {
+      emit(isCustom ? "response.custom_tool_call_input.delta" : "response.function_call_arguments.delta", isCustom
+        ? { type: "response.custom_tool_call_input.delta", item_id: `fc_${callId}`, output_index: getOutputIndex(state, "tool", tcIdx), delta: input }
+        : { type: "response.function_call_arguments.delta", item_id: `fc_${callId}`, output_index: getOutputIndex(state, "tool", tcIdx), delta: raw });
     }
-    state.funcArgsBuf[tcIdx] += tc.function.arguments;
+    state.funcArgsBuf[tcIdx] += input;
+  }
+}
+
+function parseCustomToolInput(argumentsText) {
+  try {
+    const parsed = JSON.parse(argumentsText);
+    return typeof parsed?.input === "string" ? parsed.input : "";
+  } catch {
+    return "";
   }
 }
 
@@ -345,20 +363,31 @@ function closeToolCall(state, emit, idx) {
     const args = state.funcArgsBuf[idx] || "{}";
 
     const outputIndex = getOutputIndex(state, "tool", idx);
-    emit("response.function_call_arguments.done", {
-      type: "response.function_call_arguments.done",
-      item_id: `fc_${callId}`,
-      output_index: outputIndex,
-      arguments: args,
-    });
+    const isCustom = state.customToolNames?.has(state.funcNames[idx]);
+    if (!isCustom) {
+      emit("response.function_call_arguments.done", {
+        type: "response.function_call_arguments.done",
+        item_id: `fc_${callId}`,
+        output_index: outputIndex,
+        arguments: args,
+      });
+    }
 
-    const item = {
-      id: `fc_${callId}`,
-      type: "function_call",
-      arguments: args,
-      call_id: callId,
-      name: state.funcNames[idx] || "",
-    };
+    const item = isCustom
+      ? {
+          id: `fc_${callId}`,
+          type: "custom_tool_call",
+          call_id: callId,
+          name: state.funcNames[idx] || "",
+          input: args,
+        }
+      : {
+          id: `fc_${callId}`,
+          type: "function_call",
+          arguments: args,
+          call_id: callId,
+          name: state.funcNames[idx] || "",
+        };
     if (state.funcThoughtSigs?.[idx]) {
       item.thought_signature = state.funcThoughtSigs[idx];
     }

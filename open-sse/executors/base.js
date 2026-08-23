@@ -1,3 +1,4 @@
+import { resolveOpenAICompatibleApiType } from "../services/provider.js";
 import {
   HTTP_STATUS,
   DEFAULT_RETRY_CONFIG,
@@ -59,9 +60,10 @@ export class BaseExecutor {
         credentials?.providerSpecificData?.baseUrl ||
         "https://api.openai.com/v1";
       const normalized = baseUrl.replace(/\/$/, "");
-      const path = this.provider.includes("responses")
-        ? "/responses"
-        : "/chat/completions";
+      const path =
+        resolveOpenAICompatibleApiType(this.provider, credentials) === "responses"
+          ? "/responses"
+          : "/chat/completions";
       return `${normalized}${path}`;
     }
     if (this.provider?.startsWith?.("anthropic-compatible-")) {

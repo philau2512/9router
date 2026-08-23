@@ -290,6 +290,7 @@ export class CodexExecutor extends BaseExecutor {
   }
 
   async execute(args) {
+    const executorStartedAt = Date.now();
     const imgCount = Array.isArray(args.body?.input) ? args.body.input.reduce((n, it) => n + (Array.isArray(it.content) ? it.content.filter(c => c.type === "image_url").length : 0), 0) : 0;
     const inputLen = Array.isArray(args.body?.input) ? args.body.input.length : 0;
     dbg("CODEX", `execute start | inputItems=${inputLen} | images=${imgCount} | sessionId=${this._currentSessionId || "pending"}`);
@@ -308,7 +309,18 @@ export class CodexExecutor extends BaseExecutor {
     let attempt = 0;
     while (true) {
       const result = await super.execute(args);
+      if (args.timing && !args.timing.upstreamHeadersAt) {
+        args.timing.upstreamHeadersAt = Date.now();
+      }
+      const peekStartedAt = Date.now();
       const peek = await this._peekSseTransientError(result.response);
+      if (args.timing && !args.timing.codexPeekDoneAt) {
+        args.timing.codexPeekDoneAt = Date.now();
+      }
+      dbg(
+        "CODEX",
+        `execute phases | prefetch=${peekStartedAt - executorStartedAt}ms | headers=${args.timing?.upstreamHeadersAt ? args.timing.upstreamHeadersAt - executorStartedAt : "?"}ms | peek=${Date.now() - peekStartedAt}ms`,
+      );
       if (!peek.matched) {
         // Replace body with re-assembled stream (prefix bytes already read + rest)
         if (peek.replacementBody) {

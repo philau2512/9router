@@ -3,6 +3,7 @@ import {
   getRequestDetails,
   getRequestDetailsList,
   getRequestDetailById,
+  deleteAllRequestDetails,
 } from "@/lib/usageDb";
 
 /**
@@ -74,6 +75,19 @@ export async function GET(request) {
     console.error("[API] Failed to get request details:", error);
     return NextResponse.json(
       { error: "Failed to fetch request details" },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE() {
+  try {
+    const deleted = await deleteAllRequestDetails();
+    return NextResponse.json({ deleted });
+  } catch (error) {
+    console.error("[API] Failed to delete request details:", error);
+    return NextResponse.json(
+      { error: "Failed to delete request details" },
       { status: 500 },
     );
   }

@@ -46,15 +46,21 @@ export default function TableView({ groups, onIdClick }) {
           </thead>
           <tbody className="divide-y divide-border/40 font-mono">
             {groups.map((group) => {
-              const isSuccess = group.status === "success" && !group.hasError;
+              const isSuccess =
+                group.status === "success" && !group.hasError && !group.isAborted;
               const isError = group.hasError || group.status === "error";
+              const isAborted = group.status === "aborted" || group.isAborted;
 
               return (
                 <tr
                   key={group.id}
                   onClick={() => setSelectedGroup(group)}
                   className={`hover:bg-sidebar/80 transition-colors cursor-pointer ${
-                    isError ? "bg-red-500/5 hover:bg-red-500/10" : ""
+                    isError
+                      ? "bg-red-500/5 hover:bg-red-500/10"
+                      : isAborted
+                        ? "bg-amber-500/5 hover:bg-amber-500/10"
+                        : ""
                   }`}
                 >
                   {/* Timestamp */}
@@ -148,6 +154,19 @@ export default function TableView({ groups, onIdClick }) {
                       <Badge variant="error" size="sm" dot>
                         Error
                       </Badge>
+                    ) : isAborted ? (
+                      <Badge
+                        variant="warning"
+                        size="sm"
+                        dot
+                        title={
+                          group.disconnectReason
+                            ? `Aborted: ${group.disconnectReason}`
+                            : "Aborted"
+                        }
+                      >
+                        Aborted
+                      </Badge>
                     ) : isSuccess ? (
                       <Badge variant="success" size="sm" dot>
                         200 OK
@@ -170,7 +189,31 @@ export default function TableView({ groups, onIdClick }) {
         <Modal
           isOpen={!!selectedGroup}
           onClose={() => setSelectedGroup(null)}
-          title={`Chi tiết Request [${selectedGroup.id}]`}
+          title={
+            <div className="flex items-center gap-2">
+              <span>Chi tiết Request [{selectedGroup.id}]</span>
+              {selectedGroup.hasError || selectedGroup.status === "error" ? (
+                <Badge variant="error" size="sm" dot>
+                  Error
+                </Badge>
+              ) : selectedGroup.status === "aborted" ||
+                selectedGroup.isAborted ? (
+                <Badge variant="warning" size="sm" dot>
+                  {selectedGroup.disconnectReason
+                    ? `Aborted: ${selectedGroup.disconnectReason}`
+                    : "Aborted"}
+                </Badge>
+              ) : selectedGroup.status === "success" ? (
+                <Badge variant="success" size="sm" dot>
+                  200 OK
+                </Badge>
+              ) : (
+                <Badge variant="primary" size="sm" dot>
+                  Stream
+                </Badge>
+              )}
+            </div>
+          }
           size="4xl"
         >
           <div className="flex flex-col gap-4 font-mono text-xs">

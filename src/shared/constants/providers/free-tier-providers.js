@@ -185,6 +185,8 @@ export const FREE_TIER_PROVIDERS = {
       apiKeyUrl: "https://dash.cloudflare.com/profile/api-tokens",
     },
     serviceKinds: ["llm", "image"],
+    authType: "apikey",
+    authModes: ["apikey"],
     hasProviderSpecificData: true,
   },
   byteplus: {

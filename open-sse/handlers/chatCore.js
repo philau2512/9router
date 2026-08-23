@@ -7,6 +7,7 @@ import { refreshWithRetry } from "../services/tokenRefresh.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
 import {
   getModelTargetFormat,
+  getModelSupportedFormats,
   getModelStrip,
   getModelUpstreamId,
   getModelType,
@@ -51,6 +52,7 @@ import {
 } from "../rtk/headroom.js";
 import {
   extractThinking,
+  parseSuffix,
   stripThinkingSuffix,
 } from "../translator/concerns/thinkingUnified.js";
 import { normalizeClaudePassthrough } from "../translator/formats/claude.js";
@@ -64,9 +66,50 @@ import {
 import { stripOrphanedToolResults } from "../translator/concerns/toolCall.js";
 import { compressWithPxpipe, formatPxpipeLog } from "../rtk/pxpipe.js";
 import { decideSoftRetry } from "../services/accountFallback.js";
+import { getThinkingLevels } from "../providers/thinkingLevels.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
+
+export function sanitizeQoderPromptEnhanceRequest(body) {
+  if (!body || !Array.isArray(body.messages)) return body;
+  const lastMsg = body.messages[body.messages.length - 1];
+  const lastContent = typeof lastMsg?.content === "string" ? lastMsg.content : "";
+  if (
+    lastContent.includes("<enhanced-prompt>") &&
+    lastContent.includes("<context_placeholder_instructions>")
+  ) {
+    // Disable thinking/reasoning for prompt enhance to make it instant and prevent SSE delta incompatibility
+    body.reasoning_effort = "none";
+    if (body.thinking) body.thinking = { type: "disabled" };
+
+    const sysMsg = body.messages.find((m) => m.role === "system");
+    const rule =
+      "\n\nCRITICAL OUTPUT FORMAT: If you do not suggest adding any new context files, you MUST NOT output <added_contexts> or </added_contexts> tags at all. Only output <added_contexts> if you include at least one complete <add_context> block.";
+    if (sysMsg && typeof sysMsg.content === "string") {
+      if (!sysMsg.content.includes("CRITICAL OUTPUT FORMAT")) {
+        sysMsg.content += rule;
+      }
+    } else {
+      body.messages.unshift({
+        role: "system",
+        content: rule.trim(),
+      });
+    }
+  }
+  return body;
+}
+
+export function stripContinuityFields(body) {
+  if (!body || !Array.isArray(body.messages)) return body;
+  for (const message of body.messages) {
+    if (message?.role === "assistant") {
+      delete message.encrypted_content;
+      delete message.reasoning_encrypted_content;
+    }
+  }
+  return body;
+}
 
 function maskLoggedUrl(rawUrl) {
   try {
@@ -158,12 +201,19 @@ export async function handleChatCore({
 
   const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
   const modelTargetFormat = getModelTargetFormat(alias, model);
-  // Multi-endpoint providers: pick transport matching sourceFormat → less lossy translation
+  // Multi-endpoint providers: preserve matching client formats where the model supports it.
+  // A model-specific declaration prevents OpenCode Go models that only support
+  // Chat Completions from being routed to Claude or Responses endpoints.
+  const modelSupportedFormats = getModelSupportedFormats(alias, model);
   const runtimeTransport = resolveTransport(provider, sourceFormat);
+  const useTransport =
+    !modelSupportedFormats || modelSupportedFormats.includes(sourceFormat)
+      ? runtimeTransport
+      : null;
   const targetFormat =
-    modelTargetFormat || runtimeTransport?.format || getTargetFormat(provider);
-  if (runtimeTransport && credentials) {
-    credentials.runtimeTransport = runtimeTransport;
+    modelTargetFormat || useTransport?.format || getTargetFormat(provider, credentials);
+  if (useTransport && credentials) {
+    credentials.runtimeTransport = useTransport;
   }
   const stripList = getModelStrip(alias, model);
   const upstreamModel = getModelUpstreamId(alias, model) || model;
@@ -251,6 +301,9 @@ export async function handleChatCore({
   const clientTool = detectClientTool(clientRawRequest?.headers || {}, body);
   const passthrough = isNativePassthrough(clientTool, provider);
 
+  // Sanitize Qoder prompt enhance requests to prevent hallucinated orphan </added_contexts> tags
+  sanitizeQoderPromptEnhanceRequest(body);
+
   // Strip orphaned tool results before translation for non-Kiro paths.
   // Kiro has its own reconcileOrphanedToolResults inside openai-to-kiro.js.
   // Dangling tool results from client-side history compaction cause HTTP 400
@@ -291,10 +344,24 @@ export async function handleChatCore({
       "PASSTHROUGH",
       `${clientTool} → ${provider} | native lossless`,
     );
+    const suffix = parseSuffix(upstreamModel);
     translatedBody = {
       ...body,
-      model: stripThinkingSuffix(upstreamModel),
+      model: suffix.cleanModel,
     };
+    if (provider === "codex" && suffix.override?.mode === "level") {
+      const supportedLevels = getThinkingLevels("codex", suffix.cleanModel);
+      const effort = supportedLevels?.includes(suffix.override.level)
+        ? suffix.override.level
+        : suffix.override.level === "ultra" && supportedLevels?.includes("max")
+          ? "max"
+          : suffix.override.level;
+      translatedBody.reasoning = {
+        ...(translatedBody.reasoning || {}),
+        effort,
+      };
+      delete translatedBody.reasoning_effort;
+    }
     // Normalize newer Cowork/CC beta shapes the API rejects
     if (clientTool === "claude") {
       normalizeClaudePassthrough(translatedBody, translatedBody.model);
@@ -458,6 +525,7 @@ export async function handleChatCore({
   }
 
   const executor = getExecutor(provider);
+  stripContinuityFields(translatedBody);
   trackPendingRequest(model, provider, connectionId, true);
   appendRequestLog({ model, provider, connectionId, status: "PENDING" }).catch(
     () => {},
@@ -567,6 +635,7 @@ export async function handleChatCore({
       proxyOptions,
       emitObjects: wantKiroObjects,
       onProfileArnDiscovered,
+      timing,
     });
   try {
     if (timing && !timing.upstreamFetchStartedAt) {

@@ -87,6 +87,29 @@ export const APIKEY_PROVIDERS = {
       models: MINIMAX_TTS_MODELS,
     },
   },
+  "fish-audio": {
+    id: "fish-audio",
+    alias: "fish",
+    name: "Fish Audio",
+    icon: "record_voice_over",
+    color: "#1E9BF0",
+    textIcon: "FA",
+    website: "https://fish.audio",
+    notice: { apiKeyUrl: "https://fish.audio/app/api-keys/" },
+    serviceKinds: ["tts"],
+    ttsConfig: {
+      baseUrl: "https://api.fish.audio/v1/tts",
+      authType: "apikey",
+      authHeader: "bearer",
+      format: "fish-audio",
+      models: [
+        { id: "s2.1-pro-free", name: "S2.1 Pro Free" },
+        { id: "s2.1-pro", name: "S2.1 Pro" },
+        { id: "s2-pro", name: "S2 Pro" },
+        { id: "s1", name: "S1" },
+      ],
+    },
+  },
   alicode: {
     id: "alicode",
     alias: "alicode",
@@ -118,6 +141,13 @@ export const APIKEY_PROVIDERS = {
     textIcon: "XM",
     website: "https://xiaomimimo.com",
     notice: { apiKeyUrl: "https://xiaomimimo.com" },
+    serviceKinds: ["llm", "tts"],
+    ttsConfig: {
+      baseUrl: "https://api.xiaomimimo.com/v1/chat/completions",
+      authType: "apikey",
+      authHeader: "bearer",
+      format: "xiaomi-mimo-tts",
+    },
   },
   "xiaomi-tokenplan": {
     id: "xiaomi-tokenplan",

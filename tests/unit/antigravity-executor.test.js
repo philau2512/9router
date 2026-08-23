@@ -230,9 +230,9 @@ describe("AntigravityExecutor", () => {
     expect(transform(1024).request.generationConfig.maxOutputTokens).toBe(16384);
   });
 
-  it("fails fast when the single daily chat endpoint is unavailable", async () => {
+  it("falls back from daily to the production chat endpoint", async () => {
     const executor = new AntigravityExecutor();
-    proxyAwareFetch.mockRejectedValueOnce(new Error("daily offline"));
+    proxyAwareFetch.mockRejectedValue(new Error("endpoint offline"));
 
     await expect(
       executor.execute({
@@ -243,10 +243,12 @@ describe("AntigravityExecutor", () => {
         log,
         proxyOptions: { proxy: "http://proxy.test" },
       }),
-    ).rejects.toThrow("daily offline");
+    ).rejects.toThrow("endpoint offline");
 
-    const chatUrl = `${ANTIGRAVITY_BASE_URLS[0]}/v1internal:streamGenerateContent?alt=sse`;
-    expect(proxyAwareFetch.mock.calls.map(([url]) => url)).toEqual([chatUrl]);
+    const chatUrls = ANTIGRAVITY_BASE_URLS.map(
+      (base) => `${base}/v1internal:streamGenerateContent?alt=sse`,
+    );
+    expect(proxyAwareFetch.mock.calls.map(([url]) => url)).toEqual(chatUrls);
   });
 
   it("throws when the daily chat endpoint fails", async () => {

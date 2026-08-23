@@ -87,6 +87,68 @@ function copyRecursive(src, dest) {
   }
 }
 
+function assertRequiredApiArtifacts(cliAppDir) {
+  const serverDir = path.join(cliAppDir, buildDistDirName, "server");
+  const requiredArtifacts = [
+    "app/api/v1/chat/completions/route.js",
+    "app/api/v1/messages/route.js",
+    "chunks/openai-provider.js",
+    "chunks/anthropic-provider.js",
+  ];
+
+  for (const artifact of requiredArtifacts) {
+    const artifactPath = path.join(serverDir, artifact);
+    if (!fs.existsSync(artifactPath)) {
+      throw new Error(`Required CLI server artifact is missing: ${artifactPath}`);
+    }
+  }
+}
+
+function copyStandaloneBuild(appDir, buildDistDir, destinationDir) {
+  const roots = [
+    path.join(buildDistDir, "standalone"),
+    path.join(appDir, ".next", "standalone"),
+  ];
+  let standaloneApp = null;
+
+  for (const root of roots) {
+    if (!fs.existsSync(root)) continue;
+    const candidates = [
+      root,
+      path.join(root, "app"),
+      path.join(root, path.basename(appDir)),
+    ];
+    standaloneApp = candidates.find((candidate) =>
+      fs.existsSync(path.join(candidate, "server.js")),
+    );
+    if (standaloneApp) break;
+  }
+
+  if (!standaloneApp) {
+    throw new Error("Next.js standalone build not found");
+  }
+
+  copyRecursive(standaloneApp, destinationDir);
+}
+
+function copyServerWrapper(appDir, cliAppDir) {
+  const source = path.join(appDir, "custom-server.js");
+  const destination = path.join(cliAppDir, "custom-server.js");
+  if (!fs.existsSync(source)) {
+    throw new Error(`Required server wrapper is missing: ${source}`);
+  }
+  fs.mkdirSync(cliAppDir, { recursive: true });
+  fs.copyFileSync(source, destination);
+}
+
+function mergeServerArtifacts(buildDistDir, cliAppDir) {
+  const serverSrc = path.join(buildDistDir, "server");
+  if (fs.existsSync(serverSrc)) {
+    copyRecursive(serverSrc, path.join(cliAppDir, buildDistDirName, "server"));
+  }
+}
+
+if (require.main === module) {
 console.log("📦 Building 9Router CLI package with Next.js...\n");
 
 fs.mkdirSync(buildHomeDir, { recursive: true });
@@ -203,6 +265,17 @@ if (
   copyRecursive(standaloneNodeModules, path.join(cliAppDir, "node_modules"));
 }
 console.log("✅ Copied standalone build\n");
+
+// Step 3a: Copy request-sanitizing server wrapper. The dashboard uses its
+// per-process peer token to distinguish genuine loopback requests from spoofed ones.
+console.log("3️⃣ a Copying custom server wrapper...");
+try {
+  copyServerWrapper(appDir, cliAppDir);
+  console.log("✅ Copied custom server wrapper\n");
+} catch (error) {
+  console.error(`❌ ${error.message}`);
+  process.exit(1);
+}
 
 // Step 3b: Ensure sql.js (pure JS fallback) bundled in app/cli/app/node_modules.
 // Strip better-sqlite3 (native) — it lives in ~/.9router/runtime to avoid
@@ -343,3 +416,11 @@ try {
 } catch (e) {
   // Silent fail on size check
 }
+}
+
+module.exports = {
+  assertRequiredApiArtifacts,
+  copyStandaloneBuild,
+  mergeServerArtifacts,
+  copyServerWrapper,
+};

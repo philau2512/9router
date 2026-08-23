@@ -111,7 +111,11 @@ export async function runBackgroundTokenRefreshTick(deps = {}) {
   }
   tickRunning = true;
   try {
-    const checkEnabled = deps.checkEnabled || isRefreshEnabledBySettings;
+    const checkEnabled =
+      deps.checkEnabled ||
+      (deps.loadConnections || deps.refreshConnection
+        ? async () => true
+        : isRefreshEnabledBySettings);
     const enabled = await checkEnabled();
     if (!enabled) {
       log.debug("BG_TOKEN_REFRESH", "Disabled via backgroundTokenRefreshEnabled setting");

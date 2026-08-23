@@ -7,6 +7,8 @@ import Card from "@/shared/components/Card";
 import Toggle from "@/shared/components/Toggle";
 import Tooltip from "@/shared/components/Tooltip";
 import QuotaTable from "../../QuotaTable";
+import AntigravityQuotaGroups from "./antigravity-quota-groups";
+import { useState } from "react";
 import {
   getConnectionLabel,
   getCodexResetCreditCount,
@@ -36,7 +38,13 @@ export default function ProviderConnectionCard({
   handleToggleConnectionActive,
   quotaSortMode,
 }) {
+  const [viewMode, setViewMode] = useState("groups"); // 'groups' | 'models'
   const isInactive = conn.isActive === false;
+  const isAntigravity = conn.provider === "antigravity";
+  const hasQuotaGroups =
+    isAntigravity &&
+    Array.isArray(quota?.quotaGroups) &&
+    quota.quotaGroups.length > 0;
   const plan = typeof quota?.plan === "string" ? quota.plan.trim() : "";
   const codexPlan =
     conn.provider === "codex" && plan && plan.toLowerCase() !== "unknown"
@@ -204,77 +212,101 @@ export default function ProviderConnectionCard({
                 </button>
               </Tooltip>
             )}
-            <Link
-              href={`/dashboard/usage?tab=overview&connectionId=${encodeURIComponent(conn.id)}`}
-              aria-label="View Usage & Analytics"
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
-              title="View Usage & Analytics"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <span className="material-symbols-outlined text-[18px]">
-                analytics
-              </span>
-            </Link>
-            <button
-              type="button"
-              onClick={() => refreshProvider(conn.id, conn.provider)}
-              disabled={isLoading || rowBusy}
-              aria-label="Refresh quota"
-              className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors disabled:opacity-50"
-              title="Refresh quota"
-            >
-              <span
-                className={`material-symbols-outlined text-[18px] text-text-muted ${isLoading ? "animate-spin" : ""}`}
-              >
-                refresh
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedConnection(conn);
-                setShowEditModal(true);
-              }}
-              disabled={rowBusy}
-              aria-label="Edit connection"
-              className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-text-muted hover:text-primary transition-colors disabled:opacity-50"
-              title="Edit connection"
-            >
-              <span className="material-symbols-outlined text-[18px]">
-                edit
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDeleteConnection(conn.id)}
-              disabled={rowBusy}
-              aria-label="Delete connection"
-              className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500 transition-colors disabled:opacity-50"
-              title="Delete connection"
-            >
-              <span
-                className={`material-symbols-outlined text-[18px] ${deletingId === conn.id ? "animate-pulse" : ""}`}
-              >
-                delete
-              </span>
-            </button>
-            <div
-              className="inline-flex items-center pl-0.5"
-              title={
-                (conn.isActive ?? true)
-                  ? "Disable connection"
-                  : "Enable connection"
-              }
-            >
-              <Toggle
-                size="sm"
-                checked={conn.isActive ?? true}
-                disabled={rowBusy}
-                onChange={(nextActive) =>
-                  handleToggleConnectionActive(conn.id, nextActive)
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={() =>
+                  setViewMode((prev) => (prev === "groups" ? "models" : "groups"))
                 }
-              />
+                disabled={isLoading || rowBusy}
+                aria-label={
+                  viewMode === "groups"
+                    ? "Switch to model quota list"
+                    : "Switch to grouped summary"
+                }
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-black/5 hover:text-primary dark:hover:bg-white/5 transition-colors disabled:opacity-50"
+                title={
+                  viewMode === "groups"
+                    ? "View per-model quotas"
+                    : "View grouped summary (Weekly & 5h)"
+                }
+              >
+                <span className="material-symbols-outlined text-[18px]">
+                  {viewMode === "groups" ? "table_rows" : "donut_large"}
+                </span>
+              </button>
+              <Link
+                href={`/dashboard/usage?tab=overview&connectionId=${encodeURIComponent(conn.id)}`}
+                aria-label="View Usage & Analytics"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+                title="View Usage & Analytics"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <span className="material-symbols-outlined text-[18px]">
+                  analytics
+                </span>
+              </Link>
+              <button
+                type="button"
+                onClick={() => refreshProvider(conn.id, conn.provider)}
+                disabled={isLoading || rowBusy}
+                aria-label="Refresh quota"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-black/5 hover:text-primary dark:hover:bg-white/5 transition-colors disabled:opacity-50"
+                title="Refresh quota"
+              >
+                <span
+                  className={`material-symbols-outlined text-[18px] ${isLoading ? "animate-spin" : ""}`}
+                >
+                  refresh
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedConnection(conn);
+                  setShowEditModal(true);
+                }}
+                disabled={rowBusy}
+                aria-label="Edit connection"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-black/5 hover:text-primary dark:hover:bg-white/5 transition-colors disabled:opacity-50"
+                title="Edit connection"
+              >
+                <span className="material-symbols-outlined text-[18px]">
+                  edit
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteConnection(conn.id)}
+                disabled={rowBusy}
+                aria-label="Delete connection"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-red-500 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                title="Delete connection"
+              >
+                <span
+                  className={`material-symbols-outlined text-[18px] ${deletingId === conn.id ? "animate-pulse" : ""}`}
+                >
+                  delete
+                </span>
+              </button>
+              <div
+                className="flex h-8 items-center justify-center pl-1"
+                title={
+                  (conn.isActive ?? true)
+                    ? "Disable connection"
+                    : "Enable connection"
+                }
+              >
+                <Toggle
+                  size="sm"
+                  checked={conn.isActive ?? true}
+                  disabled={rowBusy}
+                  onChange={(nextActive) =>
+                    handleToggleConnectionActive(conn.id, nextActive)
+                  }
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -315,14 +347,18 @@ export default function ProviderConnectionCard({
           </div>
         ) : (
           <div className="space-y-1.5">
-            <QuotaTable
-              quotas={quota?.quotas}
-              compact
-              sortMode="default"
-              showSortLabel={
-                conn.provider === "codex" && quotaSortMode !== "default"
-              }
-            />
+            {hasQuotaGroups && viewMode === "groups" ? (
+              <AntigravityQuotaGroups quotaGroups={quota.quotaGroups} />
+            ) : (
+              <QuotaTable
+                quotas={quota?.quotas}
+                compact
+                sortMode="default"
+                showSortLabel={
+                  conn.provider === "codex" && quotaSortMode !== "default"
+                }
+              />
+            )}
             {showPayAsYouGo && (
               <div className="flex items-center justify-between gap-2 px-1.5 py-1 text-[11px]">
                 <span className="text-text-muted">Pay as you go</span>

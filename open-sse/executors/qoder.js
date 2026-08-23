@@ -262,14 +262,70 @@ async function buildQoderRequestBody({
  * response.text() which hangs until the socket closes — so on terminal
  * events we cancel the upstream reader and close our stream immediately.
  */
+function isBillingBlock(inner) {
+  if (!inner || typeof inner !== "string") return false;
+  return (
+    /"code"\s*:\s*"(112|10605)"/.test(inner) ||
+    inner.toLowerCase().includes("pricingurl")
+  );
+}
+
+async function peekFirstQoderFrame(reader, decoder) {
+  let consumed = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) return { isBilling: false, consumed, upstreamDone: true };
+
+    consumed += decoder.decode(value, { stream: true });
+    const newline = consumed.indexOf("\n");
+    if (newline === -1) continue;
+
+    const line = consumed.slice(0, newline).replace(/\r$/, "").trim();
+    if (!line.startsWith("data:")) continue;
+    const data = line.slice(5).trimStart();
+    if (data === "[DONE]") return { isBilling: false, consumed };
+
+    try {
+      const envelope = JSON.parse(data);
+      const statusVal =
+        typeof envelope.statusCodeValue === "number"
+          ? envelope.statusCodeValue
+          : 200;
+      const inner = typeof envelope.body === "string" ? envelope.body : "";
+      if (statusVal !== 200 && isBillingBlock(inner)) {
+        return { isBilling: true, statusVal, message: inner };
+      }
+    } catch {
+      // A malformed first event is handled by the normal stream parser.
+    }
+    return { isBilling: false, consumed };
+  }
+}
+
 function wrapQoderSSE(response, model) {
   if (!response.ok || !response.body) return response;
+  return wrapQoderSSEAsync(response, model);
+}
+
+async function wrapQoderSSEAsync(response, model) {
 
   const decoder = new TextDecoder();
-  const encoder = new TextEncoder();
-  let buffer = "";
-  let doneEmitted = false;
   const reader = response.body.getReader();
+  const peek = await peekFirstQoderFrame(reader, decoder);
+  if (peek.isBilling) {
+    await reader.cancel().catch(() => {});
+    return new Response(
+      JSON.stringify({
+        error: { message: peek.message, code: peek.statusVal },
+      }),
+      { status: 403, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  const encoder = new TextEncoder();
+  let buffer = peek.consumed || "";
+  const upstreamDrained = peek.upstreamDone === true;
+  let doneEmitted = false;
 
   // Process one already-extracted SSE line (no trailing newline).
   const processLine = (line, controller) => {
@@ -334,7 +390,24 @@ function wrapQoderSSE(response, model) {
     // enqueueing would never be re-invoked, hanging consumers like .text().
     async start(controller) {
       try {
-        while (!doneEmitted) {
+        let newline;
+        while ((newline = buffer.indexOf("\n")) !== -1) {
+          const line = buffer.slice(0, newline);
+          buffer = buffer.slice(newline + 1);
+          processLine(line, controller);
+          if (doneEmitted) {
+            await reader.cancel().catch(() => {});
+            controller.close();
+            return;
+          }
+        }
+
+        if (upstreamDrained && buffer.length > 0) {
+          processLine(buffer + decoder.decode(), controller);
+          buffer = "";
+        }
+
+        while (!doneEmitted && !upstreamDrained) {
           const { done, value } = await reader.read();
           if (done) {
             buffer += decoder.decode();
@@ -639,7 +712,7 @@ export class QoderExecutor extends BaseExecutor {
       return { response, url, headers, transformedBody: payload };
     }
 
-    const wrapped = wrapQoderSSE(response, `qoder/${qoderKey}`);
+    const wrapped = await wrapQoderSSEAsync(response, `qoder/${qoderKey}`);
     return { response: wrapped, url, headers, transformedBody: payload };
   }
 
@@ -663,6 +736,7 @@ export const __test__ = {
   normalizeMessages,
   wrapQoderSSE,
   buildQoderRequestBody,
+  isBillingBlock,
   isQoderPat,
   resolvePatCredential,
 };

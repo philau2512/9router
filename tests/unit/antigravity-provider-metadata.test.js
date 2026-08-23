@@ -19,9 +19,10 @@ import { getProviderModels } from "../../open-sse/config/providerModels.js";
 const activeRegistry = REGISTRY.find(({ id }) => id === "antigravity");
 
 describe("Antigravity provider metadata", () => {
-  it("keeps executor and registry on the daily-only chat endpoint", () => {
+  it("uses daily first and falls back to the production chat endpoint", () => {
     expect(ANTIGRAVITY_BASE_URLS).toEqual([
       "https://daily-cloudcode-pa.googleapis.com",
+      "https://cloudcode-pa.googleapis.com",
     ]);
     expect(PROVIDERS.antigravity.baseUrls).toBe(ANTIGRAVITY_BASE_URLS);
     expect(activeRegistry).toBeDefined();

@@ -31,13 +31,20 @@ const DEFAULT_SETTINGS = {
   requireApiKey: true,
   tunnelDashboardAccess: true,
   authMode: "password",
+  ssoType: "oidc",
   oidcIssuerUrl: "",
   oidcClientId: "",
   oidcClientSecret: "",
   oidcScopes: "openid profile email",
   oidcLoginLabel: "Sign in with OIDC",
+  samlEntryPoint: "",
+  samlIssuer: "urn:9router:sp",
+  samlCert: "",
+  samlLoginLabel: "Sign in with SAML SSO",
+  samlAttributeEmail: "email",
+  samlAttributeName: "name",
   enableObservability: false,
-  observabilityMaxRecords: 1000,
+  observabilityMaxRecords: 300,
   observabilityBatchSize: 20,
   observabilityFlushIntervalMs: 5000,
   observabilityMaxJsonSize: 5,
@@ -68,7 +75,7 @@ async function readRaw() {
 }
 
 // Merge raw settings with defaults; backward-compat for missing keys
-function mergeWithDefaults(raw) {
+export function mergeWithDefaults(raw) {
   const merged = { ...DEFAULT_SETTINGS, ...(raw || {}) };
   for (const [key, defVal] of Object.entries(DEFAULT_SETTINGS)) {
     if (merged[key] === undefined) {

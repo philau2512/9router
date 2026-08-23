@@ -382,6 +382,12 @@ export function buildOnStreamComplete({
         upstreamStart: timing.upstreamFetchStartedAt
           ? timing.upstreamFetchStartedAt - requestStartTime
           : undefined,
+        upstreamHeaders: timing.upstreamHeadersAt
+          ? timing.upstreamHeadersAt - requestStartTime
+          : undefined,
+        codexPeek: timing.codexPeekDoneAt && timing.upstreamHeadersAt
+          ? timing.codexPeekDoneAt - timing.upstreamHeadersAt
+          : undefined,
         upstreamFirstByte: timing.upstreamFirstByteAt
           ? timing.upstreamFirstByteAt - requestStartTime
           : undefined,

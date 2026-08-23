@@ -29,6 +29,7 @@ export const USAGE_SUPPORTED_PROVIDERS = [
 // kiro headless keys use authType "api_key" (underscore) — still listed here so
 // /api/providers/client and /api/usage accept them for Quota Tracker.
 export const USAGE_APIKEY_PROVIDERS = [
+  "ollama",
   "glm",
   "glm-cn",
   "minimax",

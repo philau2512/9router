@@ -240,6 +240,14 @@ function getQoderBusinessType(body) {
   return body?.business?.type || body?.request?.business?.type || "agent";
 }
 
+function isNativeQoderPromptEnhanceRequest(bodyBuffer) {
+  try {
+    return getQoderBusinessType(parseQoderBody(bodyBuffer)) === "agent_prompt_enhance";
+  } catch {
+    return false;
+  }
+}
+
 function extractQoderRules(messages) {
   return messages
     .map(extractQoderRuleContent)
@@ -573,7 +581,18 @@ async function pipeQoderSSE(routerRes, res, dumper, onComplete) {
     eventData = [];
     let statusCodeValue = status;
     try {
-      if (JSON.parse(body)?.error) statusCodeValue = status >= 400 ? status : 500;
+      const parsed = JSON.parse(body);
+      if (parsed?.error) statusCodeValue = status >= 400 ? status : 500;
+      const choice = parsed.choices?.[0];
+      if (
+        choice &&
+        choice.delta &&
+        typeof choice.delta.content !== "string" &&
+        !choice.delta.tool_calls?.length &&
+        !choice.finish_reason
+      ) {
+        return; // Skip empty content/pure reasoning delta that breaks Qoder SSE parser
+      }
     } catch {
       /* forward opaque SSE data without changing its status */
     }
@@ -618,11 +637,21 @@ async function pipeQoderSSE(routerRes, res, dumper, onComplete) {
  * Intercept Qoder IDE request — forward request payload to /v1/chat/completions.
  * Router auto-detects format or handles mapped model transformation.
  */
-async function intercept(req, res, bodyBuffer, mappedModel) {
+async function intercept(req, res, bodyBuffer, mappedModel, passthrough) {
   const dumper = IS_DEV ? createResponseDumper(req, "intercept-qoder") : null;
   try {
     const body = parseQoderBody(bodyBuffer);
     const incomingMessages = extractQoderMessages(body);
+    if (!incomingMessages.length) {
+      if (typeof passthrough === "function") {
+        if (dumper) dumper.end();
+        return passthrough(req, res, bodyBuffer);
+      }
+      res.writeHead(204);
+      res.end();
+      if (dumper) dumper.end();
+      return;
+    }
     const sessionId = findQoderSessionId(body);
     const session = getQoderSession(body);
     const messages = mergeQoderHistory(
@@ -636,12 +665,18 @@ async function intercept(req, res, bodyBuffer, mappedModel) {
       if (dumper) dumper.end();
       return;
     }
-    const localRules = session ? getQoderLocalRules() : [];
-    const sessionRules = session ? extractQoderRules(incomingMessages) : [];
-    const messagesWithRules = prependQoderRules(messages, [
-      ...localRules,
-      ...sessionRules,
-    ]);
+    const localRules =
+      session && businessType !== "agent_prompt_enhance"
+        ? getQoderLocalRules()
+        : [];
+    const sessionRules =
+      session && businessType !== "agent_prompt_enhance"
+        ? extractQoderRules(incomingMessages)
+        : [];
+    const messagesWithRules =
+      businessType === "agent_prompt_enhance"
+        ? messages
+        : prependQoderRules(messages, [...localRules, ...sessionRules]);
     const routerBody = buildQoderOpenAIRequest({
       body,
       mappedModel,
@@ -696,6 +731,7 @@ async function intercept(req, res, bodyBuffer, mappedModel) {
 module.exports = {
   intercept,
   extractQoderModel,
+  isNativeQoderPromptEnhanceRequest,
   pipeQoderSSE,
   __test__: {
     findQoderSessionId,
@@ -709,6 +745,7 @@ module.exports = {
     getQoderToolChoice,
     getQoderLocalRules,
     getQoderBusinessType,
+    isNativeQoderPromptEnhanceRequest,
     normalizeQoderRuleText,
     prependQoderRules,
     extractQoderRules,

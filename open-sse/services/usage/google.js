@@ -3,12 +3,17 @@
  */
 
 import { CLIENT_METADATA } from "../../config/appConstants.js";
-import { ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_IDE_VERSION, ANTIGRAVITY_OAUTH_CLIENT } from "../../providers/shared.js";
+import {
+  ANTIGRAVITY_IDE_USER_AGENT,
+  ANTIGRAVITY_IDE_VERSION,
+  ANTIGRAVITY_OAUTH_CLIENT,
+} from "../../providers/shared.js";
+import { ANTIGRAVITY_USAGE_ENDPOINTS } from "../../providers/antigravity-provider-metadata.js";
 import { U, parseResetTime, normalizeCloudCodeProjectId, fetchWithTimeout } from "./shared.js";
 
 // Antigravity API config (from Quotio) — urls from registry, oauth client + dynamic UA kept here
 const ANTIGRAVITY_CONFIG = {
-  ...U("antigravity"),
+  ...ANTIGRAVITY_USAGE_ENDPOINTS,
   ...ANTIGRAVITY_OAUTH_CLIENT,
   userAgent: ANTIGRAVITY_IDE_USER_AGENT,
 };
@@ -161,6 +166,9 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
     if (data.models) {
       // Filter only recommended/important models (must match PROVIDER_MODELS ag ids)
       const importantModels = [
+        'gemini-3.7-flash-high',
+        'gemini-3.7-flash-medium',
+        'gemini-3.7-flash-low',
         'gemini-3.6-flash-high',
         'gemini-3.6-flash-medium',
         'gemini-3.6-flash-low',

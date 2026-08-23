@@ -107,16 +107,35 @@ export function parseLogLine(rawLine) {
     if (usageMatch[4]) metadata.cachePct = Number(usageMatch[4]);
   }
 
-  // TTFT & Duration: total=4432 | ttft=1431 | 4429ms | complete
+  // TTFT & Duration: total=4432 | ttft=1431 | 4429ms | complete | disconnect: ResponseAborted
   const ttftMatch = text.match(/total=(\d+)\s+\|\s+ttft=(\d+)/i);
   if (ttftMatch) {
     metadata.duration = Number(ttftMatch[1]);
     metadata.ttft = Number(ttftMatch[2]);
   }
-  const streamDurMatch = text.match(/\|\s*(\d+)ms\s*\|\s*complete/i);
-  if (streamDurMatch) {
-    metadata.duration = Number(streamDurMatch[1]);
-    metadata.completed = true;
+  const streamMatch = text.match(/\|\s*(\d+)ms\s*\|\s*(.*)$/i);
+  if (streamMatch) {
+    metadata.duration = Number(streamMatch[1]);
+    const streamStatus = streamMatch[2].trim();
+    if (/complete/i.test(streamStatus)) {
+      metadata.completed = true;
+    } else if (
+      /disconnect|abort|client_closed|closed|failed|stall|error/i.test(
+        streamStatus,
+      )
+    ) {
+      metadata.disconnected = true;
+      const reasonMatch = streamStatus.match(
+        /(?:disconnect:\s*|reason:\s*)([^\s|]+)/i,
+      );
+      metadata.disconnectReason = reasonMatch ? reasonMatch[1] : streamStatus;
+    }
+  } else if (
+    /disconnect:|ResponseAborted|ClientAbort|client_closed/i.test(text)
+  ) {
+    metadata.disconnected = true;
+    const reasonMatch = text.match(/(?:disconnect:\s*)([^\s|]+)/i);
+    if (reasonMatch) metadata.disconnectReason = reasonMatch[1];
   }
 
   return {
@@ -251,10 +270,29 @@ export function groupLogLines(rawLines) {
         group.status = "error";
         group.statusCode = 500;
         group.errorMessage = parsed.text;
+      } else if (
+        parsed.metadata.disconnected ||
+        (parsed.level === "stream" &&
+          (/disconnect|aborted|responseaborted|clientabort|client_closed/i.test(
+            parsed.text,
+          )))
+      ) {
+        if (!group.hasError && group.status !== "error") {
+          group.status = "aborted";
+          group.statusCode = 499;
+          group.isAborted = true;
+          if (parsed.metadata.disconnectReason) {
+            group.disconnectReason = parsed.metadata.disconnectReason;
+          }
+        }
       } else if (parsed.level === "stream" && parsed.text.includes("complete")) {
-        if (!group.hasError) group.status = "success";
+        if (!group.hasError && group.status !== "error" && !group.isAborted) {
+          group.status = "success";
+        }
       } else if (parsed.level === "ttft" || parsed.level === "usage") {
-        if (!group.hasError && group.status !== "error") group.status = "success";
+        if (!group.hasError && group.status !== "error" && !group.isAborted) {
+          group.status = "success";
+        }
       }
     } else {
       systemLines.push(parsed);

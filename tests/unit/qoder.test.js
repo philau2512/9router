@@ -453,7 +453,7 @@ describe("wrapQoderSSE", () => {
   it("forwards an OpenAI envelope chunk and emits [DONE] in flush", async () => {
     const inner = JSON.stringify({ choices: [{ delta: { content: "hi" } }] });
     const upstream = `data: ${JSON.stringify({ statusCodeValue: 200, body: inner })}\n\n`;
-    const wrapped = wrapQoderSSE(makeResponse([upstream]), "qoder/auto");
+    const wrapped = await wrapQoderSSE(makeResponse([upstream]), "qoder/auto");
     const out = await drain(wrapped);
     expect(out).toContain(`data: ${inner}\n\n`);
     expect(out).toContain("data: [DONE]\n\n");
@@ -468,7 +468,7 @@ describe("wrapQoderSSE", () => {
     });
     // Note: NO trailing \n on the final line.
     const upstream = `data: ${JSON.stringify({ statusCodeValue: 200, body: inner })}`;
-    const wrapped = wrapQoderSSE(makeResponse([upstream]), "qoder/auto");
+    const wrapped = await wrapQoderSSE(makeResponse([upstream]), "qoder/auto");
     const out = await drain(wrapped);
     expect(out).toContain(`data: ${inner}\n\n`);
   });
@@ -483,7 +483,7 @@ describe("wrapQoderSSE", () => {
       choices: [{ delta: { content: "leak" } }],
     });
     const validEnv = JSON.stringify({ statusCodeValue: 200, body: validInner });
-    const wrapped = wrapQoderSSE(
+    const wrapped = await wrapQoderSSE(
       makeResponse([`data: ${errorEnv}\n\ndata: ${validEnv}\n\n`]),
       "qoder/auto",
     );
@@ -503,7 +503,7 @@ describe("wrapQoderSSE", () => {
       statusCodeValue: 200,
       body: innerWithNewlines,
     });
-    const wrapped = wrapQoderSSE(
+    const wrapped = await wrapQoderSSE(
       makeResponse([`data: ${env}\n\n`]),
       "qoder/auto",
     );
@@ -523,7 +523,7 @@ describe("wrapQoderSSE", () => {
       statusCodeValue: 503,
       body: "service unavailable",
     });
-    const wrapped = wrapQoderSSE(
+    const wrapped = await wrapQoderSSE(
       makeResponse([`data: ${env}\n\n`]),
       "qoder/lite",
     );

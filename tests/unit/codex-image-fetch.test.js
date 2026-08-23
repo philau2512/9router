@@ -23,7 +23,8 @@ const DATA_URI = "data:image/png;base64,iVBORw0KGgo=";
 
 function makeImageBuffer(sizeBytes) {
   const buf = new Uint8Array(sizeBytes);
-  for (let i = 0; i < sizeBytes; i++) buf[i] = i & 0xff;
+  buf.set([0xff, 0xd8, 0xff]);
+  for (let i = 3; i < sizeBytes; i++) buf[i] = i & 0xff;
   return buf.buffer;
 }
 

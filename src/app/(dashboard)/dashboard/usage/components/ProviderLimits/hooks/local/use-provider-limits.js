@@ -187,6 +187,7 @@ export function useProviderLimits() {
 
       const quotaEntry = {
         quotas: parsedQuotas,
+        quotaGroups: Array.isArray(data.quotaGroups) ? data.quotaGroups : null,
         plan: data.plan || null,
         message: data.message || null,
         // Grok CLI: Enabled/Disabled from onDemandCap (CLIProxyAPI-style row)
@@ -532,6 +533,7 @@ export function useProviderLimits() {
           nextLoading[conn.id] = false;
           cachedQuotas[conn.id] = {
             quotas: cachedEntry.quotas,
+            quotaGroups: cachedEntry.quotaGroups || null,
             plan: cachedEntry.plan,
             message: cachedEntry.message,
             payAsYouGo: cachedEntry.payAsYouGo || null,
