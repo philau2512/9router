@@ -372,7 +372,6 @@ export function createSSEStream(options = {}) {
         streamStateTracker.emptyProviderResponse = isEmptyAntigravityResponse;
         streamStateTracker.hasMeaningfulProviderOutput =
           state.geminiToolCallCount > 0 ||
-          state.geminiSawThought === true ||
           state.geminiEmittedVisible === true;
       }
       for (const item of translated) {

@@ -373,6 +373,15 @@ export function geminiToOpenAIResponse(chunk, state) {
       finishReason = "error";
     }
 
+    if (
+      rawFinishReason === GEMINI_FINISH.MALFORMED_FUNCTION_CALL &&
+      !partHasSubstance &&
+      state.geminiToolCallCount === 0 &&
+      !state.geminiEmittedVisible
+    ) {
+      state.emptyProviderResponse = true;
+    }
+
     const finalChunk = {
       id: `chatcmpl-${state.messageId}`,
       object: "chat.completion.chunk",

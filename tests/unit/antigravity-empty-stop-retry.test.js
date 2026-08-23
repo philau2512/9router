@@ -29,6 +29,51 @@ function antigravityEmptyStopStream() {
   });
 }
 
+function antigravityMalformedFunctionCallStream() {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({
+            response: {
+              candidates: [
+                {
+                  content: {
+                    role: "model",
+                    parts: [{ thought: true, text: "thinking before failure" }],
+                  },
+                },
+              ],
+              usageMetadata: { promptTokenCount: 10, totalTokenCount: 10 },
+            },
+          })}\n\n`,
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({
+            response: {
+              candidates: [
+                {
+                  content: {
+                    role: "model",
+                    parts: [{ text: "" }],
+                  },
+                  finishReason: "MALFORMED_FUNCTION_CALL",
+                  finishMessage:
+                    "Malformed function call: Failed to parse function call: Function call is empty - no input to parse.",
+                },
+              ],
+              usageMetadata: { promptTokenCount: 10, totalTokenCount: 10 },
+            },
+          })}\n\n`,
+        ),
+      );
+      controller.close();
+    },
+  });
+}
+
 function antigravityTextStopStream(text) {
   return new ReadableStream({
     start(controller) {
@@ -134,6 +179,40 @@ describe("Antigravity empty STOP retries", () => {
     expect(output).toContain("recovered answer");
     expect(output).not.toContain("empty_provider_response");
   }, 10000);
+
+  it("retries MALFORMED_FUNCTION_CALL attempt after thoughts and recovers with text", async () => {
+    const tracker = {};
+    const controller = makeController();
+    let retries = 0;
+    const response = createDisconnectAwareStream(
+      {
+        readable: antigravityMalformedFunctionCallStream().pipeThrough(
+          makeTransform(tracker),
+        ),
+        writable: { getWriter: () => ({ abort: () => Promise.resolve() }) },
+      },
+      controller,
+      null,
+      tracker,
+      {
+        provider: "antigravity",
+        sourceFormat: FORMATS.OPENAI,
+        targetFormat: FORMATS.ANTIGRAVITY,
+        model: "gemini-3.7-flash-medium",
+        retryEmptyAntigravityStop: async () => {
+          retries++;
+          return {
+            body: antigravityTextStopStream("recovered answer after malformed call"),
+          };
+        },
+      },
+    );
+
+    const output = await readAll(response);
+    expect(retries).toBe(1);
+    expect(output).toContain("recovered answer after malformed call");
+    expect(output).not.toContain("malformed_function_call");
+  });
 
   it("does not retry when an Antigravity attempt produced visible text", async () => {
     const tracker = {};
