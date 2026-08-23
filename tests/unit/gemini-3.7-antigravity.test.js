@@ -33,4 +33,38 @@ describe("Gemini 3.7 Flash Support & Config (#3286, #3281)", () => {
     expect(MODEL_PRICING["gemini-3.7-flash-medium"]).toEqual(MODEL_PRICING["gemini-3.6-flash-medium"]);
     expect(MODEL_PRICING["gemini-3.7-flash-low"]).toEqual(MODEL_PRICING["gemini-3.6-flash-low"]);
   });
+
+  it.each(["high", "medium", "low"])(
+    "maps gemini-3.7-flash-%s to gemini-3.7-flash-tiered with matching thinking level",
+    async (tier) => {
+      const { getModelUpstreamId } = await import("../../open-sse/config/providerModels.js");
+      const { AntigravityExecutor } = await import("../../open-sse/executors/antigravity.js");
+      const { applyThinking, stripThinkingSuffix } = await import("../../open-sse/translator/concerns/thinkingUnified.js");
+
+      const publicModel = `gemini-3.7-flash-${tier}`;
+      const upstreamModel = getModelUpstreamId("ag", publicModel);
+      const body = {
+        model: stripThinkingSuffix(upstreamModel),
+        request: {
+          contents: [{ role: "user", parts: [{ text: "hello" }] }],
+          generationConfig: {},
+        },
+      };
+
+      applyThinking("antigravity", upstreamModel, body, "antigravity");
+      const finalBody = new AntigravityExecutor().transformRequest(
+        publicModel,
+        body,
+        true,
+        { projectId: "project", connectionId: "connection" }
+      );
+
+      expect(upstreamModel).toBe(`gemini-3.7-flash-tiered(${tier})`);
+      expect(finalBody.model).toBe("gemini-3.7-flash-tiered");
+      expect(finalBody.request.generationConfig.thinkingConfig).toEqual({
+        thinkingLevel: tier,
+        includeThoughts: true,
+      });
+    }
+  );
 });

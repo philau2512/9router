@@ -184,7 +184,12 @@ function extractModel(url, body) {
     return parsed.chat_context.modelConfig.model;
   }
   const model = urlModel || parsed.model || null;
-  if (String(model).replace(/^models\//, "") === "gemini-3.6-flash-tiered") {
+  const cleanModelName = String(model).replace(/^models\//, "");
+  if (
+    cleanModelName === "gemini-3.6-flash-tiered" ||
+    cleanModelName === "gemini-3.7-flash-tiered"
+  ) {
+    const ver = cleanModelName.includes("3.7") ? "3.7" : "3.6";
     const rawLevel =
       parsed.request?.generationConfig?.thinkingConfig?.thinkingLevel ||
       parsed.generationConfig?.thinkingConfig?.thinkingLevel;
@@ -193,7 +198,7 @@ function extractModel(url, body) {
     )
       ? String(rawLevel).toLowerCase()
       : "medium";
-    return `gemini-3.6-flash-${level}`;
+    return `gemini-${ver}-flash-${level}`;
   }
   return model;
 }
