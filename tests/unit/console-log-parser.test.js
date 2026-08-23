@@ -97,5 +97,34 @@ describe("console-log logParser", () => {
       // Must extract clean model name 'gpt-5.6-terra' instead of '5' (from authmodel=5) or long UUID
       expect(req.model).toBe("gpt-5.6-terra");
     });
+
+    it("marks request as aborted when stream disconnects with ResponseAborted", () => {
+      const rawLines = [
+        "[15:11:21] [5h66y9] 📥 POST /v1/responses | agy | 532 msgs | 22 tools | effort=high",
+        '[15:11:21] [5h66y9] ℹ️  [CHAT] Combo "agy" with 3 models (strategy: fallback, sticky: 1)',
+        "[15:11:21] [5h66y9] ℹ️  [COMBO] Trying model 1/3: ag/gemini-3.7-flash-tiered",
+        "[15:11:21] [5h66y9] ℹ️  [ROUTING] ag/gemini-3.7-flash-tiered → antigravity/gemini-3.7-flash-tiered",
+        "[15:11:21] [5h66y9:10c2b2] ℹ️  [AUTH] Using antigravity account: pvpjvlgl3149899@gmail.com",
+        "[15:11:21] 🔵 ▶ POST agy → antigravity/gemini-3.7-flash-tiered · FMT:openai-responses→antigravity · STREAM · 0MSG · 22TOOL · THINK:high · ACC:pvpjvlgl3149899@gmail.com",
+        "[15:11:21] [5h66y9:10c2b2] [PENDING] START | provider=antigravity | model=gemini-3.7-flash-tiered",
+        "[15:11:23] [5h66y9:10c2b2] ℹ️  [COMBO] Model ag/gemini-3.7-flash-tiered succeeded",
+        "[15:11:23] 🌊 [STREAM] ANTIGRAVITY | gemini-3.7-flash-tiered | 2309ms | disconnect: ResponseAborted",
+      ];
+
+      const { groups } = groupLogLines(rawLines);
+      expect(groups).toHaveLength(1);
+
+      const req = groups[0];
+      expect(req.id).toBe("5h66y9");
+      expect(req.connId).toBe("10c2b2");
+      expect(req.combo).toBe("agy");
+      expect(req.model).toBe("antigravity/gemini-3.7-flash-tiered");
+      expect(req.account).toBe("pvpjvlgl3149899@gmail.com");
+      expect(req.duration).toBe(2309);
+      expect(req.status).toBe("aborted");
+      expect(req.isAborted).toBe(true);
+      expect(req.statusCode).toBe(499);
+      expect(req.disconnectReason).toBe("ResponseAborted");
+    });
   });
 });

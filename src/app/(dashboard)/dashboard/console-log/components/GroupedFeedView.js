@@ -72,8 +72,10 @@ export default function GroupedFeedView({ groups, onIdClick, onCopyText }) {
       <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-4 flex flex-col gap-2.5">
         {groups.map((group) => {
           const isExpanded = expandedIds.has(group.id);
-          const isSuccess = group.status === "success" && !group.hasError;
+          const isSuccess =
+            group.status === "success" && !group.hasError && !group.isAborted;
           const isError = group.hasError || group.status === "error";
+          const isAborted = group.status === "aborted" || group.isAborted;
 
           return (
             <div
@@ -81,9 +83,11 @@ export default function GroupedFeedView({ groups, onIdClick, onCopyText }) {
               className={`shrink-0 rounded-xl border transition-all duration-200 bg-surface/50 hover:bg-surface overflow-hidden ${
                 isError
                   ? "border-red-500/40 bg-red-500/5"
-                  : isExpanded
-                    ? "border-primary/40 shadow-sm"
-                    : "border-border"
+                  : isAborted
+                    ? "border-amber-500/40 bg-amber-500/5"
+                    : isExpanded
+                      ? "border-primary/40 shadow-sm"
+                      : "border-border"
               }`}
             >
               {/* Header Summary Row */}
@@ -98,9 +102,11 @@ export default function GroupedFeedView({ groups, onIdClick, onCopyText }) {
                     className={`size-2.5 rounded-full shrink-0 ${
                       isError
                         ? "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]"
-                        : isSuccess
-                          ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"
-                          : "bg-blue-500 animate-pulse"
+                        : isAborted
+                          ? "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]"
+                          : isSuccess
+                            ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"
+                            : "bg-blue-500 animate-pulse"
                     }`}
                   />
 
@@ -130,6 +136,20 @@ export default function GroupedFeedView({ groups, onIdClick, onCopyText }) {
                   {group.combo && (
                     <Badge variant="primary" size="sm">
                       {group.combo}
+                    </Badge>
+                  )}
+
+                  {isAborted && (
+                    <Badge
+                      variant="warning"
+                      size="sm"
+                      title={
+                        group.disconnectReason
+                          ? `Aborted: ${group.disconnectReason}`
+                          : "Aborted"
+                      }
+                    >
+                      Aborted
                     </Badge>
                   )}
 
