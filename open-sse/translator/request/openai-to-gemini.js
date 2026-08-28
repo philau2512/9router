@@ -21,6 +21,7 @@ import {
   generateSessionId,
   generateProjectId,
   cleanJSONSchemaForAntigravity,
+  sanitizeFunctionResponseData,
 } from "../helpers/geminiHelper.js";
 import { deriveSessionId } from "../../utils/sessionManager.js";
 
@@ -269,7 +270,7 @@ function openaiToGeminiBase(
                 functionResponse: {
                   id: fid,
                   name: sanitizeGeminiFunctionName(name),
-                  response: { result: parsedResp },
+                  response: { result: sanitizeFunctionResponseData(parsedResp) },
                 },
               });
             }
@@ -536,7 +537,11 @@ function wrapInCloudCodeEnvelopeForClaude(
               functionResponse: {
                 id: block.tool_use_id,
                 name: resolvedName,
-                response: { result: tryParseJSON(content) || content },
+                response: {
+                  result: sanitizeFunctionResponseData(
+                    tryParseJSON(content) ?? content,
+                  ),
+                },
               },
             });
           }
