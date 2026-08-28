@@ -45,13 +45,27 @@ export function parseLogLine(rawLine) {
   // 4. Extract Key Metadata
   const metadata = {};
 
-  // Endpoint & Messages: POST /v1/chat/completions | codex-free | 28 msgs
-  const epMatch = text.match(/(POST|GET)\s+(\/[^\s|]+)(?:\s+\|\s+([^\s|]+))?(?:\s+\|\s+(\d+)\s+msgs)?/i);
+  // Endpoint & Messages, Tools, Effort
+  const epMatch = text.match(/(POST|GET)\s+(\/[^\s|]+)(?:\s+\|\s+([^\s|]+))?/i);
   if (epMatch) {
     metadata.method = epMatch[1];
     metadata.endpoint = epMatch[2];
     metadata.combo = epMatch[3] || null;
-    metadata.msgs = epMatch[4] ? Number(epMatch[4]) : null;
+  }
+
+  const msgMatch = text.match(/\b(\d+)\s*(?:msgs?|MSG)\b/i);
+  if (msgMatch) {
+    metadata.msgs = Number(msgMatch[1]);
+  }
+
+  const toolMatch = text.match(/\b(\d+)\s*(?:tools?|TOOL)\b/i);
+  if (toolMatch) {
+    metadata.tools = Number(toolMatch[1]);
+  }
+
+  const effortMatch = text.match(/\b(?:effort=|THINK:|think=)([a-z0-9_:-]+)/i);
+  if (effortMatch) {
+    metadata.effort = effortMatch[1];
   }
 
   // Model Routing:
@@ -205,6 +219,9 @@ export function groupLogLines(rawLines) {
           model: null,
           provider: null,
           account: null,
+          msgs: null,
+          tools: null,
+          effort: null,
           status: "pending",
           statusCode: 200,
           duration: null,
@@ -233,6 +250,20 @@ export function groupLogLines(rawLines) {
         if (!group.account || group.account.endsWith("...")) {
           group.account = m.combo;
         }
+      }
+
+      if (m.msgs != null) {
+        if (group.msgs == null || (group.msgs === 0 && m.msgs > 0)) {
+          group.msgs = m.msgs;
+        }
+      }
+      if (m.tools != null) {
+        if (group.tools == null || (group.tools === 0 && m.tools > 0)) {
+          group.tools = m.tools;
+        }
+      }
+      if (m.effort != null) {
+        group.effort = m.effort;
       }
 
       // Format model: targetModel takes highest precedence

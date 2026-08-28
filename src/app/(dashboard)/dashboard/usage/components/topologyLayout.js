@@ -2,17 +2,33 @@
  * Pure topology graph layout (no React / xyflow).
  * Used by ProviderTopology and unit tests for edge-glow regressions.
  */
-import { AI_PROVIDERS } from "@/shared/constants/providers";
+import {
+  AI_PROVIDERS,
+  isOpenAICompatibleProvider,
+  isAnthropicCompatibleProvider,
+} from "@/shared/constants/providers";
 import {
   countActiveProviderGroups,
   isTopologyProviderActive,
 } from "./topologyActiveMatch";
 
 function getProviderConfig(providerId) {
+  if (isOpenAICompatibleProvider(providerId)) {
+    return { color: "#10a37f", name: "OpenAI Compatible", textIcon: "OA" };
+  }
+  if (isAnthropicCompatibleProvider(providerId)) {
+    return { color: "#d97757", name: "Anthropic Compatible", textIcon: "AN" };
+  }
   return AI_PROVIDERS[providerId] || { color: "#6b7280", name: providerId };
 }
 
 function getProviderImageUrl(providerId) {
+  if (isOpenAICompatibleProvider(providerId)) {
+    return "/providers/openai.png";
+  }
+  if (isAnthropicCompatibleProvider(providerId)) {
+    return "/providers/anthropic.png";
+  }
   return `/providers/${providerId}.png`;
 }
 
@@ -79,16 +95,23 @@ export function buildLayout(
     const last = !active && isTopologyProviderActive(p.provider, lastSet);
     const error = !active && isTopologyProviderActive(p.provider, errorSet);
     const nodeId = `provider-${p.provider}`;
+    const isCompatible =
+      isOpenAICompatibleProvider(p.provider) ||
+      isAnthropicCompatibleProvider(p.provider);
+    const customLabel =
+      p.nodeName || p.name || p.providerSpecificData?.nodeName;
+    const label = isCompatible
+      ? customLabel || config.name || p.provider
+      : (config.name !== p.provider ? config.name : null) ||
+        customLabel ||
+        p.provider;
+
     const data = {
-      label:
-        (config.name !== p.provider ? config.name : null) ||
-        p.nodeName ||
-        p.name ||
-        p.provider,
+      label,
       color: config.color || "#6b7280",
       imageUrl: getProviderImageUrl(p.provider),
       textIcon:
-        config.textIcon || (p.provider || "?").slice(0, 2).toUpperCase(),
+        config.textIcon || (p.name || p.provider || "?").slice(0, 2).toUpperCase(),
       active,
     };
 

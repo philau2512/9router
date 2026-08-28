@@ -26,6 +26,7 @@ import {
   saveRequestDetail,
 } from "@/lib/usageDb.js";
 import { getExecutor } from "../executors/index.js";
+import { buildAntigravityEmptyStopContinuation } from "../executors/antigravity.js";
 import {
   buildRequestDetail,
   extractRequestConfig,
@@ -920,6 +921,45 @@ export async function handleChatCore({
       }
     : baseOnStreamComplete;
 
+  const retryEmptyAntigravityStop =
+    provider === "antigravity"
+      ? async (attempt) => {
+          if (streamController.signal.aborted) {
+            throw new DOMException("Client request aborted", "AbortError");
+          }
+          const continuationBody = buildAntigravityEmptyStopContinuation(
+            translatedBody,
+          );
+          log?.warn?.(
+            "RETRY",
+            `ANTIGRAVITY | ${model} | empty STOP continuation ${attempt}/2 | same account/session`,
+          );
+          const retryResult = await executor.execute({
+            model,
+            body: continuationBody,
+            stream,
+            credentials,
+            signal: streamController.signal,
+            log,
+            proxyOptions,
+            emitObjects: wantKiroObjects,
+            onProfileArnDiscovered,
+            timing,
+          });
+          if (!retryResult.response?.ok) {
+            throw new Error(
+              `Empty STOP continuation returned HTTP ${retryResult.response?.status || "unknown"}`,
+            );
+          }
+          reqLogger.logTargetRequest(
+            retryResult.url,
+            retryResult.headers,
+            retryResult.transformedBody,
+          );
+          return retryResult.response;
+        }
+      : null;
+
   return handleStreamingResponse({
     ...sharedCtx,
     providerResponse,
@@ -934,6 +974,7 @@ export async function handleChatCore({
     timing,
     streamDetailId,
     kiroObjectStream: providerObjectStream,
+    retryEmptyAntigravityStop,
   });
 }
 

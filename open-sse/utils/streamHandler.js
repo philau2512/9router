@@ -160,6 +160,8 @@ export function createDisconnectAwareStream(
   let chunksReceived = 0;
   let resumeAttempts = 0;
   const maxResumeAttempts = 2;
+  let emptyStopRetryAttempts = 0;
+  const maxEmptyStopRetryAttempts = 2;
 
   // Emit a synthesized terminal payload (e.g. Responses response.failed + [DONE]) once
   const emitTerminal = (controller) => {
@@ -185,6 +187,82 @@ export function createDisconnectAwareStream(
         const { done, value } = await reader.read();
 
         if (done) {
+          const canRetryEmptyStop =
+            streamController.isConnected() &&
+            streamStateTracker?.emptyProviderResponse === true &&
+            streamStateTracker.hasMeaningfulProviderOutput !== true &&
+            emptyStopRetryAttempts < maxEmptyStopRetryAttempts &&
+            typeof resumeCtx?.retryEmptyAntigravityStop === "function";
+          if (canRetryEmptyStop) {
+            emptyStopRetryAttempts++;
+            const backoffMs = emptyStopRetryAttempts === 1 ? 500 : 1500;
+            console.warn(
+              `[ANTIGRAVITY] Empty STOP; retry ${emptyStopRetryAttempts}/${maxEmptyStopRetryAttempts} with the same account/session after ${backoffMs}ms`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, backoffMs));
+            if (!streamController.isConnected()) {
+              controller.close();
+              return;
+            }
+            try {
+              const retryResponse = await resumeCtx.retryEmptyAntigravityStop(
+                emptyStopRetryAttempts,
+              );
+              if (!retryResponse?.body) {
+                throw new Error("Empty STOP retry returned no stream body");
+              }
+              await reader.cancel().catch(() => {});
+              if (writer && typeof writer.abort === "function") {
+                await writer.abort().catch(() => {});
+              }
+              let retryTransform;
+              if (needsTranslation(resumeCtx.sourceFormat, resumeCtx.targetFormat)) {
+                retryTransform = createSSETransformStreamWithLogger(
+                  resumeCtx.targetFormat,
+                  resumeCtx.sourceFormat,
+                  resumeCtx.provider,
+                  resumeCtx.reqLogger,
+                  resumeCtx.toolNameMap,
+                  resumeCtx.model,
+                  resumeCtx.connectionId,
+                  resumeCtx.body,
+                  null,
+                  resumeCtx.apiKey,
+                  streamStateTracker,
+                );
+              } else {
+                retryTransform = createPassthroughStreamWithLogger(
+                  resumeCtx.provider,
+                  resumeCtx.reqLogger,
+                  resumeCtx.model,
+                  resumeCtx.connectionId,
+                  resumeCtx.body,
+                  null,
+                  resumeCtx.apiKey,
+                  streamStateTracker,
+                );
+              }
+              streamStateTracker.emptyProviderResponse = false;
+              streamStateTracker.hasMeaningfulProviderOutput = false;
+              chunksReceived = 0;
+              reader = retryResponse.body.pipeThrough(retryTransform).getReader();
+              writer = { abort: () => Promise.resolve() };
+              return this.pull(controller);
+            } catch (retryError) {
+              console.warn(
+                `[ANTIGRAVITY] Empty STOP retry ${emptyStopRetryAttempts} failed: ${retryError.message}`,
+              );
+              throw retryError;
+            }
+          }
+          if (
+            streamStateTracker?.emptyProviderResponse === true &&
+            streamStateTracker.hasMeaningfulProviderOutput !== true
+          ) {
+            throw new Error(
+              `Antigravity returned an empty STOP after ${emptyStopRetryAttempts + 1} attempts`,
+            );
+          }
           if (chunksReceived === 0) {
             throw new Error("API returned an empty response (HTTP 200)");
           }

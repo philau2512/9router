@@ -588,18 +588,18 @@ export const MODEL_PRICING = {
     cache_creation: 0.14,
   },
   "deepseek-v4-flash": {
-    input: 0.14,
-    output: 0.28,
-    cached: 0.0028,
-    reasoning: 0.28,
-    cache_creation: 0.14,
+    input: 0.22,
+    output: 0.66,
+    cached: 0.007,
+    reasoning: 0.66,
+    cache_creation: 0.22,
   },
   "deepseek-v4-pro": {
-    input: 0.435,
-    output: 0.87,
-    cached: 0.003625,
-    reasoning: 0.87,
-    cache_creation: 0.435,
+    input: 0.66,
+    output: 1.98,
+    cached: 0.022,
+    reasoning: 1.98,
+    cache_creation: 0.66,
   },
 
   // === GLM ===

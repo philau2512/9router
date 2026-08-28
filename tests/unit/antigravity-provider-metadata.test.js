@@ -21,6 +21,7 @@ const activeRegistry = REGISTRY.find(({ id }) => id === "antigravity");
 describe("Antigravity provider metadata", () => {
   it("uses daily first and falls back to the production chat endpoint", () => {
     expect(ANTIGRAVITY_BASE_URLS).toEqual([
+      "https://daily-cloudcode-pa.sandbox.googleapis.com",
       "https://daily-cloudcode-pa.googleapis.com",
       "https://cloudcode-pa.googleapis.com",
     ]);
@@ -87,8 +88,11 @@ describe("Antigravity provider metadata", () => {
     ).toBe(false);
   });
 
-  it("exports valid model aliases for Gemini 3.6 Flash family", () => {
+  it("exports valid model aliases for Gemini 3.6 & 3.7 Flash family", () => {
     const { ANTIGRAVITY_MODEL_ALIASES } = require("../../open-sse/providers/antigravity-provider-metadata.js");
+    expect(ANTIGRAVITY_MODEL_ALIASES["gemini-3.7-flash-high"]).toBe("gemini-3.7-flash-tiered");
+    expect(ANTIGRAVITY_MODEL_ALIASES["gemini-3.7-flash-medium"]).toBe("gemini-3.7-flash-tiered");
+    expect(ANTIGRAVITY_MODEL_ALIASES["gemini-3.7-flash-low"]).toBe("gemini-3.7-flash-tiered");
     expect(ANTIGRAVITY_MODEL_ALIASES["gemini-3.6-flash-low"]).toBe("gemini-3.6-flash-tiered");
     expect(ANTIGRAVITY_MODEL_ALIASES["gemini-3.6-flash-agent"]).toBe("gemini-3-flash-agent");
     expect(ANTIGRAVITY_MODEL_ALIASES["gemini-3.6-flash-extra-low"]).toBe("gemini-3.5-flash-extra-low");

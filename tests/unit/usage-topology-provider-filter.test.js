@@ -3,10 +3,17 @@
  * that still have stale local DB connections (e.g. iflow after UI delist).
  */
 import { describe, it, expect } from "vitest";
-import { AI_PROVIDERS } from "@/shared/constants/providers";
+import {
+  AI_PROVIDERS,
+  isOpenAICompatibleProvider,
+  isAnthropicCompatibleProvider,
+} from "@/shared/constants/providers";
 
 // Mirror UsageStats.isLLMProvider — keep logic in sync with that file.
 function isLLMProvider(id) {
+  if (isOpenAICompatibleProvider(id) || isAnthropicCompatibleProvider(id)) {
+    return true;
+  }
   const p = AI_PROVIDERS[id];
   if (!p) return false;
   if (!p.serviceKinds) return true;
@@ -58,5 +65,32 @@ describe("usage topology hides delisted providers", () => {
     expect(isLLMProvider("kiro")).toBe(true);
     expect(isLLMProvider("antigravity")).toBe(true);
     expect(isLLMProvider("opencode")).toBe(true);
+  });
+
+  it("supports enabled custom compatible providers and filters out disabled ones", () => {
+    expect(isLLMProvider("openai-compatible-chat-leokun")).toBe(true);
+    expect(isLLMProvider("anthropic-compatible-chat-custom")).toBe(true);
+
+    const connections = [
+      {
+        provider: "openai-compatible-chat-leokun",
+        name: "leokun",
+        isActive: true,
+      },
+      {
+        provider: "openai-compatible-chat-vmware",
+        name: "Vmware",
+        isActive: false,
+      },
+      {
+        provider: "openai-compatible-chat-kirogo",
+        name: "KiroGo",
+        isActive: false,
+      },
+    ];
+    const listed = filterTopologyProviders(connections);
+    expect(listed.map((c) => c.name)).toEqual(["leokun"]);
+    expect(listed.some((c) => c.name === "Vmware")).toBe(false);
+    expect(listed.some((c) => c.name === "KiroGo")).toBe(false);
   });
 });

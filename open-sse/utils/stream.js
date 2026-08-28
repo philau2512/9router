@@ -153,6 +153,10 @@ export function createSSEStream(options = {}) {
           geminiSawThought: resumedAfterAntigravityThought,
         }
       : null;
+  if (streamStateTracker) {
+    streamStateTracker.emptyProviderResponse = false;
+    streamStateTracker.hasMeaningfulProviderOutput = false;
+  }
 
   let totalContentLength = 0;
   let accumulatedContent = streamStateTracker?.accumulatedContent || "";
@@ -361,7 +365,22 @@ export function createSSEStream(options = {}) {
     }
 
     if (translated?.length > 0) {
+      const isEmptyAntigravityResponse =
+        targetFormat === FORMATS.ANTIGRAVITY &&
+        state.emptyProviderResponse === true;
+      if (targetFormat === FORMATS.ANTIGRAVITY && streamStateTracker) {
+        streamStateTracker.emptyProviderResponse = isEmptyAntigravityResponse;
+        streamStateTracker.hasMeaningfulProviderOutput =
+          state.geminiToolCallCount > 0 ||
+          state.geminiEmittedVisible === true;
+      }
       for (const item of translated) {
+        // Empty STOP is retryable for Antigravity. Do not leak any event from
+        // this discarded attempt, including Responses lifecycle events, before
+        // streamHandler replaces it with a same-account retry.
+        if (isEmptyAntigravityResponse) {
+          continue;
+        }
         if (item === null || item === undefined) continue;
         if (!hasValuableContent(item, sourceFormat)) continue;
 

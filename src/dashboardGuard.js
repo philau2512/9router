@@ -31,6 +31,9 @@ const PUBLIC_API_PATHS = [
   "/api/auth/oidc",
   "/api/version",
   "/api/settings/require-login",
+  "/api/mcp/sse",
+  "/api/mcp/message",
+  "/api/mcp/9router",
 ];
 
 // Public top-level prefixes (LLM API endpoints with their own API key auth).
@@ -199,7 +202,13 @@ export async function proxy(request) {
 
   // Local-only gate for spawn-capable / host-secret routes.
   if (LOCAL_ONLY_PATHS.some((p) => pathname.startsWith(p))) {
-    if (!(await canAccessLocalOnlyRoute(request))) {
+    const isNativeMcp =
+      pathname === "/api/mcp/sse" ||
+      pathname === "/api/mcp/message" ||
+      pathname.startsWith("/api/mcp/9router") ||
+      pathname.startsWith("/api/mcp/search") ||
+      pathname.startsWith("/api/mcp/default");
+    if (!isNativeMcp && !(await canAccessLocalOnlyRoute(request))) {
       return NextResponse.json(
         { error: "Local only: CLI token required" },
         { status: 403 },
