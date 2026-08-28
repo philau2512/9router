@@ -2,13 +2,21 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { FREE_PROVIDERS, AI_PROVIDERS } from "@/shared/constants/providers";
+import {
+  FREE_PROVIDERS,
+  AI_PROVIDERS,
+  isOpenAICompatibleProvider,
+  isAnthropicCompatibleProvider,
+} from "@/shared/constants/providers";
 
 // Topology / usage graph only lists providers still registered in the dashboard.
 // Removed entries (e.g. iflow commented out of FREE_PROVIDERS) must not reappear
 // just because an old connection row still exists in the local DB.
 // Unknown id → false. Known LLM (default or serviceKinds includes "llm") → true.
 function isLLMProvider(id) {
+  if (isOpenAICompatibleProvider(id) || isAnthropicCompatibleProvider(id)) {
+    return true;
+  }
   const p = AI_PROVIDERS[id];
   if (!p) return false;
   if (!p.serviceKinds) return true;

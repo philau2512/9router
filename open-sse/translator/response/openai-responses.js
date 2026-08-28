@@ -14,6 +14,10 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     return flushEvents(state);
   }
 
+  if (chunk.usage && typeof chunk.usage === "object") {
+    state.usage = chunk.usage;
+  }
+
   if (!chunk.choices?.length) return [];
 
   const events = [];
@@ -403,19 +407,62 @@ function closeToolCall(state, emit, idx) {
   }
 }
 
+function formatResponsesUsage(usage) {
+  if (!usage || typeof usage !== "object") return null;
+
+  const promptTokens =
+    usage.prompt_tokens ?? usage.input_tokens ?? 0;
+  const completionTokens =
+    usage.completion_tokens ?? usage.output_tokens ?? 0;
+  const totalTokens =
+    usage.total_tokens ?? promptTokens + completionTokens;
+
+  const cachedTokens =
+    usage.prompt_tokens_details?.cached_tokens ??
+    usage.input_token_details?.cached_tokens ??
+    usage.cache_read_input_tokens ??
+    0;
+
+  const reasoningTokens =
+    usage.completion_tokens_details?.reasoning_tokens ??
+    usage.output_token_details?.reasoning_tokens ??
+    0;
+
+  return {
+    total_tokens: totalTokens,
+    input_tokens: promptTokens,
+    output_tokens: completionTokens,
+    input_token_details: {
+      cached_tokens: cachedTokens,
+    },
+    output_token_details: {
+      reasoning_tokens: reasoningTokens,
+    },
+  };
+}
+
 function sendCompleted(state, emit) {
   if (!state.completedSent) {
     state.completedSent = true;
+    const responseObj = {
+      id: state.responseId,
+      object: "response",
+      created_at: state.created,
+      status: "completed",
+      background: false,
+      error: null,
+    };
+
+    if (state.usage) {
+      const formattedUsage = formatResponsesUsage(state.usage);
+      if (formattedUsage) {
+        responseObj.usage = formattedUsage;
+      }
+    }
+
     emit("response.completed", {
       type: "response.completed",
-      response: {
-        id: state.responseId,
-        object: "response",
-        created_at: state.created,
-        status: "completed",
-        background: false,
-        error: null,
-      },
+      response: responseObj,
     });
   }
 }
