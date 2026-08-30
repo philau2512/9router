@@ -11,7 +11,10 @@ import {
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { deriveSessionId } from "../utils/sessionManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { cleanJSONSchemaForAntigravity } from "../translator/helpers/geminiHelper.js";
+import {
+  cleanJSONSchemaForAntigravity,
+  sanitizeFunctionResponseData,
+} from "../translator/helpers/geminiHelper.js";
 import { ANTIGRAVITY_MODEL_ALIASES } from "../providers/antigravity-provider-metadata.js";
 import { DEFAULT_THINKING_AG_SIGNATURE } from "../config/defaultThinkingSignature.js";
 
@@ -220,28 +223,45 @@ export class AntigravityExecutor extends BaseExecutor {
       // Default: strip thought-only parts (Claude-via-AG / non-thinking).
       // When thinking is active, keep thought text for tool continuity; still
       // drop orphan signature-only parts (no text / no functionCall).
-      const parts = c.parts?.filter((p) => {
+      const filteredParts = c.parts?.filter((p) => {
         if (p.thought && !p.functionCall && !keepThoughtParts) return false;
         if (p.thoughtSignature && !p.functionCall && !p.text) return false;
         return true;
       });
       const needsBackfill =
-        parts?.some((p) => p.functionCall && !p.thoughtSignature) ?? false;
+        filteredParts?.some((p) => p.functionCall && !p.thoughtSignature) ?? false;
+      const hasFunctionResponse =
+        filteredParts?.some((p) => p.functionResponse?.response) ?? false;
+
+      const parts = filteredParts?.map((p) => {
+        let part = p;
+        if (part.functionCall && !part.thoughtSignature && needsBackfill) {
+          part = { ...part, thoughtSignature: DEFAULT_THINKING_AG_SIGNATURE };
+        }
+        if (part.functionResponse?.response) {
+          part = {
+            ...part,
+            functionResponse: {
+              ...part.functionResponse,
+              response: sanitizeFunctionResponseData(
+                part.functionResponse.response,
+              ),
+            },
+          };
+        }
+        return part;
+      });
+
       if (
         role !== c.role ||
         parts?.length !== c.parts?.length ||
-        needsBackfill
+        needsBackfill ||
+        hasFunctionResponse
       ) {
         return {
           ...c,
           role,
-          parts: needsBackfill
-            ? parts.map((p) =>
-                p.functionCall && !p.thoughtSignature
-                  ? { ...p, thoughtSignature: DEFAULT_THINKING_AG_SIGNATURE }
-                  : p,
-              )
-            : parts,
+          parts: parts ?? c.parts,
         };
       }
       return c;
