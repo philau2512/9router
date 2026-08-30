@@ -1,9 +1,6 @@
-import {
-  ensureToolCallIds,
-  fixMissingToolResponses,
-} from "../helpers/toolCallHelper.js";
+import { ensureToolCallIds } from "../helpers/toolCallHelper.js";
 
-export { ensureToolCallIds, fixMissingToolResponses };
+export { ensureToolCallIds };
 
 /**
  * Strip orphaned tool results from a request body before upstream dispatch.
@@ -98,4 +95,98 @@ export function stripOrphanedToolResults(body) {
   }
 
   return body;
+}
+
+// Get tool_call ids from assistant message (OpenAI format: tool_calls, Claude format: tool_use in content)
+export function getToolCallIds(msg) {
+  if (msg.role !== "assistant") return [];
+
+  const ids = [];
+
+  // OpenAI format: tool_calls array
+  if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
+    for (const tc of msg.tool_calls) {
+      if (tc.id) ids.push(tc.id);
+    }
+  }
+
+  // Claude format: tool_use blocks in content
+  if (Array.isArray(msg.content)) {
+    for (const block of msg.content) {
+      if (block.type === "tool_use" && block.id) {
+        ids.push(block.id);
+      }
+    }
+  }
+
+  return ids;
+}
+
+// Check if user message has tool_result for given ids (OpenAI format: role=tool, Claude format: tool_result in content)
+export function hasToolResults(msg, toolCallIds) {
+  if (!msg || !toolCallIds.length) return false;
+
+  // OpenAI format: role = "tool" with tool_call_id
+  if (msg.role === "tool" && msg.tool_call_id) {
+    return toolCallIds.includes(msg.tool_call_id);
+  }
+
+  // Claude format: tool_result blocks in user message content
+  if (msg.role === "user" && Array.isArray(msg.content)) {
+    for (const block of msg.content) {
+      if (block.type === "tool_result" && toolCallIds.includes(block.tool_use_id)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+// Fix missing tool responses - insert empty tool_result if assistant has tool_use but next message has no tool_result
+export function fixMissingToolResponses(body) {
+  if (!body.messages || !Array.isArray(body.messages)) return body;
+
+  const newMessages = [];
+
+  for (let i = 0; i < body.messages.length; i++) {
+    const msg = body.messages[i];
+    const nextMsg = body.messages[i + 1];
+
+    newMessages.push(msg);
+
+    // Check if this is assistant with tool_calls/tool_use
+    const toolCallIds = getToolCallIds(msg);
+    if (toolCallIds.length === 0) continue;
+
+    // Check if next message has tool_result
+    if (nextMsg && !hasToolResults(nextMsg, toolCallIds)) {
+      // Insert tool responses for each tool_call
+      for (const id of toolCallIds) {
+        // OpenAI format: role = "tool"
+        newMessages.push({
+          role: "tool",
+          tool_call_id: id,
+          content: ""
+        });
+      }
+    }
+  }
+
+  body.messages = newMessages;
+  return body;
+}
+
+// Default `type: "custom"` on Claude-format tools that arrive without one.
+// Anthropic's Claude tool schema requires `type` to be explicitly set; strict gateways
+// (e.g., MiniMax Anthropic-compatible endpoint, error 2013) reject legacy payloads that
+// omit it with HTTP 400. Tools that already carry a truthy `type` (e.g., `computer_use`,
+// `bash`, `web_search_20250305`) are passed through untouched.
+//
+// Spread order matters: `{ ...tool, type: "custom" }` (spread first, override last)
+// ensures that falsy `type` values (null, undefined, "") in the original tool don't
+// overwrite the default. `{ type: "custom", ...tool }` would let `type: null` survive.
+export function defaultClaudeToolType(tools) {
+  if (!Array.isArray(tools)) return tools;
+  return tools.map(tool => tool?.type ? tool : { ...tool, type: "custom" });
 }

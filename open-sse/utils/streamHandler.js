@@ -83,6 +83,8 @@ export function createStreamController({
       cleanupClientSignal();
 
       logStream(`disconnect: ${reason}`);
+      // Debug-only: Responses API has no [DONE] sentinel, so codex/droid close the
+      // socket on every completed request. "📊 done" is the authoritative outcome line.
       dbg(
         "CTRL",
         `${provider}/${model} | disconnect=${reason} | dur=${Date.now() - startTime}ms`,

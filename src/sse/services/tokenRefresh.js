@@ -15,7 +15,6 @@ import {
   refreshAccessToken as _refreshAccessToken,
   refreshClaudeOAuthToken as _refreshClaudeOAuthToken,
   refreshGoogleToken as _refreshGoogleToken,
-  refreshQwenToken as _refreshQwenToken,
   refreshCodexToken as _refreshCodexToken,
   refreshIflowToken as _refreshIflowToken,
   refreshGitHubToken as _refreshGitHubToken,
@@ -28,9 +27,8 @@ import {
   getRefreshLeadMs as _getRefreshLeadMs,
   isUnrecoverableRefreshError,
 } from "open-sse/services/tokenRefresh.js";
-import {
-  CODEX_AUTO_REFRESH,
-} from "open-sse/config/appConstants.js";
+import { refreshQwenToken as _refreshQwenToken } from "open-sse/services/refresh-providers.js";
+import { CODEX_AUTO_REFRESH } from "open-sse/config/appConstants.js";
 import {
   refreshProviderCredentials as _refreshProviderCredentials,
   shouldRefreshCredentials as _shouldRefreshCredentials,

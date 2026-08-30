@@ -40,7 +40,6 @@ export default function ProvidersPage() {
     hasAnyResult,
     isApikeySearching,
   } = useProvidersState();
-
   if (loading) {
     return (
       <div className="flex flex-col gap-8">

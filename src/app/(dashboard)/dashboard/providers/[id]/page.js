@@ -34,6 +34,7 @@ import {
   updateProviderConnection,
   updateProviderNode,
 } from "./utils/providerDetailPageApi";
+import BulkImportGrokCliModal from "./BulkImportGrokCliModal";
 
 function getHeaderIconPath(
   providerInfo,
@@ -61,6 +62,7 @@ export default function ProviderDetailPage() {
   const [showAddApiKeyModal, setShowAddApiKeyModal] = useState(false);
   const [showBulkImportCodex, setShowBulkImportCodex] = useState(false);
   const [addConnectionError, setAddConnectionError] = useState("");
+  const [showBulkImportGrokCli, setShowBulkImportGrokCli] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showEditNodeModal, setShowEditNodeModal] = useState(false);
   const [selectedConnection, setSelectedConnection] = useState(null);
@@ -200,7 +202,6 @@ export default function ProviderDetailPage() {
 
   const {
     connections,
-    setConnections,
     loading,
     proxyPools,
     selectedConnectionIds,
@@ -598,6 +599,7 @@ export default function ProviderDetailPage() {
         handleWarmupSingle={handleWarmupSingle}
         clearWarmupResults={clearWarmupResults}
         onOpenCodexBulkImport={() => setShowBulkImportCodex(true)}
+        onOpenGrokBulkImport={() => setShowBulkImportGrokCli(true)}
         onViewJson={handleViewJson}
         autoPingConnections={autoPingConnections}
         savingAutoPingConnectionId={savingAutoPingConnectionId}
@@ -799,6 +801,14 @@ export default function ProviderDetailPage() {
         activeJsonConnection={activeJsonConnection}
         onCloseJsonModal={() => setActiveJsonConnection(null)}
       />
+
+      {providerId === "grok-cli" && (
+        <BulkImportGrokCliModal
+          isOpen={showBulkImportGrokCli}
+          onClose={() => setShowBulkImportGrokCli(false)}
+          onSuccess={fetchConnections}
+        />
+      )}
     </div>
   );
 }

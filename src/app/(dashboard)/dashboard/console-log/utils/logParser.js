@@ -16,9 +16,18 @@ export function parseLogLine(rawLine) {
     text = timeMatch[2];
   }
 
-  // 2. Extract Request ID & Connection ID: reqId:connId or [reqId:connId] or [reqId]
+  // 2. Extract Request ID & Connection ID:
+  // Can be [reqId:connId], reqId:connId, [reqId], or session color dot tag (e.g. 🔴, 🟢, 🔵, 🟣, 🟡, 🟠, ⚪, 🟤)
   let reqId = null;
   let connId = null;
+  let dotTag = null;
+
+  const dotMatch = text.match(/^([🟢🔵🟣🟡🟠🔴⚪🟤])\s*(.*)$/u);
+  if (dotMatch) {
+    dotTag = dotMatch[1];
+    text = dotMatch[2];
+  }
+
   const idMatch = text.match(/^(?:\[([a-z0-9]{6})(?::([a-z0-9]{6}))?\]|([a-z0-9]{6})(?::([a-z0-9]{6}))?)\s*(.*)$/i);
   if (idMatch) {
     reqId = idMatch[1] || idMatch[3];
@@ -36,7 +45,7 @@ export function parseLogLine(rawLine) {
     level = "stream";
   } else if (text.includes("📊") || text.includes("📈") || text.includes("[USAGE]")) {
     level = "usage";
-  } else if (text.includes("📥") || text.includes("POST ") || text.includes("GET ")) {
+  } else if (text.includes("📥") || text.includes("▶ POST") || text.includes("POST ") || text.includes("GET ")) {
     level = "request";
   } else if (text.includes("🤯") || text.includes("[TTFT]")) {
     level = "ttft";

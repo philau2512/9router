@@ -9,6 +9,7 @@ import {
 } from "@/shared/components";
 import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
+import { rememberEndpoint } from "./cliEndpointPresets";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
 
@@ -73,6 +74,8 @@ export default function ClineToolCard({
       console.log("Error fetching model aliases:", error);
     }
   };
+
+  const currentBaseUrl = status?.settings?.openAiBaseUrl || "";
 
   const getConfigStatus = () => {
     if (!status?.installed) return null;
@@ -146,6 +149,8 @@ export default function ClineToolCard({
       });
       const data = await res.json();
       if (res.ok) {
+        // Remember the endpoint so it stays selectable next time
+        rememberEndpoint(getEffectiveBaseUrl(), { tunnelPublicUrl, tailscaleUrl });
         setMessage({ type: "success", text: "Settings applied successfully!" });
         checkStatus();
       } else {
@@ -353,6 +358,7 @@ export default function ClineToolCard({
                     tunnelPublicUrl={tunnelPublicUrl}
                     tailscaleEnabled={tailscaleEnabled}
                     tailscaleUrl={tailscaleUrl}
+                    currentUrl={currentBaseUrl}
                   />
                 </div>
 

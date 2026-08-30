@@ -13,6 +13,7 @@ import {
   refreshCodebuddyToken,
 } from "./refresh-providers.js";
 import {
+  refreshClineToken,
   refreshCodebuddyIntlToken,
   refreshTraeToken,
   refreshZedToken,
@@ -248,6 +249,8 @@ export async function refreshTokenByProvider(provider, credentials, log) {
       return refreshCodebuddyToken(credentials.refreshToken, refreshLog);
     case "codebuddy-intl":
       return refreshCodebuddyIntlToken(credentials.refreshToken, refreshLog);
+    case "cline":
+      return refreshClineToken(credentials.refreshToken, refreshLog);
     case "trae":
       return refreshTraeToken(credentials.refreshToken, credentials, refreshLog);
     case "zed":

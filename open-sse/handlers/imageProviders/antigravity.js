@@ -1,6 +1,6 @@
 // Antigravity image adapter - delegates to the executor for correct request
 // envelope (project, model, requestType, sessionId) and auth headers.
-import { nowSec } from "./_base.js";
+import { nowSec, sizeToAspectRatio } from "./_base.js";
 import { getExecutor } from "../../executors/index.js";
 
 // Convert image input (data URI or raw base64) to Gemini inlineData part
@@ -35,6 +35,19 @@ const antigravityAdapter = {
     const executor = getExecutor("antigravity");
     if (!executor) throw new Error("Antigravity executor not found");
 
+    // Ensure we use an image model for image generation
+    const isImageModel = (m) => /image|imagen|image-generation/i.test(m || "");
+    let targetModel = isImageModel(model) ? model : "gemini-3.1-flash-image";
+
+    // If body.size is provided, resolve aspect ratio and append to model
+    if (body.size && typeof body.size === "string") {
+      const ratio = sizeToAspectRatio(body.size);
+      const suffix = ratio.replace(":", "x");
+      if (!targetModel.includes(suffix)) {
+        targetModel = `${targetModel}-${suffix}`;
+      }
+    }
+
     // Build parts: text prompt + optional input image for editing
     const parts = [{ text: body.prompt }];
     const imageInput =
@@ -44,8 +57,8 @@ const antigravityAdapter = {
       if (inlineData) parts.unshift(inlineData);
     }
 
-    const { response } = await executor.execute({
-      model,
+    const result = await executor.execute({
+      model: targetModel,
       body: {
         contents: [{ role: "user", parts }],
         generationConfig: {
@@ -54,24 +67,20 @@ const antigravityAdapter = {
             (body.output_format || "png").toLowerCase() === "jpeg"
               ? "image/jpeg"
               : "image/png",
-          aspectRatio:
-            body.size === "1024x1024"
-              ? "1:1"
-              : body.size === "16:9" || body.size === "1920x1080"
-                ? "16:9"
-                : "1:1",
+          aspectRatio: sizeToAspectRatio(body.size || "1024x1024"),
         },
       },
+      stream: false,
       credentials,
+      log,
     });
 
-    if (!response.ok) {
-      throw new Error(
-        `Failed to generate image via antigravity executor: ${response.statusText}`,
-      );
+    if (!result.response.ok) {
+      const text = await result.response.text();
+      throw new Error(text || `HTTP ${result.response.status}`);
     }
 
-    return response.json();
+    return result.response.json();
   },
 
   normalize: (responseBody, prompt) => {
