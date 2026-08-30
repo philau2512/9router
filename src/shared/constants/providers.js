@@ -17,6 +17,12 @@ export {
   USAGE_SUPPORTED_PROVIDERS,
   USAGE_APIKEY_PROVIDERS,
 } from "./providers/usage-constants.js";
+const MEDIA_ENTRY_KEYS = [
+  "serviceKinds", "ttsConfig", "sttConfig", "embeddingConfig",
+  "imageConfig", "imageToTextConfig", "videoConfig", "musicConfig",
+  "searchViaChat", "searchConfig", "fetchConfig", "credentialFallback",
+  "modelsFetcher", "mediaPriority", "hiddenKinds",
+];
 
 // Re-export helpers (no AI_PROVIDERS dependency)
 export {

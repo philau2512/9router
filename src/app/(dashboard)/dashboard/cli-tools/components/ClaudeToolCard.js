@@ -10,6 +10,7 @@ import {
 } from "@/shared/components";
 import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
+import { rememberEndpoint } from "./cliEndpointPresets";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
 
@@ -60,6 +61,8 @@ export default function ClaudeToolCard({
   const [exaMcpEnabled, setExaMcpEnabled] = useState(false);
   const [maxContextTokens, setMaxContextTokens] = useState("");
   const hasInitializedModels = useRef(false);
+
+  const currentBaseUrl = claudeStatus?.settings?.env?.ANTHROPIC_BASE_URL || "";
 
   const getConfigStatus = () => {
     if (!claudeStatus?.installed) return null;
@@ -219,6 +222,8 @@ export default function ClaudeToolCard({
       });
       const data = await res.json();
       if (res.ok) {
+        // Remember the endpoint so it stays selectable next time
+        rememberEndpoint(getEffectiveBaseUrl(), { tunnelPublicUrl, tailscaleUrl });
         setMessage({ type: "success", text: "Settings applied successfully!" });
         setClaudeStatus((prev) => ({
           ...prev,
@@ -455,6 +460,7 @@ export default function ClaudeToolCard({
                     tunnelPublicUrl={tunnelPublicUrl}
                     tailscaleEnabled={tailscaleEnabled}
                     tailscaleUrl={tailscaleUrl}
+                    currentUrl={currentBaseUrl}
                   />
                 </div>
 

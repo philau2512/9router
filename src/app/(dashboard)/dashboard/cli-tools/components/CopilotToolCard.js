@@ -9,6 +9,7 @@ import {
 } from "@/shared/components";
 import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
+import { rememberEndpoint } from "./cliEndpointPresets";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
 
@@ -103,6 +104,8 @@ export default function CopilotToolCard({
     }
   };
 
+  const currentBaseUrl = status?.currentUrl || "";
+
   const getConfigStatus = () => {
     if (!status) return null;
     if (!status.has9Router) return "not_configured";
@@ -190,6 +193,9 @@ export default function CopilotToolCard({
           type: "success",
           text: data.message || "Settings applied! Reload VS Code.",
         });
+        // Remember the endpoint so it stays selectable next time
+        rememberEndpoint(getEffectiveBaseUrl(), { tunnelPublicUrl, tailscaleUrl });
+        setMessage({ type: "success", text: data.message || "Settings applied! Reload VS Code." });
         checkStatus();
       } else {
         setMessage({
@@ -368,6 +374,7 @@ export default function CopilotToolCard({
                     tunnelPublicUrl={tunnelPublicUrl}
                     tailscaleEnabled={tailscaleEnabled}
                     tailscaleUrl={tailscaleUrl}
+                    currentUrl={currentBaseUrl}
                   />
                 </div>
 

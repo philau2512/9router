@@ -2,8 +2,8 @@
 
 import {
   Card,
-  ManualConfigModal,
   ComboFormModal,
+  ManualConfigModal,
   McpMarketplaceModal,
   ModelSelectModal,
 } from "@/shared/components";
@@ -16,26 +16,22 @@ export default function CoworkToolCard({
   tool,
   isExpanded,
   onToggle,
-  baseUrl,
   apiKeys,
   activeProviders,
   hasActiveProviders,
   cloudEnabled,
-  cloudUrl,
   tunnelEnabled,
   tunnelPublicUrl,
   tailscaleEnabled,
   tailscaleUrl,
   initialStatus,
 }) {
-  // Use custom state hook
   const state = useCoworkState({
     apiKeys,
     initialStatus,
     isExpanded,
     cloudEnabled,
   });
-
   const configStatus = state.getConfigStatus();
 
   return (
@@ -55,8 +51,8 @@ export default function CoworkToolCard({
               sizes="32px"
               loading="lazy"
               decoding="async"
-              onError={(e) => {
-                e.currentTarget.style.display = "none";
+              onError={(event) => {
+                event.currentTarget.style.display = "none";
               }}
             />
           </div>
@@ -101,7 +97,6 @@ export default function CoworkToolCard({
               <span>Checking Claude Cowork...</span>
             </div>
           )}
-
           {!state.checking && state.status && !state.status.installed && (
             <div className="flex flex-col gap-3 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
               <div className="flex items-start gap-3">
@@ -132,7 +127,6 @@ export default function CoworkToolCard({
               </div>
             </div>
           )}
-
           {!state.checking && state.status?.installed && (
             <CoworkToolConfigForm
               status={state.status}
@@ -142,7 +136,6 @@ export default function CoworkToolCard({
               tailscaleEnabled={tailscaleEnabled}
               tailscaleUrl={tailscaleUrl}
               cloudEnabled={cloudEnabled}
-              cloudUrl={cloudUrl}
               setCustomBaseUrl={state.setCustomBaseUrl}
               selectedApiKey={state.selectedApiKey}
               setSelectedApiKey={state.setSelectedApiKey}
@@ -179,7 +172,6 @@ export default function CoworkToolCard({
         title="Claude Cowork - Manual Configuration"
         configs={state.getManualConfigs()}
       />
-
       <ComboFormModal
         isOpen={state.comboModalOpen}
         combo={null}
@@ -189,7 +181,6 @@ export default function CoworkToolCard({
         forcePrefix="claude-"
         title="Create Cowork Combo"
       />
-
       <ModelSelectModal
         isOpen={state.modelSelectOpen}
         onClose={() => state.setModelSelectOpen(false)}
@@ -201,14 +192,12 @@ export default function CoworkToolCard({
         addedModelValues={state.selectedModels}
         closeOnSelect={false}
       />
-
       <McpMarketplaceModal
         isOpen={state.marketplaceOpen}
         onClose={() => state.setMarketplaceOpen(false)}
         onAdd={state.addPlugin}
-        addedNames={state.plugins.map((p) => p.name)}
+        addedNames={state.plugins.map((plugin) => plugin.name)}
       />
-
       <CustomMcpModal
         isOpen={state.addMcpOpen}
         onClose={() => state.setAddMcpOpen(false)}

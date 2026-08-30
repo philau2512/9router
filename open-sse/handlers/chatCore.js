@@ -64,7 +64,10 @@ import {
   setCachedThinking,
   injectThinkingReplay,
 } from "../utils/antigravityReasoningReplay.js";
-import { stripOrphanedToolResults } from "../translator/concerns/toolCall.js";
+import {
+  defaultClaudeToolType,
+  stripOrphanedToolResults,
+} from "../translator/concerns/toolCall.js";
 import { compressWithPxpipe, formatPxpipeLog } from "../rtk/pxpipe.js";
 import { decideSoftRetry } from "../services/accountFallback.js";
 import { getThinkingLevels } from "../providers/thinkingLevels.js";
@@ -104,7 +107,7 @@ export function sanitizeQoderPromptEnhanceRequest(body) {
 export function stripContinuityFields(body) {
   if (!body || !Array.isArray(body.messages)) return body;
   for (const message of body.messages) {
-    if (message?.role === "assistant") {
+    if (message && typeof message === "object") {
       delete message.encrypted_content;
       delete message.reasoning_encrypted_content;
     }
@@ -124,6 +127,7 @@ function maskLoggedUrl(rawUrl) {
     return "<invalid-url>";
   }
 }
+
 
 /**
  * Core chat handler - shared between SSE and Worker
@@ -150,6 +154,7 @@ export async function handleChatCore({
   headroomEnabled,
   headroomUrl,
   headroomCompressUserMessages,
+  headroomTimeoutMs,
   cavemanEnabled,
   cavemanLevel,
   ponytailEnabled,
@@ -157,7 +162,6 @@ export async function handleChatCore({
   midStreamResumeEnabled,
   sourceFormatOverride,
   providerThinking,
-  // PxPipe multimodal compression params (P10d, upstream dcf1927f2)
   pxpipeEnabled = false,
   pxpipeMinChars,
   pxpipeTimeoutMs,
@@ -211,8 +215,11 @@ export async function handleChatCore({
     !modelSupportedFormats || modelSupportedFormats.includes(sourceFormat)
       ? runtimeTransport
       : null;
+  // A source-format matched endpoint avoids an unnecessary lossy translation.
   const targetFormat =
-    modelTargetFormat || useTransport?.format || getTargetFormat(provider, credentials);
+    useTransport?.format ||
+    modelTargetFormat ||
+    getTargetFormat(provider, credentials);
   if (useTransport && credentials) {
     credentials.runtimeTransport = useTransport;
   }
@@ -450,6 +457,7 @@ export async function handleChatCore({
     model: upstreamModel,
     format: finalFormat,
     compressUserMessages: headroomCompressUserMessages,
+    timeoutMs: headroomTimeoutMs,
     diagnostics: headroomDiagnostics,
   });
   const headroomLine = formatHeadroomLog(headroomStats);
@@ -480,13 +488,17 @@ export async function handleChatCore({
     delete translatedBody.tools;
   }
 
+  // Claude tool schema requires an explicit type on strict gateways.
+  if (finalFormat === FORMATS.CLAUDE && Array.isArray(translatedBody.tools)) {
+    translatedBody.tools = defaultClaudeToolType(translatedBody.tools);
+  }
+
   // RTK: compress tool_result content
   const rtkStats = compressMessages(translatedBody, tokenSaverEnabled && rtkEnabled);
   const rtkLine = formatRtkLog(rtkStats);
   if (rtkLine) console.log(rtkLine);
 
-  // PxPipe: multimodal prompt compression (upstream dcf1927f2).
-  // Runs after RTK, before dispatch. Additive — placeholder until P10 is fully wired.
+  // PxPipe: multimodal prompt compression. Runs after RTK, before dispatch.
   let pxpipeSummary = null;
   if (tokenSaverEnabled && pxpipeEnabled) {
     try {

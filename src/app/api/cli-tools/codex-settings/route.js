@@ -151,17 +151,17 @@ export async function POST(request) {
     const normalizedBaseUrl = baseUrl.endsWith("/v1")
       ? baseUrl
       : `${baseUrl}/v1`;
+    // Custom providers ignore auth.json - the key must travel as a static header
     setNestedSection(parsed, "model_providers.9router", {
       name: "9Router",
       base_url: normalizedBaseUrl,
       wire_api: "responses",
+      http_headers: { Authorization: `Bearer ${apiKey}` },
     });
 
-    // Add subagent configuration
-    const effectiveSubagentModel = subagentModel || model;
-    setNestedSection(parsed, "agents.subagent", {
-      model: effectiveSubagentModel,
-    });
+    // Subagent model is a scalar under [agents]; agents.<role> now means a custom role
+    deleteNestedSection(parsed, "agents.subagent");
+    setNestedSection(parsed, "agents.default_subagent_model", subagentModel || model);
 
     // Write merged config
     const configContent = stringifyTOML(parsed);
@@ -225,7 +225,8 @@ export async function DELETE() {
     // Remove 9router provider section
     deleteNestedSection(parsed, "model_providers.9router");
 
-    // Remove subagent configuration
+    // Remove subagent configuration (both the current key and the legacy role form)
+    deleteNestedSection(parsed, "agents.default_subagent_model");
     deleteNestedSection(parsed, "agents.subagent");
 
     // Write updated config
