@@ -62,6 +62,40 @@ describe("Kiro Account Deactivation on Suspension", () => {
       expect(result.cooldownMs).toBe(5 * 60 * 60 * 1000); // 5 hours fallback cooldown
     });
 
+    it("should deactivate Antigravity account permanently on 429 quota exhaustion", async () => {
+      const mockConnection = {
+        id: "conn-ag-1",
+        name: "linhvinhz52631@gmail.com",
+        provider: "antigravity",
+        isActive: true,
+        backoffLevel: 0,
+      };
+
+      localDb.getProviderConnections.mockResolvedValue([mockConnection]);
+      localDb.updateProviderConnection.mockResolvedValue({});
+
+      const errorText = `[ERROR] [429]: { "error": { "code": 429, "message": "Resource has been exhausted (e.g. check quota).", "status": "RESOURCE_EXHAUSTED" } }`;
+
+      const result = await markAccountUnavailable(
+        "conn-ag-1",
+        429,
+        errorText,
+        "antigravity",
+        "claude-sonnet-4-6",
+      );
+
+      expect(localDb.updateProviderConnection).toHaveBeenCalledWith(
+        "conn-ag-1",
+        expect.objectContaining({
+          isActive: false,
+          testStatus: "unavailable",
+          lastError: expect.stringContaining("Quota reached:"),
+          errorCode: 429,
+        }),
+      );
+      expect(result.shouldFallback).toBe(true);
+    });
+
     it("should not lock model on client abort (499 / Request aborted)", async () => {
       const mockConnection = {
         id: "conn-ag-1",

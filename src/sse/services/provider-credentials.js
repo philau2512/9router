@@ -1,9 +1,11 @@
 import {
   getProviderConnections,
   updateProviderConnection,
+  validateApiKey,
   getSettings,
 } from "@/lib/localDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
+import { getAntigravityQuotaCache } from "./antigravityQuota.js";
 import {
   formatRetryAfter,
   checkFallbackError,
@@ -139,10 +141,22 @@ export async function getProviderCredentials(
       return null;
     }
 
-    // Filter out model-locked and excluded connections
+    // Antigravity quota cache is lazy: only populated after that account returns 409/429.
+    const isAntigravity = providerId === "antigravity";
+    const antigravityQuotaCache = isAntigravity && model ? getAntigravityQuotaCache() : null;
+
+    // Filter out model-locked, excluded, and Antigravity quota-exhausted connections
     const availableConnections = connections.filter((c) => {
       if (excludeSet.has(c.id)) return false;
       if (isModelLockActive(c, model)) return false;
+      if (isAntigravity && model && antigravityQuotaCache) {
+        const quota = antigravityQuotaCache.get(c.id)?.[model];
+        if (quota && quota.remainingPercentage <= 0 && quota.resetAt && new Date(quota.resetAt).getTime() > Date.now()) {
+          const account = c.id?.slice(0, 8) || "unknown";
+          log.info("AG_QUOTA", `${account} | CACHE_BLOCK ${model} — skip upstream until ${quota.resetAt}`);
+          return false;
+        }
+      }
       return true;
     });
 
@@ -170,6 +184,12 @@ export async function getProviderCredentials(
       const expiries = lockedConns
         .map((c) => getEarliestModelLockUntil(c))
         .filter(Boolean);
+      if (isAntigravity && model && antigravityQuotaCache) {
+        connections.forEach((c) => {
+          const resetAt = antigravityQuotaCache.get(c.id)?.[model]?.resetAt;
+          if (resetAt && new Date(resetAt).getTime() > Date.now()) expiries.push(resetAt);
+        });
+      }
       const earliest = expiries.sort()[0] || null;
       if (earliest) {
         const earliestConn = lockedConns[0];
@@ -376,8 +396,11 @@ export async function markAccountUnavailable(
     lowerError.includes("individual quota reached") ||
     lowerError.includes("usage limit exceeded") ||
     lowerError.includes("balance exhausted") ||
+    lowerError.includes("resource_exhausted") ||
+    lowerError.includes("quota_exhausted") ||
     lowerError.includes("exhausted") ||
-    lowerError.includes("out of credits");
+    lowerError.includes("out of credits") ||
+    (status === 429 && resolveProviderId(provider) === "antigravity");
 
   const isSuspended =
     lowerError.includes("suspended") ||
@@ -545,3 +568,29 @@ export async function clearAccountError(
 
   await updateProviderConnection(connectionId, clearObj);
 }
+
+/**
+ * Extract API key from request headers
+ */
+export function extractApiKey(request) {
+  const authHeader = request.headers.get("Authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    return authHeader.slice(7);
+  }
+
+  const xApiKey = request.headers.get("x-api-key");
+  if (xApiKey) {
+    return xApiKey;
+  }
+
+  return null;
+}
+
+/**
+ * Validate API key (optional - for local use can skip)
+ */
+export async function isValidApiKey(apiKey) {
+  if (!apiKey) return false;
+  return await validateApiKey(apiKey);
+}
+
