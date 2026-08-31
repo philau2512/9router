@@ -42,21 +42,6 @@ export default function KiloToolCard({
   const [showManualConfigModal, setShowManualConfigModal] = useState(false);
   const [customBaseUrl, setCustomBaseUrl] = useState("");
 
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
-    if (initialStatus) setStatus(initialStatus);
-  }, [initialStatus]);
-
-  useEffect(() => {
-    if (!isExpanded) return;
-    if (!status) void checkStatus();
-    void fetchModelAliases();
-  }, [isExpanded, status]);
   const fetchModelAliases = async () => {
     try {
       const res = await fetch("/api/models/alias");
@@ -66,20 +51,6 @@ export default function KiloToolCard({
       console.log("Error fetching model aliases:", error);
     }
   };
-
-  const getConfigStatus = () => {
-    if (!status?.installed) return null;
-    return status.has9Router ? "configured" : "not_configured";
-  };
-
-  const configStatus = getConfigStatus();
-
-  const getEffectiveBaseUrl = () => {
-    const url = customBaseUrl || `${baseUrl}/v1`;
-    return url.endsWith("/v1") ? url : `${url}/v1`;
-  };
-
-  const getDisplayUrl = () => customBaseUrl || `${baseUrl}/v1`;
 
   const hydrateModelFromStatus = (statusData) => {
     setSelectedModel(statusData?.settings?.model || "");
@@ -99,19 +70,53 @@ export default function KiloToolCard({
     }
   };
 
+  const [prevInitialStatus, setPrevInitialStatus] = useState(initialStatus);
+  if (prevInitialStatus !== initialStatus) {
+    setPrevInitialStatus(initialStatus);
+    if (initialStatus) {
+      setStatus(initialStatus);
+      if (initialStatus?.settings?.model) {
+        setSelectedModel(initialStatus.settings.model);
+      }
+    }
+  }
+
+  const [prevApiKeys, setPrevApiKeys] = useState(apiKeys);
+  if (prevApiKeys !== apiKeys) {
+    setPrevApiKeys(apiKeys);
+    if (apiKeys?.length > 0 && !selectedApiKey) {
+      setSelectedApiKey(apiKeys[0].key);
+    }
+  }
+
   useEffect(() => {
     if (!isExpanded) return;
-
-    const timer = setTimeout(() => {
+    let ignore = false;
+    (async () => {
       if (!status) {
-        void checkStatus();
+        await checkStatus();
       }
-      void fetchModelAliases();
-    }, 0);
-
-    return () => clearTimeout(timer);
+      await fetchModelAliases();
+    })();
+    return () => {
+      ignore = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isExpanded, status]);
+
+  const getConfigStatus = () => {
+    if (!status?.installed) return null;
+    return status.has9Router ? "configured" : "not_configured";
+  };
+
+  const configStatus = getConfigStatus();
+
+  const getEffectiveBaseUrl = () => {
+    const url = customBaseUrl || `${baseUrl}/v1`;
+    return url.endsWith("/v1") ? url : `${url}/v1`;
+  };
+
+  const getDisplayUrl = () => customBaseUrl || `${baseUrl}/v1`;
 
   const handleApply = async () => {
     setApplying(true);

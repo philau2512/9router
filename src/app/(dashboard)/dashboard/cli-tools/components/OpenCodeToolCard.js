@@ -49,29 +49,6 @@ export default function OpenCodeToolCard({
     selectedModelsRef.current = selectedModels;
   }, [selectedModels]);
 
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
-    if (initialStatus) setStatus(initialStatus);
-  }, [initialStatus]);
-
-  useEffect(() => {
-    if (!isExpanded) return;
-    if (!status) void checkStatus();
-    void fetchModelAliases();
-  }, [isExpanded, status]);
-
-  useEffect(() => {
-    if (status?.opencode?.models) setSelectedModels(status.opencode.models);
-    if (status?.opencode?.activeModel) setActiveModel(status.opencode.activeModel);
-    if (status?.config?.agent?.explorer?.model?.startsWith("9router/")) {
-      setSubagentModel(status.config.agent.explorer.model.replace("9router/", ""));
-    }
-  }, [status]);
   const fetchModelAliases = async () => {
     try {
       const res = await fetch("/api/models/alias");
@@ -81,47 +58,6 @@ export default function OpenCodeToolCard({
       console.log("Error fetching model aliases:", error);
     }
   };
-
-  const saveModels = async (models) => {
-    try {
-      const keyToUse =
-        selectedApiKey && selectedApiKey.trim()
-          ? selectedApiKey
-          : !cloudEnabled
-            ? "sk_9router"
-            : selectedApiKey;
-      const validActiveModel = models.includes(activeModel)
-        ? activeModel
-        : models[0] || "";
-      await fetch("/api/cli-tools/opencode-settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          baseUrl: getEffectiveBaseUrl(),
-          apiKey: keyToUse,
-          models,
-          activeModel: validActiveModel,
-          subagentModel,
-        }),
-      });
-    } catch (error) {
-      console.log("Error saving models:", error);
-    }
-  };
-
-  const currentBaseUrl = status?.config?.provider?.["9router"]?.options?.baseURL || "";
-
-  const getConfigStatus = () => {
-    if (!status?.installed) return null;
-    if (!status.config) return "not_configured";
-    if (!status.has9Router) return "not_configured";
-    const url = status.config?.provider?.["9router"]?.options?.baseURL || "";
-    return matchKnownEndpoint(url, { tunnelPublicUrl, tailscaleUrl })
-      ? "configured"
-      : "other";
-  };
-
-  const configStatus = getConfigStatus();
 
   const getEffectiveBaseUrl = () => {
     const url = customBaseUrl || baseUrl;
@@ -165,19 +101,78 @@ export default function OpenCodeToolCard({
     }
   };
 
+  const saveModels = async (models) => {
+    try {
+      const keyToUse =
+        selectedApiKey && selectedApiKey.trim()
+          ? selectedApiKey
+          : !cloudEnabled
+            ? "sk_9router"
+            : selectedApiKey;
+      const validActiveModel = models.includes(activeModel)
+        ? activeModel
+        : models[0] || "";
+      await fetch("/api/cli-tools/opencode-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: getEffectiveBaseUrl(),
+          apiKey: keyToUse,
+          models,
+          activeModel: validActiveModel,
+          subagentModel,
+        }),
+      });
+    } catch (error) {
+      console.log("Error saving models:", error);
+    }
+  };
+
+  const [prevInitialStatus, setPrevInitialStatus] = useState(initialStatus);
+  if (prevInitialStatus !== initialStatus) {
+    setPrevInitialStatus(initialStatus);
+    if (initialStatus) {
+      setStatus(initialStatus);
+      hydrateModelsFromStatus(initialStatus);
+    }
+  }
+
+  const [prevApiKeys, setPrevApiKeys] = useState(apiKeys);
+  if (prevApiKeys !== apiKeys) {
+    setPrevApiKeys(apiKeys);
+    if (apiKeys?.length > 0 && !selectedApiKey) {
+      setSelectedApiKey(apiKeys[0].key);
+    }
+  }
+
   useEffect(() => {
     if (!isExpanded) return;
-
-    const timer = setTimeout(() => {
+    let ignore = false;
+    (async () => {
       if (!status) {
-        void checkStatus();
+        await checkStatus();
       }
-      void fetchModelAliases();
-    }, 0);
-
-    return () => clearTimeout(timer);
+      await fetchModelAliases();
+    })();
+    return () => {
+      ignore = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isExpanded, status]);
+
+  const currentBaseUrl = status?.config?.provider?.["9router"]?.options?.baseURL || "";
+
+  const getConfigStatus = () => {
+    if (!status?.installed) return null;
+    if (!status.config) return "not_configured";
+    if (!status.has9Router) return "not_configured";
+    const url = status.config?.provider?.["9router"]?.options?.baseURL || "";
+    return matchKnownEndpoint(url, { tunnelPublicUrl, tailscaleUrl })
+      ? "configured"
+      : "other";
+  };
+
+  const configStatus = getConfigStatus();
 
   const handleApply = async () => {
     setApplying(true);

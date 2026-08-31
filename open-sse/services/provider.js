@@ -147,7 +147,7 @@ export function detectFormat(body) {
 // Get provider config
 export function getProviderConfig(provider) {
   if (isOpenAICompatible(provider)) {
-    const apiType = getOpenAICompatibleType(provider, credentials);
+    const apiType = getOpenAICompatibleType(provider, null);
     return {
       ...PROVIDERS.openai,
       format: apiType === "responses" ? "openai-responses" : "openai",

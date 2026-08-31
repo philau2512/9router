@@ -79,7 +79,6 @@ export default function ModelSelectModal({
 
   useEffect(() => {
     if (!isOpen || cursorConnectionIds.length === 0) {
-      setCursorModels([]);
       return undefined;
     }
 
@@ -223,19 +222,15 @@ export default function ModelSelectModal({
 
   useEffect(() => {
     if (!isOpen) return undefined;
-
-    const timer = setTimeout(() => {
-      fetchOpenData();
-    }, 0);
-
-    // Reset live state each open so static shows until fetch settles (no empty flash).
-    setLiveModelsByProviderId(null);
-    setLiveModelsLoading(false);
     const ac = new AbortController();
-    void fetchLiveModels(ac.signal);
+    let ignore = false;
+    (async () => {
+      await fetchLiveModels(ac.signal);
+      fetchOpenData();
+    })();
 
     return () => {
-      clearTimeout(timer);
+      ignore = true;
       ac.abort();
     };
   }, [isOpen, fetchOpenData, fetchLiveModels]);
@@ -620,7 +615,7 @@ export default function ModelSelectModal({
     if (!searchQuery.trim()) return combos;
     const query = searchQuery.toLowerCase();
     return combos.filter((c) => c.name.toLowerCase().includes(query));
-  }, [combos, searchQuery, kindFilter]);
+  }, [combos, searchQuery, kindFilter, capFilter]);
 
   // Sort models alphabetically, with added models floated to top
   const sortModels = useCallback(
@@ -717,6 +712,8 @@ export default function ModelSelectModal({
     sortModels,
     normalizeSearchText,
     modelMatchesQuery,
+    capFilter,
+    getCaps,
   ]);
 
   const handleSelect = (model) => {

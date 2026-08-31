@@ -39,22 +39,18 @@ function getToastStyle(type) {
 export default function DashboardLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Desktop icon-rail collapse (persisted). Mobile keeps drawer open/close.
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return typeof window !== "undefined" && globalThis.localStorage?.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
   const pathname = usePathname();
   const notifications = useNotificationStore((state) => state.notifications);
   const removeNotification = useNotificationStore(
     (state) => state.removeNotification,
   );
-
-  useEffect(() => {
-    try {
-      if (globalThis.localStorage?.getItem(SIDEBAR_COLLAPSED_KEY) === "1") {
-        setSidebarCollapsed(true);
-      }
-    } catch {
-      /* private mode */
-    }
-  }, []);
 
   const toggleSidebarCollapsed = () => {
     setSidebarCollapsed((prev) => {

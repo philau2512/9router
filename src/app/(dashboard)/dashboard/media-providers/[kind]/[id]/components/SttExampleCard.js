@@ -25,7 +25,7 @@ export function SttExampleCard({ providerId }) {
   const [temperature, setTemperature] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [useTunnel, setUseTunnel] = useState(false);
-  const [localEndpoint, setLocalEndpoint] = useState("");
+  const [localEndpoint, setLocalEndpoint] = useState(() => typeof window !== "undefined" ? window.location.origin : "");
   const [tunnelEndpoint, setTunnelEndpoint] = useState("");
   const [result, setResult] = useState(null);
   const [latency, setLatency] = useState(null);
@@ -35,7 +35,6 @@ export function SttExampleCard({ providerId }) {
   const { copied: copiedRes, copy: copyRes } = useCopyToClipboard();
 
   useEffect(() => {
-    setLocalEndpoint(window.location.origin);
     fetch("/api/keys")
       .then((r) => r.json())
       .then((d) => { setApiKey((d.keys || []).find((k) => k.isActive !== false)?.key || ""); })
@@ -70,12 +69,12 @@ export function SttExampleCard({ providerId }) {
   -F "file=@${audioFile?.name || "audio.mp3"}" \\
   -F "model=${modelFull}"${allowedParams.includes("language") && language ? ` \\\n  -F "language=${language}"` : ""}${allowedParams.includes("response_format") ? ` \\\n  -F "response_format=${responseFormat}"` : ""}${allowedParams.includes("temperature") && temperature ? ` \\\n  -F "temperature=${temperature}"` : ""}${allowedParams.includes("prompt") && prompt ? ` \\\n  -F "prompt=${prompt}"` : ""}`;
 
-  const handleRun = async () => {
+  async function handleRun() {
     if (!audioFile || !modelFull) return;
     setRunning(true);
     setError("");
     setResult(null);
-    const start = Date.now();
+    const start = new Date().getTime();
     try {
       const fd = new FormData();
       fd.append("file", audioFile);
@@ -88,7 +87,8 @@ export function SttExampleCard({ providerId }) {
       const headers = {};
       if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
       const res = await fetch("/api/v1/audio/transcriptions", { method: "POST", headers, body: fd });
-      setLatency(Date.now() - start);
+      const elapsed = new Date().getTime() - start;
+      setLatency(elapsed);
       const ct = res.headers.get("content-type") || "";
       const data = ct.includes("application/json") ? await res.json() : await res.text();
       if (!res.ok) {
@@ -101,7 +101,7 @@ export function SttExampleCard({ providerId }) {
     } finally {
       setRunning(false);
     }
-  };
+  }
 
   const resultStr = typeof result === "string" ? result : (result ? JSON.stringify(result, null, 2) : `{\n  "text": "Hello world..."\n}`);
 

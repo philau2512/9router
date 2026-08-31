@@ -55,7 +55,7 @@ export function GenericExampleCard({ providerId, kind }) {
   );
   const [apiKey, setApiKey] = useState("");
   const [useTunnel, setUseTunnel] = useState(false);
-  const [localEndpoint, setLocalEndpoint] = useState("");
+  const [localEndpoint, setLocalEndpoint] = useState(() => typeof window !== "undefined" ? window.location.origin : "");
   const [tunnelEndpoint, setTunnelEndpoint] = useState("");
   const [result, setResult] = useState(null);
   const [progress, setProgress] = useState(null); // { stage, bytesReceived }
@@ -70,7 +70,6 @@ export function GenericExampleCard({ providerId, kind }) {
   const { copied: copiedRes, copy: copyRes } = useCopyToClipboard();
 
   useEffect(() => {
-    setLocalEndpoint(window.location.origin);
     fetch("/api/keys")
       .then((r) => r.json())
       .then((d) => { setApiKey((d.keys || []).find((k) => k.isActive !== false)?.key || ""); })
@@ -344,6 +343,7 @@ export function GenericExampleCard({ providerId, kind }) {
                 )}
               </div>
               {refImagePreviewSrc && (
+                /* eslint-disable-next-line @next/next/no-img-element */
                 <img
                   src={refImagePreviewSrc}
                   alt="Reference"
@@ -379,6 +379,7 @@ export function GenericExampleCard({ providerId, kind }) {
                 )}
               </div>
               {maskImagePreviewSrc && (
+                /* eslint-disable-next-line @next/next/no-img-element */
                 <img
                   src={maskImagePreviewSrc}
                   alt="Mask"
@@ -487,6 +488,7 @@ export function GenericExampleCard({ providerId, kind }) {
         {partialImage?.b64_json && !result && (
           <div>
             <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">Partial preview</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={`data:image/png;base64,${partialImage.b64_json}`}
               alt="Partial"
@@ -531,6 +533,7 @@ export function GenericExampleCard({ providerId, kind }) {
                   Download
                 </a>
               </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={binaryImageUrl || (result?.data?.data?.[0]?.b64_json ? `data:image/png;base64,${result.data.data[0].b64_json}` : result?.data?.data?.[0]?.url)}
                 alt="Generated"

@@ -56,10 +56,6 @@ export default function CombosPage() {
   const [confirmState, setConfirmState] = useState(null);
   const { copied, copy } = useCopyToClipboard();
 
-  useEffect(() => {
-    fetchData();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   const fetchData = async () => {
     try {
       const [combosRes, providersRes, settingsRes] = await Promise.all([
@@ -92,6 +88,16 @@ export default function CombosPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      await fetchData();
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   const handleSetCapacityAdapter = async (next) => {
     setCapacityAdapter(next);
@@ -693,7 +699,14 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
   };
 
   useEffect(() => {
-    if (isOpen) fetchModalData();
+    if (!isOpen) return;
+    let ignore = false;
+    (async () => {
+      await fetchModalData();
+    })();
+    return () => {
+      ignore = true;
+    };
   }, [isOpen]);
 
   const validateName = (value) => {
