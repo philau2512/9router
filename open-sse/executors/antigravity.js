@@ -17,6 +17,7 @@ import {
   sanitizeFunctionResponseData,
 } from "../translator/helpers/geminiHelper.js";
 import { ANTIGRAVITY_MODEL_ALIASES } from "../providers/antigravity-provider-metadata.js";
+import { stripThinkingSuffix } from "../translator/concerns/thinkingUnified.js";
 import { DEFAULT_THINKING_AG_SIGNATURE } from "../config/defaultThinkingSignature.js";
 
 // Sanitize function name: Gemini requires [a-zA-Z_][a-zA-Z0-9_.:\-]{0,63}
@@ -346,7 +347,9 @@ export class AntigravityExecutor extends BaseExecutor {
     // Strip blacklisted thinking fields from top-level body (set by thinkingUnified.js at root, not body.request)
     stripBlacklisted(body);
 
-    const upstreamModel = ANTIGRAVITY_MODEL_ALIASES[model] || model;
+    const upstreamModel =
+      ANTIGRAVITY_MODEL_ALIASES[stripThinkingSuffix(model)] ||
+      stripThinkingSuffix(model);
 
     return {
       ...body,
