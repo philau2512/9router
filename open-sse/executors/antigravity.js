@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { BaseExecutor } from "./base.js";
+import { BaseExecutor, waitForAbortableDelay } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import {
   OAUTH_ENDPOINTS,
@@ -162,6 +162,7 @@ export class AntigravityExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body, stream, credentials) {
+    body = structuredClone(body);
     const projectId = credentials?.projectId || this.generateProjectId();
 
     // OpenAI clients may include stream_options even for non-streaming calls.
@@ -618,7 +619,7 @@ export class AntigravityExecutor extends BaseExecutor {
               "RETRY",
               `${response.status} with Retry-After: ${Math.ceil(retryMs / 1000)}s, waiting... (${retryAfterAttemptsByUrl[urlIndex]}/${MAX_RETRY_AFTER_RETRIES})`,
             );
-            await new Promise((resolve) => setTimeout(resolve, retryMs));
+            await waitForAbortableDelay(retryMs, signal);
             urlIndex--;
             continue;
           }
@@ -649,7 +650,7 @@ export class AntigravityExecutor extends BaseExecutor {
               "RETRY",
               `${label} auto retry ${retryAttemptsByUrl[urlIndex]}/${MAX_AUTO_RETRIES} after ${backoffMs / 1000}s`,
             );
-            await new Promise((resolve) => setTimeout(resolve, backoffMs));
+            await waitForAbortableDelay(backoffMs, signal);
             urlIndex--;
             continue;
           }

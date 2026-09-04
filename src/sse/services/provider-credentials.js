@@ -25,11 +25,40 @@ import { pickProxyPoolId } from "@/lib/network/connectionProxy";
 // Serialize account selection only within a credential pool. Independent providers
 // can select accounts concurrently; xAI and Grok CLI overlap on Grok CLI accounts.
 const selectionQueues = new Map();
+const pendingRoundRobinStates = new Map();
+const roundRobinPersistenceQueues = new Map();
 
 function getCredentialPoolKey(providerId) {
   return providerId === "xai" || providerId === "grok-cli"
     ? "xai-grok-cli"
     : providerId;
+}
+
+function applyPendingRoundRobinState(connections) {
+  return connections.map((connection) => {
+    const pending = pendingRoundRobinStates.get(connection.id);
+    return pending ? { ...connection, ...pending } : connection;
+  });
+}
+
+function persistRoundRobinState(connectionId, state) {
+  pendingRoundRobinStates.set(connectionId, state);
+  const previous = roundRobinPersistenceQueues.get(connectionId) || Promise.resolve();
+  const write = previous
+    .then(() => updateProviderConnection(connectionId, state))
+    .catch((error) => {
+      log.warn("AUTH", `Failed to persist round-robin state: ${error.message}`);
+    });
+
+  roundRobinPersistenceQueues.set(connectionId, write);
+  void write.finally(() => {
+    if (roundRobinPersistenceQueues.get(connectionId) === write) {
+      roundRobinPersistenceQueues.delete(connectionId);
+    }
+    if (pendingRoundRobinStates.get(connectionId) === state) {
+      pendingRoundRobinStates.delete(connectionId);
+    }
+  });
 }
 
 async function acquireSelectionLock(poolKey) {
@@ -77,6 +106,7 @@ export async function getProviderCredentials(
         ? new Set([excludeConnectionIds])
         : new Set();
   const preferredConnectionId = options?.preferredConnectionId || null;
+  const requestSettings = options?.settings || null;
   // Resolve before locking so independent provider pools do not contend.
   const providerId = resolveProviderId(provider);
   const releaseSelectionLock = await acquireSelectionLock(
@@ -86,7 +116,7 @@ export async function getProviderCredentials(
   try {
     // Inject a virtual connection for no-auth free providers (with optional proxy pool from settings)
     if (FREE_PROVIDERS[providerId]?.noAuth) {
-      const settings = await getSettings();
+      const settings = requestSettings || await getSettings();
       const override = (settings.providerStrategies || {})[providerId] || {};
       const rotateStrategy = override.rotateStrategy || "none";
       let resolvedProxyPoolId;
@@ -103,7 +133,7 @@ export async function getProviderCredentials(
       }
       const resolvedProxy = await resolveConnectionProxyConfig({
         proxyPoolId: resolvedProxyPoolId,
-      });
+      }, { settings });
       return {
         id: "noauth",
         connectionName: "Public",
@@ -130,7 +160,7 @@ export async function getProviderCredentials(
         getProviderConnections({ provider: pid, isActive: true }),
       ),
     );
-    const connections = _connArrays.flat();
+    const connections = applyPendingRoundRobinState(_connArrays.flat());
     log.debug(
       "AUTH",
       `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`,
@@ -212,7 +242,7 @@ export async function getProviderCredentials(
       return null;
     }
 
-    const settings = await getSettings();
+    const settings = requestSettings || await getSettings();
     // Per-provider strategy overrides global setting
     const providerOverride =
       (settings.providerStrategies || {})[providerId] || {};
@@ -257,8 +287,9 @@ export async function getProviderCredentials(
       if (current && current.lastUsedAt && currentCount < stickyLimit) {
         // Stay with current account
         connection = current;
-        // Update lastUsedAt and increment count (await to ensure persistence)
-        await updateProviderConnection(connection.id, {
+        // Persist after releasing the selection lock. The in-memory state keeps
+        // subsequent selections ordered without delaying upstream connection.
+        persistRoundRobinState(connection.id, {
           lastUsedAt: new Date().toISOString(),
           consecutiveUseCount: (connection.consecutiveUseCount || 0) + 1,
         });
@@ -274,8 +305,9 @@ export async function getProviderCredentials(
 
         connection = sortedByOldest[0];
 
-        // Update lastUsedAt and reset count to 1 (await to ensure persistence)
-        await updateProviderConnection(connection.id, {
+        // Persist after releasing the selection lock. The in-memory state keeps
+        // subsequent selections ordered without delaying upstream connection.
+        persistRoundRobinState(connection.id, {
           lastUsedAt: new Date().toISOString(),
           consecutiveUseCount: 1,
         });
@@ -287,6 +319,7 @@ export async function getProviderCredentials(
 
     const resolvedProxy = await resolveConnectionProxyConfig(
       connection.providerSpecificData || {},
+      { settings },
     );
 
     const isKiro = providerId === "kiro";

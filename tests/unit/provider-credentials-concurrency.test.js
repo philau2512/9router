@@ -117,6 +117,64 @@ describe("provider credential selection concurrency", () => {
     expect(mocks.getProviderConnections).toHaveBeenCalledTimes(2);
   });
 
+  it("uses request settings without a second settings lookup", async () => {
+    mocks.getProviderConnections.mockResolvedValue([activeConnection("codex")]);
+    const settings = { fallbackStrategy: "fill-first" };
+    const { getProviderCredentials } =
+      await import("../../src/sse/services/provider-credentials.js");
+
+    await expect(getProviderCredentials("codex", null, null, { settings })).resolves.toMatchObject({
+      connectionId: "codex-connection",
+    });
+    expect(mocks.getSettings).not.toHaveBeenCalled();
+  });
+
+  it("keeps round-robin state in memory while its database write is pending", async () => {
+    const connections = [
+      { ...activeConnection("codex"), id: "first", lastUsedAt: "2026-01-01T00:00:00.000Z", consecutiveUseCount: 3 },
+      { ...activeConnection("codex"), id: "second" },
+    ];
+    const persistence = deferred();
+    mocks.getProviderConnections.mockResolvedValue(connections);
+    mocks.getSettings.mockResolvedValue({ fallbackStrategy: "round-robin", stickyRoundRobinLimit: 3 });
+    mocks.updateProviderConnection.mockReturnValue(persistence.promise);
+
+    const { getProviderCredentials } =
+      await import("../../src/sse/services/provider-credentials.js");
+    await expect(getProviderCredentials("codex")).resolves.toMatchObject({
+      connectionId: "second",
+    });
+    await expect(getProviderCredentials("codex")).resolves.toMatchObject({
+      connectionId: "second",
+    });
+
+    expect(mocks.updateProviderConnection).toHaveBeenCalledTimes(1);
+    persistence.resolve();
+  });
+
+  it("serializes pending round-robin writes for the same connection", async () => {
+    const connections = [
+      { ...activeConnection("codex"), id: "first", lastUsedAt: "2026-01-01T00:00:00.000Z", consecutiveUseCount: 0 },
+    ];
+    const firstWrite = deferred();
+    const secondWrite = deferred();
+    mocks.getProviderConnections.mockResolvedValue(connections);
+    mocks.getSettings.mockResolvedValue({ fallbackStrategy: "round-robin", stickyRoundRobinLimit: 3 });
+    mocks.updateProviderConnection
+      .mockReturnValueOnce(firstWrite.promise)
+      .mockReturnValueOnce(secondWrite.promise);
+
+    const { getProviderCredentials } =
+      await import("../../src/sse/services/provider-credentials.js");
+    await getProviderCredentials("codex");
+    await getProviderCredentials("codex");
+
+    expect(mocks.updateProviderConnection).toHaveBeenCalledTimes(1);
+    firstWrite.resolve();
+    await vi.waitFor(() => expect(mocks.updateProviderConnection).toHaveBeenCalledTimes(2));
+    secondWrite.resolve();
+  });
+
   it("serializes xai and grok-cli because they share the Grok CLI credential pool", async () => {
     const initialConnections = deferred();
     mocks.getProviderConnections.mockImplementation(() => initialConnections.promise);

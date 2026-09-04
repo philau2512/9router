@@ -131,7 +131,7 @@ export async function handleChat(request, clientRawRequest = null) {
               const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
               cleanRawReq = { ...clientRawRequest, body: cleanBody };
             }
-            return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, { ...timing });
+            return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, { ...timing }, settings);
           },
           log,
           comboName: modelStr,
@@ -146,7 +146,7 @@ export async function handleChat(request, clientRawRequest = null) {
         body,
         models: augmentedModels,
         handleSingleModel: withCapacityAdapterStripping(
-          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, { ...timing }),
+          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, { ...timing }, settings),
           adapterAdded
         ),
         log,
@@ -166,7 +166,7 @@ export async function handleChat(request, clientRawRequest = null) {
         body,
         models: soloAugmented,
         handleSingleModel: withCapacityAdapterStripping(
-          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, { ...timing }),
+          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, { ...timing }, settings),
           adapterAdded
         ),
         log,
@@ -175,15 +175,16 @@ export async function handleChat(request, clientRawRequest = null) {
       });
     }
 
-    return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, timing);
+    return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, timing, settings);
   });
 }
 
 /**
  * Handle single model chat request
  */
-async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, timing = null) {
+async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, timing = null, settings = null) {
   timing = timing || { requestStartTime: Date.now() };
+  const requestSettings = settings || await getSettings();
   const modelInfo = await getModelInfo(modelStr);
   timing.modelResolvedAt = Date.now();
 
@@ -191,7 +192,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   if (!modelInfo.provider) {
     const comboModels = await getComboModels(modelStr);
     if (comboModels) {
-      const chatSettings = await getSettings();
+      const chatSettings = requestSettings;
       // Check for combo-specific strategy first, fallback to global
       const comboStrategies = chatSettings.comboStrategies || {};
       const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
@@ -211,7 +212,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
               const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
               cleanRawReq = { ...clientRawRequest, body: cleanBody };
             }
-            return handleSingleModelChat(b, m, cleanRawReq, request, apiKey);
+            return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, null, requestSettings);
           },
           log,
           comboName: modelStr,
@@ -226,7 +227,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         body,
         models: augmentedModels,
         handleSingleModel: withCapacityAdapterStripping(
-          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey),
+          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, requestSettings),
           adapterAdded
         ),
         log,
@@ -257,7 +258,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
+    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, {
+      settings: requestSettings,
+    });
 
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {
@@ -293,7 +296,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     }
 
     // Use shared chatCore
-    const chatSettings = await getSettings();
+    const chatSettings = requestSettings;
     const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
     timing.requestReadyAt = Date.now();
     const result = await handleChatCore({
@@ -335,6 +338,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         await clearAccountError(credentials.connectionId, credentials, model);
       },
       timing,
+      clientSignal: request?.signal,
     });
 
     if (result.success) return result.response;

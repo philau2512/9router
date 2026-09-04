@@ -37,9 +37,9 @@ function normalizeLegacyProxy(providerSpecificData = {}) {
  * 2. Legacy Proxy
  * 3. No Proxy
  */
-export async function resolveConnectionProxyConfig(providerSpecificData = {}) {
+export async function resolveConnectionProxyConfig(providerSpecificData = {}, options = {}) {
   try {
-    const settings = await getSettings();
+    const settings = options.settings || await getSettings();
     const proxyHeadersTimeout =
       Number(settings?.connectionProxyHeadersTimeoutMs) || undefined;
     const proxyPoolIdRaw = normalizeString(providerSpecificData?.proxyPoolId);
