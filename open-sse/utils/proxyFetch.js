@@ -369,6 +369,10 @@ async function createBypassRequest(parsedUrl, realIP, options, timing = null) {
 }
 
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
+  if (!url) {
+    throw new Error("[ProxyFetch] Invalid URL: target URL is required");
+  }
+
   // Route api.anthropic.com non-streaming through got-scraping for TLS fingerprinting
   try {
     const urlObj = new URL(url);

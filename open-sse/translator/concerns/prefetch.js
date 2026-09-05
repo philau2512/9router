@@ -9,6 +9,7 @@ const TARGETS_NEED_BASE64 = new Set([
   FORMATS.GEMINI, FORMATS.GEMINI_CLI, FORMATS.VERTEX,
   FORMATS.ANTIGRAVITY, FORMATS.OLLAMA, FORMATS.KIRO,
 ]);
+const PREFETCH_CONCURRENCY = 3;
 
 function isRemoteUrl(url) {
   return typeof url === "string" && (url.startsWith("http://") || url.startsWith("https://"));
@@ -82,15 +83,37 @@ export async function prefetchRemoteImages(body, sourceFormat, targetFormat, opt
   if (!refs.length) return 0;
 
   let converted = 0;
-  for (const ref of refs) {
+  let nextIndex = 0;
+  const workerCount = Math.min(PREFETCH_CONCURRENCY, refs.length);
+
+  async function prefetchOne(ref) {
+    if (options.signal?.aborted) return;
     const url = ref.get();
-    if (parseDataUri(url)) continue; // already inline
+    if (parseDataUri(url)) return; // already inline
     const fetched = await fetchImageAsBase64(url, options);
-    if (!fetched) continue;
+    if (!fetched || options.signal?.aborted) return;
     if (ref.set) ref.set(fetched.url);
-    else if (ref.part) { delete ref.part.fileData; ref.part.inlineData = { mimeType: fetched.mimeType, data: fetched.url.split(",")[1] }; }
-    else if (ref.claudeBlock) ref.claudeBlock.source = { type: "base64", media_type: fetched.mimeType, data: fetched.url.split(",")[1] };
+    else if (ref.part) {
+      delete ref.part.fileData;
+      ref.part.inlineData = { mimeType: fetched.mimeType, data: fetched.url.split(",")[1] };
+    } else if (ref.claudeBlock) {
+      ref.claudeBlock.source = { type: "base64", media_type: fetched.mimeType, data: fetched.url.split(",")[1] };
+    }
     converted++;
   }
+
+  async function worker() {
+    while (!options.signal?.aborted) {
+      const index = nextIndex++;
+      if (index >= refs.length) return;
+      try {
+        await prefetchOne(refs[index]);
+      } catch {
+        // Individual image failures are fail-open and must not block other images.
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, worker));
   return converted;
 }

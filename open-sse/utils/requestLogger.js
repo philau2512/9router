@@ -90,6 +90,34 @@ function writeJsonFile(sessionPath, filename, data) {
   }
 }
 
+function createAsyncAppender(sessionPath) {
+  let pending = Promise.resolve();
+
+  const enqueue = (operation) => {
+    pending = pending
+      .then(operation)
+      .catch(() => {
+        // Request logging is diagnostic only and must never affect streaming.
+      });
+  };
+
+  return {
+    append(filename, chunk) {
+      if (!fs || !sessionPath) return;
+      const filePath = path.join(sessionPath, filename);
+      enqueue(() => fs.promises.appendFile(filePath, chunk));
+    },
+    writeJson(filename, data) {
+      if (!fs || !sessionPath) return;
+      const filePath = path.join(sessionPath, filename);
+      enqueue(() => fs.promises.writeFile(filePath, JSON.stringify(data, null, 2)));
+    },
+    flush() {
+      return pending;
+    },
+  };
+}
+
 const REDACTED_VALUE = "[REDACTED]";
 const SENSITIVE_KEY_PARTS = [
   "authorization",
@@ -183,6 +211,9 @@ function createNoOpLogger() {
     logConvertedResponse() {},
     appendConvertedChunk() {},
     logError() {},
+    flush() {
+      return Promise.resolve();
+    },
   };
 }
 
@@ -202,6 +233,8 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
   // Wait for session to be created before returning logger
   const sessionPath = await createLogSession(sourceFormat, targetFormat, model);
 
+  const appendChunk = createAsyncAppender(sessionPath);
+
   return {
     get sessionPath() {
       return sessionPath;
@@ -209,7 +242,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
 
     // 1. Log client raw request (before any conversion)
     logClientRawRequest(endpoint, body, headers = {}) {
-      writeJsonFile(sessionPath, "1_req_client.json", {
+      appendChunk.writeJson("1_req_client.json", {
         timestamp: new Date().toISOString(),
         endpoint: redactRequestUrl(endpoint),
         headers: maskSensitiveHeaders(headers),
@@ -219,7 +252,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
 
     // 2. Log raw request from client (after initial conversion like responsesApi)
     logRawRequest(body, headers = {}) {
-      writeJsonFile(sessionPath, "2_req_source.json", {
+      appendChunk.writeJson("2_req_source.json", {
         timestamp: new Date().toISOString(),
         headers: maskSensitiveHeaders(headers),
         body: redactRequestBody(body),
@@ -228,7 +261,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
 
     // 3. Log OpenAI intermediate format (source → openai)
     logOpenAIRequest(body) {
-      writeJsonFile(sessionPath, "3_req_openai.json", {
+      appendChunk.writeJson("3_req_openai.json", {
         timestamp: new Date().toISOString(),
         body: redactRequestBody(body),
       });
@@ -236,7 +269,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
 
     // 4. Log target format request (openai → target)
     logTargetRequest(url, headers, body) {
-      writeJsonFile(sessionPath, "4_req_target.json", {
+      appendChunk.writeJson("4_req_target.json", {
         timestamp: new Date().toISOString(),
         url: redactRequestUrl(url),
         headers: maskSensitiveHeaders(headers),
@@ -246,8 +279,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
 
     // 5. Log provider response (for non-streaming or error)
     logProviderResponse(status, statusText, headers, body) {
-      const filename = "5_res_provider.json";
-      writeJsonFile(sessionPath, filename, {
+      appendChunk.writeJson("5_res_provider.json", {
         timestamp: new Date().toISOString(),
         status,
         statusText,
@@ -262,29 +294,17 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
 
     // 5. Append streaming chunk to provider response
     appendProviderChunk(chunk) {
-      if (!fs || !sessionPath) return;
-      try {
-        const filePath = path.join(sessionPath, "5_res_provider.txt");
-        fs.appendFileSync(filePath, chunk);
-      } catch (err) {
-        // Ignore append errors
-      }
+      appendChunk.append("5_res_provider.txt", chunk);
     },
 
     // 6. Append OpenAI intermediate chunks (target → openai)
     appendOpenAIChunk(chunk) {
-      if (!fs || !sessionPath) return;
-      try {
-        const filePath = path.join(sessionPath, "6_res_openai.txt");
-        fs.appendFileSync(filePath, chunk);
-      } catch (err) {
-        // Ignore append errors
-      }
+      appendChunk.append("6_res_openai.txt", chunk);
     },
 
     // 7. Log converted response to client (for non-streaming)
     logConvertedResponse(body) {
-      writeJsonFile(sessionPath, "7_res_client.json", {
+      appendChunk.writeJson("7_res_client.json", {
         timestamp: new Date().toISOString(),
         body,
       });
@@ -292,23 +312,21 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
 
     // 7. Append streaming chunk to converted response
     appendConvertedChunk(chunk) {
-      if (!fs || !sessionPath) return;
-      try {
-        const filePath = path.join(sessionPath, "7_res_client.txt");
-        fs.appendFileSync(filePath, chunk);
-      } catch (err) {
-        // Ignore append errors
-      }
+      appendChunk.append("7_res_client.txt", chunk);
     },
 
     // 6. Log error
     logError(error, requestBody = null) {
-      writeJsonFile(sessionPath, "6_error.json", {
+      appendChunk.writeJson("6_error.json", {
         timestamp: new Date().toISOString(),
         error: error?.message || String(error),
         stack: error?.stack,
         requestBody: redactRequestBody(requestBody),
       });
+    },
+
+    flush() {
+      return appendChunk.flush();
     },
   };
 }

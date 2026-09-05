@@ -22,13 +22,55 @@ export function TtsExampleCard({ providerId }) {
   const providerAlias = getProviderAlias(providerId);
   const config = TTS_PROVIDER_CONFIG[providerId] || TTS_PROVIDER_CONFIG["edge-tts"];
 
+  const getInitialVoices = () => {
+    if (config.voiceSource === "hardcoded") {
+      const defaultModel = config.hasModelSelector && config.modelKey
+        ? (getModelsByProviderId(config.modelKey)?.[0]?.id || "")
+        : "";
+      return (config.voicesPerModel && defaultModel)
+        ? (getTtsVoicesForModel(providerId, defaultModel) || [])
+        : getModelsByProviderId(config.voiceKey || providerId).filter((m) => getModelKind(m) === "tts");
+    }
+    return [];
+  };
+
   // Voice state
-  const [selectedVoice, setSelectedVoice]     = useState(config.defaultVoiceId || "");
-  const [selectedVoiceName, setSelectedVoiceName] = useState("");
+  const [selectedVoice, setSelectedVoice]     = useState(() => {
+    if (config.defaultVoiceId) return config.defaultVoiceId;
+    const voices = getInitialVoices();
+    if (voices.length) {
+      const defaultVoice = config.hasBrowseButton ? (voices.find((v) => v.id === "en") || voices[0]) : voices[0];
+      return defaultVoice.id;
+    }
+    return "";
+  });
+  const [selectedVoiceName, setSelectedVoiceName] = useState(() => {
+    const voices = getInitialVoices();
+    if (voices.length) {
+      const defaultVoice = config.hasBrowseButton ? (voices.find((v) => v.id === "en") || voices[0]) : voices[0];
+      return defaultVoice.name || defaultVoice.id;
+    }
+    return "";
+  });
   const [voiceId, setVoiceId]               = useState(config.defaultVoiceId || ""); // editable voice id (elevenlabs/config providers)
   // Voices shown below Voice row after language selected
-  const [countryVoices, setCountryVoices]     = useState([]);
-  const [selectedLang, setSelectedLang]       = useState("");
+  const [countryVoices, setCountryVoices]     = useState(() => {
+    const voices = getInitialVoices();
+    if (!voices.length) return [];
+    if (config.hasBrowseButton) {
+      const defaultVoice = voices.find((v) => v.id === "en") || voices[0];
+      return [{ id: defaultVoice.id, name: defaultVoice.name }];
+    }
+    return voices;
+  });
+  const [selectedLang, setSelectedLang]       = useState(() => {
+    if (config.voiceSource === "hardcoded" && config.hasBrowseButton) {
+      const voices = getInitialVoices();
+      const defaultVoice = voices.find((v) => v.id === "en") || voices[0];
+      return defaultVoice?.id || "";
+    }
+    return "";
+  });
   const [selectedModel, setSelectedModel]     = useState(() => {
     const cfgModels = AI_PROVIDERS[providerId]?.ttsConfig?.models;
     if (cfgModels?.length) return cfgModels[0].id;
@@ -44,7 +86,7 @@ export function TtsExampleCard({ providerId }) {
   const [style, setStyle]               = useState(""); // style/voice instructions (e.g. MiMo voicedesign)
   const [apiKey, setApiKey]             = useState("");
   const [useTunnel, setUseTunnel]       = useState(false);
-  const [localEndpoint, setLocalEndpoint]   = useState("");
+  const [localEndpoint, setLocalEndpoint]   = useState(() => typeof window !== "undefined" ? window.location.origin : "");
   const [tunnelEndpoint, setTunnelEndpoint] = useState("");
   const [responseFormat, setResponseFormat] = useState("mp3"); // mp3 | json
   const [audioUrl, setAudioUrl]         = useState("");
@@ -66,8 +108,23 @@ export function TtsExampleCard({ providerId }) {
   // Number of stored provider connections (shown when no dashboard API key)
   const [connectionCount, setConnectionCount] = useState(0);
 
+  const [prevSelectedModel, setPrevSelectedModel] = useState(selectedModel);
+  if (prevSelectedModel !== selectedModel) {
+    setPrevSelectedModel(selectedModel);
+    if (config.voicesPerModel && selectedModel) {
+      const voices = getTtsVoicesForModel(providerId, selectedModel) || [];
+      setCountryVoices(voices);
+      if (voices.length) {
+        setSelectedVoice(voices[0].id);
+        setSelectedVoiceName(voices[0].name || voices[0].id);
+      } else {
+        setSelectedVoice("");
+        setSelectedVoiceName("");
+      }
+    }
+  }
+
   useEffect(() => {
-    setLocalEndpoint(window.location.origin);
     fetch("/api/keys")
       .then((r) => r.json())
       .then((d) => { setApiKey((d.keys || []).find((k) => k.isActive !== false)?.key || ""); })
@@ -80,51 +137,7 @@ export function TtsExampleCard({ providerId }) {
       .then((r) => r.json())
       .then((d) => { if (d.publicUrl) setTunnelEndpoint(d.publicUrl); })
       .catch(() => {});
-
-    // Pre-select default voice based on provider config
-    if (config.voiceSource === "hardcoded") {
-      const defaultModel = config.hasModelSelector && config.modelKey
-        ? (getModelsByProviderId(config.modelKey)?.[0]?.id || "")
-        : "";
-      // Use per-model voices if available, else flat list
-      const voices = (config.voicesPerModel && defaultModel)
-        ? (getTtsVoicesForModel(providerId, defaultModel) || [])
-        : getModelsByProviderId(config.voiceKey || providerId).filter((m) => getModelKind(m) === "tts");
-      if (voices.length) {
-        if (config.hasBrowseButton) {
-          // Google TTS: pre-select "en" (English) as default, show as single voice chip
-          const defaultVoice = voices.find((v) => v.id === "en") || voices[0];
-          setSelectedLang(defaultVoice.id);
-          setSelectedVoice(defaultVoice.id);
-          setSelectedVoiceName(defaultVoice.name);
-          setCountryVoices([{ id: defaultVoice.id, name: defaultVoice.name }]);
-        } else {
-          // OpenAI/OpenRouter: set voice chips directly (no language picker)
-          setCountryVoices(voices);
-          setSelectedVoice(voices[0].id);
-          setSelectedVoiceName(voices[0].name || voices[0].id);
-        }
-      }
-    }
-    // api-language (edge-tts, local-device, elevenlabs): NO default load, wait for user to pick language
-    // config (nvidia, hyperbolic, deepgram, huggingface, cartesia, playht, coqui, tortoise, inworld, qwen):
-    // use ttsConfig.models for model selector; voice is empty by default (backend uses provider default)
   }, [providerId]);
-
-  // Update voices when model changes (voicesPerModel providers)
-  useEffect(() => {
-    if (!config.voicesPerModel || !selectedModel) return;
-    const voices = getTtsVoicesForModel(providerId, selectedModel) || [];
-    setCountryVoices(voices);
-    if (voices.length) {
-      setSelectedVoice(voices[0].id);
-      setSelectedVoiceName(voices[0].name || voices[0].id);
-    } else {
-      // Model has no preset voices (voicedesign/voiceclone) — drop stale voice
-      setSelectedVoice("");
-      setSelectedVoiceName("");
-    }
-  }, [selectedModel]);
 
   // Open modal — load language list
   const openModal = async () => {

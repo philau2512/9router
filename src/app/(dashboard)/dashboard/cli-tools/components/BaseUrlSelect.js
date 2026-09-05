@@ -73,11 +73,6 @@ export default function BaseUrlSelect({
   currentUrl = "",
 }) {
   const [savedPresets, setSavedPresets] = useState(() => readPresets());
-  const [mode, setMode] = useState("");
-  const [customInput, setCustomInput] = useState("");
-  const [presetsLoaded, setPresetsLoaded] = useState(false);
-  const initializedRef = useRef(false);
-  const customInputRef = useRef("");
   const options = useMemo(
     () =>
       buildOptions({
@@ -94,6 +89,29 @@ export default function BaseUrlSelect({
     [requiresExternalUrl, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl, cloudEnabled, cloudUrl, savedPresets, withV1],
   );
 
+  const [mode, setMode] = useState(() => {
+    const initialPresets = readPresets();
+    const initOptions = buildOptions({
+      requiresExternalUrl,
+      tunnelEnabled,
+      tunnelPublicUrl,
+      tailscaleEnabled,
+      tailscaleUrl,
+      cloudEnabled,
+      cloudUrl,
+      savedPresets: initialPresets,
+      withV1,
+    });
+    const current = stripSlash(currentUrl);
+    const selected =
+      (current && initOptions.find((option) => stripSlash(option.url) === current)) ||
+      initOptions.find((option) => option.value !== CUSTOM_VALUE);
+    return selected ? selected.value : CUSTOM_VALUE;
+  });
+
+  const [customInput, setCustomInput] = useState(() => value || "");
+  const customInputRef = useRef(customInput);
+
   useEffect(() => {
     const sync = () => {
       const presets = readPresets();
@@ -107,26 +125,8 @@ export default function BaseUrlSelect({
         return match ? `saved:${match.name}` : previous;
       });
     };
-    sync();
-    setPresetsLoaded(true);
     return subscribePresets(sync);
   }, []);
-
-  useEffect(() => {
-    if (initializedRef.current || !presetsLoaded || options.length === 0) return;
-    initializedRef.current = true;
-    const current = stripSlash(currentUrl);
-    const selected =
-      (current && options.find((option) => stripSlash(option.url) === current)) ||
-      options.find((option) => option.value !== CUSTOM_VALUE);
-    if (selected) {
-      setMode(selected.value);
-      if (!value) onChange(selected.url);
-    } else {
-      setMode(CUSTOM_VALUE);
-      setCustomInput(value || "");
-    }
-  }, [currentUrl, onChange, options, presetsLoaded, value]);
 
   const selectedOption = options.find((option) => option.value === mode);
   const fallback = options.find((option) => option.value !== CUSTOM_VALUE) || options[0];

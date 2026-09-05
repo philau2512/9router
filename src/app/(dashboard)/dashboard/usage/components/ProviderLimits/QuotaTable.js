@@ -92,21 +92,21 @@ export default function QuotaTable({
   );
   const totalPages = Math.max(1, Math.ceil(sortedQuotas.length / PAGE_SIZE));
 
-  useEffect(() => {
+  const [prevFilter, setPrevFilter] = useState({ sortMode, quotas });
+  if (prevFilter.sortMode !== sortMode || prevFilter.quotas !== quotas) {
+    setPrevFilter({ sortMode, quotas });
     setPage(1);
-  }, [sortMode, quotas]);
-  useEffect(() => {
-    setPage((current) => Math.min(current, totalPages));
-  }, [totalPages]);
+  }
 
   if (!quotas.length) return null;
 
+  const currentPage = Math.min(page, totalPages);
   const currentRows = sortedQuotas.slice(
-    (page - 1) * PAGE_SIZE,
-    page * PAGE_SIZE,
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
   );
-  const pageStart = (page - 1) * PAGE_SIZE + 1;
-  const pageEnd = Math.min(page * PAGE_SIZE, sortedQuotas.length);
+  const pageStart = (currentPage - 1) * PAGE_SIZE + 1;
+  const pageEnd = Math.min(currentPage * PAGE_SIZE, sortedQuotas.length);
   const cellPad = compact ? "px-1.5 py-1" : "px-3 py-2";
   const textSize = compact ? "text-[11px]" : "text-sm";
   const resetSize = compact ? "text-[11px]" : "text-sm";

@@ -81,47 +81,6 @@ export default function ClaudeToolCard({
 
   const configStatus = getConfigStatus();
 
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
-    if (initialStatus) {
-      setClaudeStatus(initialStatus);
-      setExaMcpEnabled(!!initialStatus.exaMcpEnabled);
-    }
-  }, [initialStatus]);
-
-  useEffect(() => {
-    const contextTokens = claudeStatus?.settings?.env?.CLAUDE_CODE_MAX_CONTEXT_TOKENS;
-    setMaxContextTokens(contextTokens || "");
-  }, [claudeStatus?.settings?.env?.CLAUDE_CODE_MAX_CONTEXT_TOKENS]);
-
-  useEffect(() => {
-    if (!isExpanded) return;
-    if (!claudeStatus) void checkClaudeStatus();
-    void fetchModelAliases();
-  }, [claudeStatus, isExpanded]);
-
-  useEffect(() => {
-    fetch("/api/settings")
-      .then((response) => response.json())
-      .then((data) => setCcFilterNaming(!!data.ccFilterNaming))
-      .catch(() => {});
-  }, []);
-
-  const handleCcFilterNamingToggle = async (e) => {
-    const value = e.target.checked;
-    setCcFilterNaming(value);
-    await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ccFilterNaming: value }),
-    }).catch(() => {});
-  };
-
   const fetchModelAliases = async () => {
     try {
       const res = await fetch("/api/models/alias");
@@ -168,19 +127,65 @@ export default function ClaudeToolCard({
     }
   };
 
+  const handleCcFilterNamingToggle = async (e) => {
+    const value = e.target.checked;
+    setCcFilterNaming(value);
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ccFilterNaming: value }),
+    }).catch(() => {});
+  };
+
+  const [prevInitialStatus, setPrevInitialStatus] = useState(initialStatus);
+  if (prevInitialStatus !== initialStatus) {
+    setPrevInitialStatus(initialStatus);
+    if (initialStatus) {
+      setClaudeStatus(initialStatus);
+      setExaMcpEnabled(!!initialStatus.exaMcpEnabled);
+      const contextTokens = initialStatus.settings?.env?.CLAUDE_CODE_MAX_CONTEXT_TOKENS;
+      if (contextTokens !== undefined) {
+        setMaxContextTokens(contextTokens || "");
+      }
+    }
+  }
+
+  const [prevApiKeys, setPrevApiKeys] = useState(apiKeys);
+  if (prevApiKeys !== apiKeys) {
+    setPrevApiKeys(apiKeys);
+    if (apiKeys?.length > 0 && !selectedApiKey) {
+      setSelectedApiKey(apiKeys[0].key);
+    }
+  }
+
+  const [prevClaudeEnvTokens, setPrevClaudeEnvTokens] = useState(() => claudeStatus?.settings?.env?.CLAUDE_CODE_MAX_CONTEXT_TOKENS);
+  const currentEnvTokens = claudeStatus?.settings?.env?.CLAUDE_CODE_MAX_CONTEXT_TOKENS;
+  if (prevClaudeEnvTokens !== currentEnvTokens) {
+    setPrevClaudeEnvTokens(currentEnvTokens);
+    setMaxContextTokens(currentEnvTokens || "");
+  }
+
   useEffect(() => {
     if (!isExpanded) return;
-
-    const timer = setTimeout(() => {
+    let ignore = false;
+    (async () => {
       if (!claudeStatus) {
-        void checkClaudeStatus();
+        await checkClaudeStatus();
       }
-      void fetchModelAliases();
-    }, 0);
-
-    return () => clearTimeout(timer);
+      await fetchModelAliases();
+    })();
+    return () => {
+      ignore = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claudeStatus, isExpanded]);
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((response) => response.json())
+      .then((data) => setCcFilterNaming(!!data.ccFilterNaming))
+      .catch(() => {});
+  }, []);
 
   const getEffectiveBaseUrl = () => {
     const url = customBaseUrl || baseUrl;

@@ -74,21 +74,6 @@ export default function OpenClawToolCard({
 
   const configStatus = getConfigStatus();
 
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
-    if (initialStatus) setOpenclawStatus(initialStatus);
-  }, [initialStatus]);
-
-  useEffect(() => {
-    if (!isExpanded) return;
-    if (!openclawStatus) void checkOpenclawStatus();
-    void fetchModelAliases();
-  }, [isExpanded, openclawStatus]);
   const fetchModelAliases = async () => {
     try {
       const res = await fetch("/api/models/alias");
@@ -127,17 +112,35 @@ export default function OpenClawToolCard({
     }
   };
 
+  const [prevInitialStatus, setPrevInitialStatus] = useState(initialStatus);
+  if (prevInitialStatus !== initialStatus) {
+    setPrevInitialStatus(initialStatus);
+    if (initialStatus) {
+      setOpenclawStatus(initialStatus);
+      hydrateModelsFromStatus(initialStatus);
+    }
+  }
+
+  const [prevApiKeys, setPrevApiKeys] = useState(apiKeys);
+  if (prevApiKeys !== apiKeys) {
+    setPrevApiKeys(apiKeys);
+    if (apiKeys?.length > 0 && !selectedApiKey) {
+      setSelectedApiKey(apiKeys[0].key);
+    }
+  }
+
   useEffect(() => {
     if (!isExpanded) return;
-
-    const timer = setTimeout(() => {
+    let ignore = false;
+    (async () => {
       if (!openclawStatus) {
-        void checkOpenclawStatus();
+        await checkOpenclawStatus();
       }
-      void fetchModelAliases();
-    }, 0);
-
-    return () => clearTimeout(timer);
+      await fetchModelAliases();
+    })();
+    return () => {
+      ignore = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isExpanded, openclawStatus]);
 

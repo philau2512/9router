@@ -1,9 +1,11 @@
 import {
   getProviderConnections,
   updateProviderConnection,
+  validateApiKey,
   getSettings,
 } from "@/lib/localDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
+import { getAntigravityQuotaCache } from "./antigravityQuota.js";
 import {
   formatRetryAfter,
   checkFallbackError,
@@ -23,11 +25,40 @@ import { pickProxyPoolId } from "@/lib/network/connectionProxy";
 // Serialize account selection only within a credential pool. Independent providers
 // can select accounts concurrently; xAI and Grok CLI overlap on Grok CLI accounts.
 const selectionQueues = new Map();
+const pendingRoundRobinStates = new Map();
+const roundRobinPersistenceQueues = new Map();
 
 function getCredentialPoolKey(providerId) {
   return providerId === "xai" || providerId === "grok-cli"
     ? "xai-grok-cli"
     : providerId;
+}
+
+function applyPendingRoundRobinState(connections) {
+  return connections.map((connection) => {
+    const pending = pendingRoundRobinStates.get(connection.id);
+    return pending ? { ...connection, ...pending } : connection;
+  });
+}
+
+function persistRoundRobinState(connectionId, state) {
+  pendingRoundRobinStates.set(connectionId, state);
+  const previous = roundRobinPersistenceQueues.get(connectionId) || Promise.resolve();
+  const write = previous
+    .then(() => updateProviderConnection(connectionId, state))
+    .catch((error) => {
+      log.warn("AUTH", `Failed to persist round-robin state: ${error.message}`);
+    });
+
+  roundRobinPersistenceQueues.set(connectionId, write);
+  void write.finally(() => {
+    if (roundRobinPersistenceQueues.get(connectionId) === write) {
+      roundRobinPersistenceQueues.delete(connectionId);
+    }
+    if (pendingRoundRobinStates.get(connectionId) === state) {
+      pendingRoundRobinStates.delete(connectionId);
+    }
+  });
 }
 
 async function acquireSelectionLock(poolKey) {
@@ -75,6 +106,7 @@ export async function getProviderCredentials(
         ? new Set([excludeConnectionIds])
         : new Set();
   const preferredConnectionId = options?.preferredConnectionId || null;
+  const requestSettings = options?.settings || null;
   // Resolve before locking so independent provider pools do not contend.
   const providerId = resolveProviderId(provider);
   const releaseSelectionLock = await acquireSelectionLock(
@@ -84,7 +116,7 @@ export async function getProviderCredentials(
   try {
     // Inject a virtual connection for no-auth free providers (with optional proxy pool from settings)
     if (FREE_PROVIDERS[providerId]?.noAuth) {
-      const settings = await getSettings();
+      const settings = requestSettings || await getSettings();
       const override = (settings.providerStrategies || {})[providerId] || {};
       const rotateStrategy = override.rotateStrategy || "none";
       let resolvedProxyPoolId;
@@ -101,7 +133,7 @@ export async function getProviderCredentials(
       }
       const resolvedProxy = await resolveConnectionProxyConfig({
         proxyPoolId: resolvedProxyPoolId,
-      });
+      }, { settings });
       return {
         id: "noauth",
         connectionName: "Public",
@@ -128,7 +160,7 @@ export async function getProviderCredentials(
         getProviderConnections({ provider: pid, isActive: true }),
       ),
     );
-    const connections = _connArrays.flat();
+    const connections = applyPendingRoundRobinState(_connArrays.flat());
     log.debug(
       "AUTH",
       `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`,
@@ -139,10 +171,22 @@ export async function getProviderCredentials(
       return null;
     }
 
-    // Filter out model-locked and excluded connections
+    // Antigravity quota cache is lazy: only populated after that account returns 409/429.
+    const isAntigravity = providerId === "antigravity";
+    const antigravityQuotaCache = isAntigravity && model ? getAntigravityQuotaCache() : null;
+
+    // Filter out model-locked, excluded, and Antigravity quota-exhausted connections
     const availableConnections = connections.filter((c) => {
       if (excludeSet.has(c.id)) return false;
       if (isModelLockActive(c, model)) return false;
+      if (isAntigravity && model && antigravityQuotaCache) {
+        const quota = antigravityQuotaCache.get(c.id)?.[model];
+        if (quota && quota.remainingPercentage <= 0 && quota.resetAt && new Date(quota.resetAt).getTime() > Date.now()) {
+          const account = c.id?.slice(0, 8) || "unknown";
+          log.info("AG_QUOTA", `${account} | CACHE_BLOCK ${model} — skip upstream until ${quota.resetAt}`);
+          return false;
+        }
+      }
       return true;
     });
 
@@ -170,6 +214,12 @@ export async function getProviderCredentials(
       const expiries = lockedConns
         .map((c) => getEarliestModelLockUntil(c))
         .filter(Boolean);
+      if (isAntigravity && model && antigravityQuotaCache) {
+        connections.forEach((c) => {
+          const resetAt = antigravityQuotaCache.get(c.id)?.[model]?.resetAt;
+          if (resetAt && new Date(resetAt).getTime() > Date.now()) expiries.push(resetAt);
+        });
+      }
       const earliest = expiries.sort()[0] || null;
       if (earliest) {
         const earliestConn = lockedConns[0];
@@ -192,7 +242,7 @@ export async function getProviderCredentials(
       return null;
     }
 
-    const settings = await getSettings();
+    const settings = requestSettings || await getSettings();
     // Per-provider strategy overrides global setting
     const providerOverride =
       (settings.providerStrategies || {})[providerId] || {};
@@ -237,8 +287,9 @@ export async function getProviderCredentials(
       if (current && current.lastUsedAt && currentCount < stickyLimit) {
         // Stay with current account
         connection = current;
-        // Update lastUsedAt and increment count (await to ensure persistence)
-        await updateProviderConnection(connection.id, {
+        // Persist after releasing the selection lock. The in-memory state keeps
+        // subsequent selections ordered without delaying upstream connection.
+        persistRoundRobinState(connection.id, {
           lastUsedAt: new Date().toISOString(),
           consecutiveUseCount: (connection.consecutiveUseCount || 0) + 1,
         });
@@ -254,8 +305,9 @@ export async function getProviderCredentials(
 
         connection = sortedByOldest[0];
 
-        // Update lastUsedAt and reset count to 1 (await to ensure persistence)
-        await updateProviderConnection(connection.id, {
+        // Persist after releasing the selection lock. The in-memory state keeps
+        // subsequent selections ordered without delaying upstream connection.
+        persistRoundRobinState(connection.id, {
           lastUsedAt: new Date().toISOString(),
           consecutiveUseCount: 1,
         });
@@ -267,6 +319,7 @@ export async function getProviderCredentials(
 
     const resolvedProxy = await resolveConnectionProxyConfig(
       connection.providerSpecificData || {},
+      { settings },
     );
 
     const isKiro = providerId === "kiro";
@@ -376,8 +429,11 @@ export async function markAccountUnavailable(
     lowerError.includes("individual quota reached") ||
     lowerError.includes("usage limit exceeded") ||
     lowerError.includes("balance exhausted") ||
+    lowerError.includes("resource_exhausted") ||
+    lowerError.includes("quota_exhausted") ||
     lowerError.includes("exhausted") ||
-    lowerError.includes("out of credits");
+    lowerError.includes("out of credits") ||
+    (status === 429 && resolveProviderId(provider) === "antigravity");
 
   const isSuspended =
     lowerError.includes("suspended") ||
@@ -545,3 +601,29 @@ export async function clearAccountError(
 
   await updateProviderConnection(connectionId, clearObj);
 }
+
+/**
+ * Extract API key from request headers
+ */
+export function extractApiKey(request) {
+  const authHeader = request.headers.get("Authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    return authHeader.slice(7);
+  }
+
+  const xApiKey = request.headers.get("x-api-key");
+  if (xApiKey) {
+    return xApiKey;
+  }
+
+  return null;
+}
+
+/**
+ * Validate API key (optional - for local use can skip)
+ */
+export async function isValidApiKey(apiKey) {
+  if (!apiKey) return false;
+  return await validateApiKey(apiKey);
+}
+

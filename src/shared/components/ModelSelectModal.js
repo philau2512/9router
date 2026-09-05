@@ -37,6 +37,57 @@ const NO_AUTH_PROVIDER_IDS = Object.keys(FREE_PROVIDERS).filter(
   (id) => FREE_PROVIDERS[id].noAuth,
 );
 
+// Helper to clean up verbose model titles and extract structured badges
+function parseModelDisplay(rawName, modelId, providerId) {
+  if (!rawName) {
+    return {
+      title: modelId || "",
+      credit: null,
+      isThinking: false,
+      isAgentic: false,
+      isReview: false,
+      isHigh: false,
+    };
+  }
+  let name = rawName;
+
+  // Strip provider name prefix if redundant (e.g. "Kiro Claude..." -> "Claude...")
+  if (providerId === "kiro" && name.toLowerCase().startsWith("kiro ")) {
+    name = name.slice(5).trim();
+  }
+
+  // Extract credit rate e.g. "(1.3x credit)" or "(0.4x credit)"
+  let credit = null;
+  const creditMatch = name.match(/\(([0-9.]+)x\s*credit\)/i);
+  if (creditMatch) {
+    credit = `${creditMatch[1]}x`;
+    name = name.replace(creditMatch[0], "").trim();
+  }
+
+  // Check and extract capabilities / attributes
+  const isThinking = /thinking/i.test(name) || /thinking/i.test(modelId || "") || /reason/i.test(modelId || "");
+  const isAgentic = /agentic/i.test(name) || /agentic/i.test(modelId || "") || /agent/i.test(modelId || "");
+  const isReview = /review/i.test(name) || /review/i.test(modelId || "");
+  const isHigh = /high/i.test(name) || /high/i.test(modelId || "");
+
+  // Clean verbose capability parentheses
+  name = name
+    .replace(/\(\s*thinking\s*\+\s*agentic\s*\)/gi, "")
+    .replace(/\(\s*thinking\s*\)/gi, "")
+    .replace(/\(\s*agentic\s*\)/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return {
+    title: name || modelId,
+    credit,
+    isThinking,
+    isAgentic,
+    isReview,
+    isHigh,
+  };
+}
+
 export default function ModelSelectModal({
   isOpen,
   onClose,
@@ -58,6 +109,7 @@ export default function ModelSelectModal({
     [activeProviders, kindFilter],
   );
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeFilter, setActiveFilter] = useState("all");
   const [combos, setCombos] = useState([]);
   const [providerNodes, setProviderNodes] = useState([]);
   const [customModels, setCustomModels] = useState([]);
@@ -79,7 +131,6 @@ export default function ModelSelectModal({
 
   useEffect(() => {
     if (!isOpen || cursorConnectionIds.length === 0) {
-      setCursorModels([]);
       return undefined;
     }
 
@@ -223,19 +274,15 @@ export default function ModelSelectModal({
 
   useEffect(() => {
     if (!isOpen) return undefined;
-
-    const timer = setTimeout(() => {
-      fetchOpenData();
-    }, 0);
-
-    // Reset live state each open so static shows until fetch settles (no empty flash).
-    setLiveModelsByProviderId(null);
-    setLiveModelsLoading(false);
     const ac = new AbortController();
-    void fetchLiveModels(ac.signal);
+    let ignore = false;
+    (async () => {
+      await fetchLiveModels(ac.signal);
+      fetchOpenData();
+    })();
 
     return () => {
-      clearTimeout(timer);
+      ignore = true;
       ac.abort();
     };
   }, [isOpen, fetchOpenData, fetchLiveModels]);
@@ -620,7 +667,7 @@ export default function ModelSelectModal({
     if (!searchQuery.trim()) return combos;
     const query = searchQuery.toLowerCase();
     return combos.filter((c) => c.name.toLowerCase().includes(query));
-  }, [combos, searchQuery, kindFilter]);
+  }, [combos, searchQuery, kindFilter, capFilter]);
 
   // Sort models alphabetically, with added models floated to top
   const sortModels = useCallback(
@@ -681,6 +728,33 @@ export default function ModelSelectModal({
         models = models.filter((m) => getCaps(m.value)?.[capFilter] === true);
         if (models.length === 0) return;
       }
+
+      // Quick category filters
+      if (activeFilter === "thinking") {
+        models = models.filter((m) => {
+          const caps = getCaps(m.value);
+          return (
+            caps?.reasoning === true ||
+            /thinking/i.test(m.name || "") ||
+            /thinking/i.test(m.id || "") ||
+            /reason/i.test(m.id || "")
+          );
+        });
+      } else if (activeFilter === "agentic") {
+        models = models.filter(
+          (m) =>
+            /agentic/i.test(m.name || "") ||
+            /agentic/i.test(m.id || "") ||
+            /agent/i.test(m.id || ""),
+        );
+      } else if (activeFilter === "vision") {
+        models = models.filter((m) => getCaps(m.value)?.vision === true);
+      } else if (activeFilter === "custom") {
+        models = models.filter((m) => m.isCustom);
+      }
+
+      if (models.length === 0) return;
+
       if (query) {
         const providerNameMatches =
           group.name.toLowerCase().includes(query) ||
@@ -717,6 +791,9 @@ export default function ModelSelectModal({
     sortModels,
     normalizeSearchText,
     modelMatchesQuery,
+    capFilter,
+    activeFilter,
+    getCaps,
   ]);
 
   const handleSelect = (model) => {
@@ -738,7 +815,15 @@ export default function ModelSelectModal({
   const handleModalClose = useCallback(() => {
     onClose();
     setSearchQuery("");
+    setActiveFilter("all");
   }, [onClose]);
+
+  const scrollToProvider = (id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
 
   return (
     <Modal
@@ -746,14 +831,13 @@ export default function ModelSelectModal({
       onClose={handleModalClose}
       title={title}
       size="full"
-      className="p-4! max-h-[92vh]"
+      className="p-4! max-h-[94vh]"
       footer={null}
     >
       {/* Info bar */}
       <div className="flex items-center gap-2 mb-3 px-2.5 py-2 bg-primary/8 border border-primary/20 rounded-lg text-xs text-text-muted">
         <span
-          className="material-symbols-outlined text-primary shrink-0"
-          style={{ fontSize: "14px" }}
+          className="material-symbols-outlined text-primary shrink-0 text-[14px]"
         >
           info
         </span>
@@ -762,8 +846,64 @@ export default function ModelSelectModal({
         </span>
       </div>
 
-      {/* Search — covers static + live-fetched name / id / full path */}
-      <div className="mb-3">
+      {/* Pinned Selected Models Bar */}
+      {addedModelValues.length > 0 && (
+        <div className="mb-3 p-2 bg-surface border border-primary/30 rounded-xl">
+          <div className="flex items-center justify-between mb-1.5 px-1">
+            <div className="flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-primary text-[15px]">
+                check_circle
+              </span>
+              <span className="text-xs font-semibold text-text-main">
+                Selected in Combo ({addedModelValues.length})
+              </span>
+            </div>
+            {onDeselect && addedModelValues.length > 1 && (
+              <button
+                type="button"
+                onClick={() => {
+                  addedModelValues.forEach((val) => {
+                    onDeselect({ value: val, name: val, id: val });
+                  });
+                }}
+                className="text-[11px] text-text-muted hover:text-red-400 transition-colors cursor-pointer"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1.5 max-h-[85px] overflow-y-auto custom-scrollbar p-0.5">
+            {addedModelValues.map((val) => {
+              const parsed = parseModelDisplay(val, val, "");
+              return (
+                <span
+                  key={val}
+                  className="inline-flex items-center gap-1.5 pl-2 pr-1.5 py-0.5 rounded-lg text-xs bg-primary/15 text-primary border border-primary/30 font-medium"
+                >
+                  <span className="truncate max-w-[220px]">{parsed.title}</span>
+                  {onDeselect && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeselect({ value: val, name: val, id: val });
+                      }}
+                      className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-primary/25 transition-colors cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[13px] leading-none">
+                        close
+                      </span>
+                    </button>
+                  )}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Search Bar */}
+      <div className="mb-2">
         <div className="relative">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-muted text-[18px]">
             search
@@ -774,37 +914,85 @@ export default function ModelSelectModal({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             autoFocus
-            className="w-full pl-10 pr-3 py-2.5 bg-surface border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+            className="w-full pl-10 pr-3 py-2 bg-surface border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
           />
         </div>
-        {liveModelsLoading && (
-          <p className="mt-1.5 text-[11px] text-text-muted">
-            Refreshing provider models… search works on live results when ready.
-          </p>
-        )}
-        {!liveModelsLoading && searchQuery.trim() && (
-          <p className="mt-1.5 text-[11px] text-text-muted">
-            {
-              Object.values(filteredGroups).reduce(
-                (n, g) => n + (g.models?.length || 0),
-                0,
-              )
-            }{" "}
-            models match
-          </p>
-        )}
       </div>
 
-      {/* Models grouped by provider — taller viewport for large live catalogs */}
-      <div className="max-h-[min(62vh,640px)] overflow-y-auto space-y-4 pr-1 custom-scrollbar">
+      {/* Quick Filter Tabs */}
+      <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1 mb-2.5 text-xs">
+        {[
+          { id: "all", label: "All Models" },
+          { id: "thinking", label: "🧠 Thinking" },
+          { id: "agentic", label: "⚡ Agentic" },
+          { id: "vision", label: "👁️ Vision" },
+          { id: "custom", label: "🏷️ Custom" },
+        ].map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => setActiveFilter(f.id)}
+            className={`
+              px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors shrink-0 cursor-pointer border
+              ${
+                activeFilter === f.id
+                  ? "bg-primary text-white border-primary shadow-xs"
+                  : "bg-surface border-border text-text-muted hover:text-text-main hover:border-primary/40"
+              }
+            `}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Provider Quick Jump Anchor Bar */}
+      <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1.5 mb-3 border-b border-border/50 text-xs">
+        <span className="text-[10px] uppercase font-bold tracking-wider text-text-muted shrink-0 mr-0.5">
+          Jump to:
+        </span>
+        {filteredCombos.length > 0 && (
+          <button
+            type="button"
+            onClick={() => scrollToProvider("provider-section-combos")}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface border border-border text-text-muted hover:text-primary hover:border-primary/40 shrink-0 transition-colors text-[11px] cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-primary text-[12px]">
+              layers
+            </span>
+            Combos ({filteredCombos.length})
+          </button>
+        )}
+        {Object.entries(filteredGroups).map(([pid, group]) => (
+          <button
+            key={pid}
+            type="button"
+            onClick={() => scrollToProvider(`provider-section-${pid}`)}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface border border-border text-text-muted hover:text-primary hover:border-primary/40 shrink-0 transition-colors text-[11px] cursor-pointer"
+          >
+            <ProviderIcon
+              src={`/providers/${pid}.png`}
+              alt={group.name}
+              size={12}
+              fallbackText={(group.name || pid).slice(0, 2).toUpperCase()}
+              fallbackColor={group.color}
+            />
+            <span className="truncate max-w-[100px]">{group.name}</span>
+            <span className="text-[10px] opacity-70">({group.models.length})</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Models grouped by provider */}
+      <div className="max-h-[min(56vh,580px)] overflow-y-auto space-y-4 pr-1 custom-scrollbar">
         {/* Combos section - always first */}
         {filteredCombos.length > 0 && (
-          <div>
-            <div className="flex items-center gap-1.5 mb-1.5 sticky top-0 bg-surface py-0.5">
+          <div id="provider-section-combos">
+            <div className="flex items-center gap-1.5 mb-1.5 sticky top-0 bg-surface/95 backdrop-blur-xs py-1 z-10">
               <span className="material-symbols-outlined text-primary text-[14px]">
                 layers
               </span>
-              <span className="text-xs font-medium text-primary">Combos</span>
+              <span className="text-xs font-semibold text-primary">Combos</span>
               <span className="text-[10px] text-text-muted">
                 ({filteredCombos.length})
               </span>
@@ -812,6 +1000,7 @@ export default function ModelSelectModal({
             <div className="flex flex-wrap gap-1.5">
               {filteredCombos.map((combo) => {
                 const isSelected = selectedModel === combo.name;
+                const isAdded = addedModelValues.includes(combo.name);
                 return (
                   <button
                     key={combo.id}
@@ -823,22 +1012,22 @@ export default function ModelSelectModal({
                       })
                     }
                     className={`
-                      px-2 py-1 rounded-xl text-xs font-medium transition-all border hover:cursor-pointer flex items-center gap-1
+                      px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all border cursor-pointer flex items-center gap-1.5
                       ${
                         isSelected
                           ? "bg-primary text-white border-primary"
-                          : addedModelValues.includes(combo.name)
-                            ? "bg-primary border-primary text-white hover:bg-primary-hover"
+                          : isAdded
+                            ? "bg-primary/15 border-primary text-primary font-bold ring-1 ring-primary/40 hover:bg-primary/20"
                             : "bg-surface border-border text-text-main hover:border-primary/50 hover:bg-primary/5"
                       }
                     `}
                   >
-                    {addedModelValues.includes(combo.name) && (
+                    {isAdded && (
                       <span
-                        className="material-symbols-outlined leading-none"
-                        style={{ fontSize: "10px" }}
+                        className="material-symbols-outlined leading-none text-primary"
+                        style={{ fontSize: "12px" }}
                       >
-                        check
+                        check_circle
                       </span>
                     )}
                     {combo.name}
@@ -851,9 +1040,9 @@ export default function ModelSelectModal({
 
         {/* Provider models */}
         {Object.entries(filteredGroups).map(([providerId, group]) => (
-          <div key={providerId}>
+          <div key={providerId} id={`provider-section-${providerId}`}>
             {/* Provider header */}
-            <div className="flex items-center gap-1.5 mb-1.5 sticky top-0 bg-surface py-0.5">
+            <div className="flex items-center gap-1.5 mb-2 sticky top-0 bg-surface/95 backdrop-blur-xs py-1 z-10">
               <ProviderIcon
                 src={`/providers/${providerId}.png`}
                 alt={group.name}
@@ -863,7 +1052,7 @@ export default function ModelSelectModal({
                   .toUpperCase()}
                 fallbackColor={group.color}
               />
-              <span className="text-xs font-medium text-primary">
+              <span className="text-xs font-semibold text-primary">
                 {group.name}
               </span>
               <span className="text-[10px] text-text-muted">
@@ -871,11 +1060,14 @@ export default function ModelSelectModal({
               </span>
             </div>
 
-            <div className="flex flex-wrap gap-1.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
               {group.models.map((model) => {
                 const isSelected = selectedModel === model.value;
                 const isPlaceholder = model.isPlaceholder;
                 const isAdded = addedModelValues.includes(model.value);
+                const display = parseModelDisplay(model.name, model.id, providerId);
+                const caps = getCaps(model.value);
+
                 return (
                   <button
                     key={model.value}
@@ -886,73 +1078,82 @@ export default function ModelSelectModal({
                         : model.value
                     }
                     className={`
-                      px-3 py-1.5 rounded-xl text-xs font-medium transition-all border hover:cursor-pointer text-left flex items-start gap-1.5
+                      p-2.5 rounded-xl text-xs transition-all border text-left flex items-start gap-2 cursor-pointer relative overflow-hidden group
                       ${
                         isPlaceholder
                           ? "border-dashed border-border text-text-muted hover:border-primary/50 hover:text-primary bg-surface italic"
                           : isSelected
-                            ? "bg-primary text-white border-primary"
+                            ? "bg-primary text-white border-primary shadow-sm"
                             : isAdded
-                              ? "bg-primary border-primary text-white hover:bg-primary-hover"
+                              ? "bg-primary/10 border-primary text-text-main ring-1 ring-primary/40 hover:bg-primary/15"
                               : "bg-surface border-border text-text-main hover:border-primary/50 hover:bg-primary/5"
                       }
                     `}
                   >
                     {isAdded && !isPlaceholder && (
                       <span
-                        className="material-symbols-outlined leading-none mt-0.5 shrink-0"
-                        style={{ fontSize: "10px" }}
+                        className="material-symbols-outlined text-primary leading-none mt-0.5 shrink-0 text-[15px]"
                       >
-                        check
+                        check_circle
                       </span>
                     )}
-                    <span className="flex flex-col min-w-0">
-                      <span className="truncate block font-semibold text-[11px] leading-tight">
-                        {isPlaceholder ? (
-                          <span className="flex items-center gap-1">
-                            <span className="material-symbols-outlined text-[11px]">
-                              edit
-                            </span>
-                            {model.name}
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 min-w-0">
-                            <span className="truncate">{model.name}</span>
-                            <CapacityBadges
-                              caps={getCaps(model.value)}
-                              size={12}
-                              colorOverride={
-                                isSelected || isAdded
-                                  ? "text-white/80"
-                                  : undefined
-                              }
-                            />
-                          </span>
-                        )}
-                      </span>
-                      {!isPlaceholder && (
+                    <div className="flex flex-col min-w-0 flex-1">
+                      {/* Top row: Title + Badges */}
+                      <div className="flex items-start justify-between gap-1.5 min-w-0">
                         <span
-                          className={`text-[9px] font-mono mt-0.5 block truncate leading-none ${
-                            isSelected || isAdded
-                              ? "text-white/70"
-                              : "text-text-muted"
+                          className={`font-semibold text-[12px] leading-tight truncate ${
+                            isAdded ? "text-primary font-bold" : "text-text-main"
                           }`}
                         >
-                          {model.id}
+                          {isPlaceholder ? (
+                            <span className="flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[11px]">
+                                edit
+                              </span>
+                              {model.name}
+                            </span>
+                          ) : (
+                            display.title
+                          )}
+                        </span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {display.credit && (
+                            <span className="text-[9px] px-1 py-0.2 rounded font-mono font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 leading-none">
+                              {display.credit}
+                            </span>
+                          )}
+                          <CapacityBadges
+                            caps={caps}
+                            size={11}
+                            colorOverride={
+                              isSelected ? "text-white/80" : undefined
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      {/* Bottom row: Model ID & Extra Tags */}
+                      {!isPlaceholder && (
+                        <div className="flex items-center gap-1 mt-1 text-[10px] text-text-muted font-mono leading-none">
+                          <span className="truncate">{model.id}</span>
+                          {display.isThinking && !caps?.reasoning && (
+                            <span className="text-[8px] px-1 py-0.2 rounded font-sans bg-purple-500/15 text-purple-400 border border-purple-500/25 shrink-0">
+                              🧠 Thinking
+                            </span>
+                          )}
+                          {display.isAgentic && (
+                            <span className="text-[8px] px-1 py-0.2 rounded font-sans bg-blue-500/15 text-blue-400 border border-blue-500/25 shrink-0">
+                              ⚡ Agentic
+                            </span>
+                          )}
                           {model.isCustom && (
-                            <span
-                              className={`ml-1 text-[8px] px-1 py-0.2 rounded font-sans uppercase font-bold ${
-                                isSelected || isAdded
-                                  ? "bg-white/20 text-white"
-                                  : "bg-black/5 dark:bg-white/5 text-text-muted"
-                              }`}
-                            >
+                            <span className="text-[8px] px-1 py-0.2 rounded font-sans uppercase font-bold bg-white/10 text-text-muted shrink-0">
                               custom
                             </span>
                           )}
-                        </span>
+                        </div>
                       )}
-                    </span>
+                    </div>
                   </button>
                 );
               })}
@@ -962,11 +1163,11 @@ export default function ModelSelectModal({
 
         {Object.keys(filteredGroups).length === 0 &&
           filteredCombos.length === 0 && (
-            <div className="text-center py-4 text-text-muted">
+            <div className="text-center py-6 text-text-muted">
               <span className="material-symbols-outlined text-2xl mb-1 block">
                 search_off
               </span>
-              <p className="text-xs">No models found</p>
+              <p className="text-xs">No models found for this filter</p>
             </div>
           )}
       </div>

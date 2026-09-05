@@ -15,6 +15,7 @@ const lookupMock = vi.fn();
 vi.mock("node:dns/promises", () => ({ lookup: (...a) => lookupMock(...a) }));
 
 import { CodexExecutor } from "../../open-sse/executors/codex.js";
+import { fetchImageAsBase64 } from "../../open-sse/translator/concerns/image.js";
 import * as proxyFetchModule from "../../open-sse/utils/proxyFetch.js";
 
 const IMAGE_1MB_BYTES = 1024 * 1024;
@@ -123,6 +124,23 @@ describe("CodexExecutor image handling", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
+  it("combines client abort and timeout signals", async () => {
+    const controller = new AbortController();
+    const received = [];
+    global.fetch = vi.fn((_url, options) => {
+      received.push(options.signal);
+      return new Promise((_resolve, reject) => {
+        options.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+      });
+    });
+
+    await expect(fetchImageAsBase64("https://example.com/image.png", {
+      signal: controller.signal,
+      timeoutMs: 1,
+    })).resolves.toBeNull();
+    expect(received[0]).not.toBe(controller.signal);
+  });
+
   it("falls back to original URL when remote fetch fails", async () => {
     global.fetch = vi.fn(async () => {
       throw new Error("network down");
@@ -144,6 +162,31 @@ describe("CodexExecutor image handling", () => {
       (c) => c.type === "input_image",
     );
     expect(imgBlock.image_url).toBe(REMOTE_URL);
+  });
+
+  it("routes compact and normal requests independently on one executor", async () => {
+    const executor = new CodexExecutor();
+    const urls = [];
+    vi.spyOn(proxyFetchModule, "proxyAwareFetch").mockImplementation(async (url) => {
+      urls.push(url);
+      return { ok: true, status: 200, headers: new Headers(), body: null };
+    });
+
+    await executor.execute({
+      model: "gpt-5.3-codex",
+      body: { _compact: true, input: "compact" },
+      stream: true,
+      credentials: { accessToken: "test" },
+    });
+    await executor.execute({
+      model: "gpt-5.3-codex",
+      body: { input: "normal" },
+      stream: true,
+      credentials: { accessToken: "test" },
+    });
+
+    expect(urls[0]).toMatch(/\/compact$/);
+    expect(urls[1]).not.toMatch(/\/compact$/);
   });
 
   it("execute() prefetches images before sending to upstream", async () => {

@@ -136,6 +136,28 @@ function maskLoggedUrl(rawUrl) {
  * @param {object} options.credentials - Provider credentials
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
+function waitForAbortableDelay(ms, signal) {
+  if (!ms || ms <= 0) return Promise.resolve();
+  if (signal?.aborted) {
+    return Promise.reject(new DOMException("Request aborted", "AbortError"));
+  }
+
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(cleanupAndResolve, ms);
+    const onAbort = () => {
+      clearTimeout(timeout);
+      cleanup();
+      reject(new DOMException("Request aborted", "AbortError"));
+    };
+    const cleanup = () => signal?.removeEventListener("abort", onAbort);
+    function cleanupAndResolve() {
+      cleanup();
+      resolve();
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 export async function handleChatCore({
   body,
   modelInfo,
@@ -332,7 +354,7 @@ export async function handleChatCore({
     }
     try {
       const n = await prefetchRemoteImages(body, sourceFormat, targetFormat, {
-        signal: undefined,
+        signal: clientSignal || undefined,
       });
       if (n > 0) {
         log?.debug?.(
@@ -798,7 +820,15 @@ export async function handleChatCore({
         `${provider.toUpperCase()} | soft 429, instant retry #${softRetryCount} in ${decision.waitMs}ms (same auth)`,
       );
       if (decision.waitMs > 0) {
-        await new Promise((r) => setTimeout(r, decision.waitMs));
+        try {
+          await waitForAbortableDelay(decision.waitMs, streamController.signal);
+        } catch (error) {
+          if (error.name === "AbortError") {
+            streamController.handleError(error);
+            return createErrorResult(499, "Request aborted");
+          }
+          throw error;
+        }
       }
       try {
         const r = await runExecutor();

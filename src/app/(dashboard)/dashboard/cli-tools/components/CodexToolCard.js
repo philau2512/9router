@@ -54,21 +54,6 @@ export default function CodexToolCard({
   const [showManualConfigModal, setShowManualConfigModal] = useState(false);
   const [customBaseUrl, setCustomBaseUrl] = useState("");
 
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
-    if (initialStatus) setCodexStatus(initialStatus);
-  }, [initialStatus]);
-
-  useEffect(() => {
-    if (!isExpanded) return;
-    if (!codexStatus) void checkCodexStatus();
-    void fetchModelAliases();
-  }, [codexStatus, isExpanded]);
   const fetchModelAliases = async () => {
     try {
       const res = await fetch("/api/models/alias");
@@ -78,42 +63,6 @@ export default function CodexToolCard({
       console.log("Error fetching model aliases:", error);
     }
   };
-
-  useEffect(() => {
-    if (codexStatus?.config) {
-      const modelMatch = codexStatus.config.match(/^model\s*=\s*"([^"]+)"/m);
-      if (modelMatch) setSelectedModel(modelMatch[1]);
-      const subagentModelMatch = codexStatus.config.match(
-        /\[agents\.subagent\]\s*\n\s*model\s*=\s*"([^"]+)"/m,
-      );
-      if (subagentModelMatch) setSubagentModel(subagentModelMatch[1]);
-    }
-  }, [codexStatus]);
-
-  const getCurrentBaseUrl = () => {
-    const parsed = codexStatus?.config?.match(/base_url\s*=\s*"([^"]+)"/);
-    return parsed ? parsed[1] : "";
-  };
-
-  const currentBaseUrl = getCurrentBaseUrl();
-
-  const getConfigStatus = () => {
-    if (!codexStatus?.installed) return null;
-    if (!codexStatus.config) return "not_configured";
-    return matchKnownEndpoint(currentBaseUrl, { tunnelPublicUrl, tailscaleUrl })
-      ? "configured"
-      : "other";
-  };
-
-  const configStatus = getConfigStatus();
-
-  const getEffectiveBaseUrl = () => {
-    const url = customBaseUrl || `${baseUrl}/v1`;
-    // Ensure URL ends with /v1
-    return url.endsWith("/v1") ? url : `${url}/v1`;
-  };
-
-  const getDisplayUrl = () => customBaseUrl || `${baseUrl}/v1`;
 
   const hydrateModelsFromConfig = (configText) => {
     if (!configText) return;
@@ -141,19 +90,64 @@ export default function CodexToolCard({
     }
   };
 
+  const [prevInitialStatus, setPrevInitialStatus] = useState(initialStatus);
+  if (prevInitialStatus !== initialStatus) {
+    setPrevInitialStatus(initialStatus);
+    if (initialStatus) {
+      setCodexStatus(initialStatus);
+      if (initialStatus?.config) {
+        hydrateModelsFromConfig(initialStatus.config);
+      }
+    }
+  }
+
+  const [prevApiKeys, setPrevApiKeys] = useState(apiKeys);
+  if (prevApiKeys !== apiKeys) {
+    setPrevApiKeys(apiKeys);
+    if (apiKeys?.length > 0 && !selectedApiKey) {
+      setSelectedApiKey(apiKeys[0].key);
+    }
+  }
+
   useEffect(() => {
     if (!isExpanded) return;
-
-    const timer = setTimeout(() => {
+    let ignore = false;
+    (async () => {
       if (!codexStatus) {
-        void checkCodexStatus();
+        await checkCodexStatus();
       }
-      void fetchModelAliases();
-    }, 0);
-
-    return () => clearTimeout(timer);
+      await fetchModelAliases();
+    })();
+    return () => {
+      ignore = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [codexStatus, isExpanded]);
+
+  const getCurrentBaseUrl = () => {
+    const parsed = codexStatus?.config?.match(/base_url\s*=\s*"([^"]+)"/);
+    return parsed ? parsed[1] : "";
+  };
+
+  const currentBaseUrl = getCurrentBaseUrl();
+
+  const getConfigStatus = () => {
+    if (!codexStatus?.installed) return null;
+    if (!codexStatus.config) return "not_configured";
+    return matchKnownEndpoint(currentBaseUrl, { tunnelPublicUrl, tailscaleUrl })
+      ? "configured"
+      : "other";
+  };
+
+  const configStatus = getConfigStatus();
+
+  const getEffectiveBaseUrl = () => {
+    const url = customBaseUrl || `${baseUrl}/v1`;
+    // Ensure URL ends with /v1
+    return url.endsWith("/v1") ? url : `${url}/v1`;
+  };
+
+  const getDisplayUrl = () => customBaseUrl || `${baseUrl}/v1`;
 
   const handleApplySettings = async () => {
     setApplying(true);
