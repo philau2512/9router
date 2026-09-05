@@ -35,17 +35,36 @@ export async function addCustomModel({
   id,
   type = "llm",
   name,
+  caps,
 }) {
   const k = customKey(providerAlias, id, type);
   const db = await getAdapter();
   let added = false;
   db.transaction(() => {
     const row = db.get(
-      `SELECT 1 FROM kv WHERE scope = 'customModels' AND key = ?`,
+      `SELECT value FROM kv WHERE scope = 'customModels' AND key = ?`,
       [k],
     );
-    if (row) return;
-    const value = stringifyJson({ providerAlias, id, type, name: name || id });
+    if (row) {
+      const previous = parseJson(row.value) || {};
+      const next = {
+        ...previous,
+        ...(name ? { name } : {}),
+        ...(caps ? { caps } : {}),
+      };
+      db.run(
+        `UPDATE kv SET value = ? WHERE scope = 'customModels' AND key = ?`,
+        [stringifyJson(next), k],
+      );
+      return;
+    }
+    const value = stringifyJson({
+      providerAlias,
+      id,
+      type,
+      name: name || id,
+      ...(caps ? { caps } : {}),
+    });
     db.run(`INSERT INTO kv(scope, key, value) VALUES('customModels', ?, ?)`, [
       k,
       value,

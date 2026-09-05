@@ -57,16 +57,23 @@ export function useModelCaps() {
   const [byId, setById] = useState(() => cache?.byId || {});
 
   useEffect(() => {
-    if (cache) return;
     let alive = true;
-    loadModelCaps().then((maps) => {
-      if (alive) {
-        setByFull(maps.byFull);
-        setById(maps.byId);
-      }
-    });
+    const sync = (maps) => {
+      if (!alive) return;
+      setByFull(maps.byFull);
+      setById(maps.byId);
+    };
+    if (cache) sync(cache);
+    else loadModelCaps().then(sync);
+
+    const invalidate = () => {
+      cache = null;
+      loadModelCaps().then(sync);
+    };
+    window.addEventListener("customModelChanged", invalidate);
     return () => {
       alive = false;
+      window.removeEventListener("customModelChanged", invalidate);
     };
   }, []);
 

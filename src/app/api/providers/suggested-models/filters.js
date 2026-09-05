@@ -17,10 +17,14 @@ export const FILTERS = {
     models
       .filter(
         (m) =>
-          m.id?.endsWith("-free") || KNOWN_FREE_OPENCODE_MODELS.includes(m.id),
+          (m.id?.endsWith("-free") || KNOWN_FREE_OPENCODE_MODELS.includes(m.id)) &&
+          m.id !== "deepseek-v4-flash-free",
       )
       .map((m) => ({ id: m.id, name: m.id })),
 
   // MiMo Code Free — free channel only serves mimo-auto; ignore the fetched URL payload
-  "mimo-free": (_models) => [{ id: "mimo-auto", name: "MiMo Auto" }],
+  "mimo-free": (models) =>
+    (Array.isArray(models) ? models : [])
+      .filter((m) => m.id?.startsWith("mimo") || m.name?.toLowerCase().includes("mimo"))
+      .map((m) => ({ id: m.id, name: m.name || m.id })),
 };

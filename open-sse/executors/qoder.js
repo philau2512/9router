@@ -20,9 +20,10 @@
  *     different model upstream, so a missing entry is a hard error.
  */
 
-import { qoderEncodeBody } from "@/lib/qoder/encoding.js";
-import { buildCosyHeaders } from "@/lib/qoder/cosy.js";
-import { createHash, randomUUID } from "crypto";
+import { qoderEncodeBody } from "../shared/qoder/encoding.js";
+import { buildCosyHeaders } from "../shared/qoder/cosy.js";
+import { v4 as uuidv4 } from "uuid";
+import { createHash } from "crypto";
 
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
@@ -30,15 +31,13 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import {
   QODER_CHAT_URL_ENCODED,
-  QODER_JOB_TOKEN_EXCHANGE_URL,
-  QODER_USERINFO_URL,
-  QODER_IDE_VERSION,
-  QODER_CLIENT_TYPE,
+  QODER_CHAT_BASE_ALT,
+  QODER_CHAT_SIG_PATH,
+  QODER_MODEL_MAP,
 } from "../shared/qoder/constants.js";
-import {
-  getQoderModelConfig,
-  resolveQoderModels,
-} from "../services/qoderModels.js";
+import { getQoderModelConfig, resolveQoderModels, isQoderPat, resolveQoderCredentials } from "../services/qoderModels.js";
+import { OPENAI_BLOCK, CLAUDE_BLOCK } from "../translator/schema/blocks.js";
+import { encodeDataUri } from "../translator/concerns/image.js";
 
 /**
  * Hoist role:"system" messages out of the messages array (Qoder rejects
@@ -52,16 +51,47 @@ function normalizeMessages(messages) {
   const out = [];
   for (const msg of messages) {
     if (!msg || typeof msg !== "object") continue;
-    const text = extractText(msg.content);
     if (msg.role === "system") {
+      const text = extractText(msg.content);
       if (text) systemParts.push(text);
       continue;
     }
     const cloned = { ...msg };
-    cloned.content = text;
+    cloned.content = normalizeContent(msg.content);
     out.push(cloned);
   }
   return { messages: out, systemText: systemParts.join("\n\n") };
+}
+
+function normalizeContent(content) {
+  if (typeof content === "string") return content;
+  if (content == null) return "";
+  if (!Array.isArray(content)) return String(content);
+  const blocks = [];
+  const textParts = [];
+  let hasImage = false;
+  for (const item of content) {
+    if (!item || typeof item !== "object") continue;
+    if (item.type === OPENAI_BLOCK.IMAGE_URL && typeof item.image_url?.url === "string" && item.image_url.url) {
+      blocks.push({ type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: item.image_url.url } });
+      hasImage = true;
+    } else if (item.type === CLAUDE_BLOCK.IMAGE && item.source) {
+      const src = item.source;
+      const url = src.type === "base64" && src.data
+        ? encodeDataUri(src.media_type || "image/png", src.data)
+        : typeof src.url === "string" && src.url ? src.url : null;
+      if (url) {
+        blocks.push({ type: OPENAI_BLOCK.IMAGE_URL, image_url: { url } });
+        hasImage = true;
+      }
+    } else if (typeof item.text === "string" && item.text) {
+      if (hasImage || blocks.length) blocks.push({ type: OPENAI_BLOCK.TEXT, text: item.text });
+      else textParts.push(item.text);
+    }
+  }
+  if (!hasImage) return textParts.join("\n");
+  if (textParts.length) blocks.unshift({ type: OPENAI_BLOCK.TEXT, text: textParts.join("\n") });
+  return blocks;
 }
 
 function extractText(content) {
@@ -86,9 +116,9 @@ function extractText(content) {
 function lastUserText(messages) {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
-    if (m?.role === "user" && typeof m.content === "string") {
-      return m.content;
-    }
+    if (m?.role !== "user") continue;
+    if (typeof m.content === "string") return m.content;
+    if (Array.isArray(m.content)) return extractText(m.content);
   }
   return "";
 }
@@ -115,7 +145,7 @@ function stableChatRecordId(model, messages, tools, maxTokens) {
     }
     if (typeof m.content === "string" && m.content) {
       h.update("\0");
-      h.update(m.content);
+      try { h.update(JSON.stringify(m.content)); } catch {}
     }
   }
   if (tools) {
@@ -200,7 +230,7 @@ async function buildQoderRequestBody({
   return {
     qoderKey,
     payload: {
-      request_id: randomUUID(),
+      request_id: uuidv4(),
       request_set_id: recordId,
       chat_record_id: recordId,
       session_id: sessionId,
@@ -238,7 +268,7 @@ async function buildQoderRequestBody({
         version: "1.0.0",
         type: "agent",
         stage: "start",
-        id: randomUUID(),
+        id: uuidv4(),
         name: truncate(lastUser, 30),
         begin_at: Date.now(),
       },

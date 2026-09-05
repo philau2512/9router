@@ -48,7 +48,7 @@ vi.mock("@/sse/utils/logger.js", () => ({
 }));
 
 vi.mock("@/shared/utils/ssrfGuard.js", () => ({
-  assertPublicUrl: vi.fn(),
+  assertPublicUrlResolved: vi.fn(async () => {}),
 }));
 
 import { handleFetch } from "@/sse/handlers/fetch.js";
@@ -91,6 +91,7 @@ describe("web fetch account state", () => {
     expect(mocks.clearAccountError).toHaveBeenCalledWith(
       "jina-connection",
       expect.objectContaining({ connectionName: "Jina Test" }),
+      "webfetch:jina-reader",
     );
     expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
   });

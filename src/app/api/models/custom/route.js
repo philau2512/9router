@@ -1,7 +1,17 @@
 import { NextResponse } from "next/server";
+import { CAPACITY_META } from "@/shared/constants/models";
 import { getCustomModels, addCustomModel, deleteCustomModel } from "@/models";
 
 export const dynamic = "force-dynamic";
+
+function sanitizeCaps(caps) {
+  if (!caps || typeof caps !== "object") return null;
+  const clean = {};
+  for (const key of Object.keys(CAPACITY_META)) {
+    if (typeof caps[key] === "boolean") clean[key] = caps[key];
+  }
+  return Object.keys(clean).length ? clean : null;
+}
 
 // GET /api/models/custom - List all custom models
 export async function GET() {
@@ -20,18 +30,20 @@ export async function GET() {
 // POST /api/models/custom - Add custom model
 export async function POST(request) {
   try {
-    const { providerAlias, id, type, name } = await request.json();
+    const { providerAlias, id, type, name, caps } = await request.json();
     if (!providerAlias || !id) {
       return NextResponse.json(
         { error: "providerAlias and id required" },
         { status: 400 },
       );
     }
+    const cleanCaps = sanitizeCaps(caps);
     const added = await addCustomModel({
       providerAlias,
       id,
       type: type || "llm",
       name,
+      ...(cleanCaps ? { caps: cleanCaps } : {}),
     });
     return NextResponse.json({ success: true, added });
   } catch (error) {
