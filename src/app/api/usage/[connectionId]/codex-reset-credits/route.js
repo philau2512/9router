@@ -123,11 +123,32 @@ export async function GET(request, { params }) {
       );
     }
 
-    const result = await getCodexRateLimitResetCredits(
-      connection.accessToken,
-      proxyOptions,
-      connection.providerSpecificData,
-    );
+    let result;
+    try {
+      result = await getCodexRateLimitResetCredits(
+        connection.accessToken,
+        proxyOptions,
+        connection.providerSpecificData,
+      );
+    } catch (error) {
+      if (!isOAuth || !isAuthExpiredResult({ message: error.message })) {
+        throw error;
+      }
+
+      const { connection: forceRefreshed } = await refreshAndUpdateCredentials(
+        connection,
+        true,
+        proxyOptions,
+      );
+      connection = forceRefreshed;
+      if (!connection?.accessToken) throw error;
+
+      result = await getCodexRateLimitResetCredits(
+        connection.accessToken,
+        proxyOptions,
+        connection.providerSpecificData,
+      );
+    }
     return Response.json(result);
   } catch (error) {
     console.log("Codex reset credits GET error:", error);

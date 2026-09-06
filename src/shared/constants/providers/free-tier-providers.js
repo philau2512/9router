@@ -94,6 +94,16 @@ export const FREE_TIER_PROVIDERS = {
       text: "Free tier: light usage, 1 cloud model at a time (limits reset every 5h & 7d). Pro $20/mo · Max $100/mo.",
       apiKeyUrl: "https://ollama.com/settings/keys",
     },
+    serviceKinds: ["llm", "webFetch"],
+    fetchConfig: {
+      baseUrl: "https://ollama.com/api/web_fetch",
+      method: "POST",
+      authType: "apikey",
+      authHeader: "bearer",
+      formats: ["markdown"],
+      maxCharacters: 200000,
+      timeoutMs: 30000,
+    },
   },
   vertex: {
     id: "vertex",

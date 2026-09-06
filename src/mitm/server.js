@@ -172,7 +172,7 @@ async function passthrough(req, res, bodyBuffer, onResponse) {
   const tool = getToolForHost(req.headers.host);
   const versionOverride =
     tool === "antigravity"
-      ? applyAntigravityIdeVersionOverride(bodyBuffer, req.headers)
+      ? applyAntigravityIdeVersionOverride(bodyBuffer, req.headers, req.url)
       : { bodyBuffer, headers: req.headers };
   const bodyForForwarding = versionOverride.bodyBuffer;
   const headersForForwarding = { ...versionOverride.headers, host: targetHost };
@@ -488,7 +488,11 @@ function createConnectProxy() {
           }
           const secureContext = createQoderSecureContext(servername);
           if (!secureContext) {
-            cb(new Error(`Failed to generate Qoder certificate for ${servername}`));
+            cb(
+              new Error(
+                `Failed to generate Qoder certificate for ${servername}`,
+              ),
+            );
             return;
           }
           qoderHostname = servername;

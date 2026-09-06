@@ -333,14 +333,13 @@ export function buildKiroAdditionalModelRequestFields(
   body,
   effortPath = "output_config",
 ) {
-  const effort =
-    effortPath === "reasoning"
-      ? extractKiroGptEffortLevel(body)
-      : extractKiroEffortLevel(body);
-  if (!effort) return undefined;
   if (effortPath === "reasoning") {
+    const effort = extractKiroGptEffortLevel(body);
+    if (!effort) return undefined;
     return { reasoning: { effort } };
   }
+  const effort = extractKiroEffortLevel(body);
+  if (!effort) return undefined;
   return {
     thinking: { type: "adaptive", display: "summarized" },
     output_config: { effort },

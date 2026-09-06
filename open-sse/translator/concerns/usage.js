@@ -67,10 +67,14 @@ const USAGE_EXTRACTORS = {
   kiro(raw) {
     const input = n(raw.inputTokens),
       output = n(raw.outputTokens);
+    const cacheRead = n(raw.cache_read_input_tokens ?? raw.cacheReadInputTokens),
+      cacheCreate = n(raw.cache_creation_input_tokens ?? raw.cacheCreationInputTokens);
     return {
       promptTokens: input,
       completionTokens: output,
       totalTokens: input + output,
+      cachedTokens: cacheRead,
+      cacheCreationTokens: cacheCreate,
     };
   },
   ollama(raw) {

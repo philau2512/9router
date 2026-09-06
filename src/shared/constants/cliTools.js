@@ -94,29 +94,11 @@ export const MITM_TOOLS = {
     description: "GitHub Copilot IDE with MITM",
     configType: "mitm",
     mitmDomain: "api.individual.githubcopilot.com",
-    modelAliases: [
-      "gpt-5-mini",
-      "gpt-5.4-nano",
-      "claude-haiku-4.5",
-      "gpt-4o",
-      "gpt-4.1",
-    ],
+    modelAliases: ["gpt-5-mini", "gpt-5.4-nano", "claude-haiku-4.5", "gpt-4o", "gpt-4.1"],
     defaultModels: [
-      // Verified via live MITM passthrough capture of the GitHub Copilot CLI: its model
-      // picker offers "GPT-5 mini" (default → wire id "gpt-5-mini"), "Claude Haiku 4.5"
-      // ("claude-haiku-4.5") and "Auto". "Auto" is NOT a wire id — Copilot dispatches
-      // concrete models dynamically (observed "gpt-5.4-nano" for light tasks and
-      // "claude-haiku-4.5"), so it needs no slot of its own. Without a slot for
-      // gpt-5-mini / gpt-5.4-nano, getMappedModel returns null and the /chat/completions
-      // call is passed through to GitHub Copilot instead of the configured provider —
-      // and gpt-5-mini is the CLI default, so the primary turn leaks.
       { id: "gpt-5-mini", name: "GPT-5 Mini", alias: "gpt-5-mini" },
       { id: "gpt-5.4-nano", name: "GPT-5.4 Nano", alias: "gpt-5.4-nano" },
-      {
-        id: "claude-haiku-4.5",
-        name: "Claude Haiku 4.5",
-        alias: "claude-haiku-4.5",
-      },
+      { id: "claude-haiku-4.5", name: "Claude Haiku 4.5", alias: "claude-haiku-4.5" },
       { id: "gpt-4o", name: "GPT-4o", alias: "gpt-4o" },
       { id: "gpt-4.1", name: "GPT-4.1", alias: "gpt-4.1" },
     ],
@@ -315,6 +297,20 @@ export const CLI_TOOLS = {
         type: "warning",
         text: "Config path: Linux/macOS ~/.grok/config.toml • Windows %USERPROFILE%\\.grok\\config.toml",
       },
+    ],
+  },
+  copilot: {
+    id: "copilot",
+    name: "GitHub Copilot",
+    image: "/providers/copilot.png",
+    color: "#1F6FEB",
+    description: "GitHub Copilot in VS Code via 9Router extension",
+    configType: "guide",
+    docsUrl: "https://marketplace.visualstudio.com/items?itemName=hotrungnhan.9router-for-github-copilot",
+    guideSteps: [
+      { step: 1, title: "Install Extension", desc: "In VS Code, open Extensions, search for '9Router for Github Copilot' and click Install." },
+      { step: 2, title: "Configure Server", desc: "Run '9Router: Configure Server', then enter your Server URL and API Key:", value: "{{baseUrl}}", copyable: true },
+      { step: 3, title: "Select Model in Copilot Chat", desc: "Open Copilot Chat, select Manage Models, then enable the 9Router models." },
     ],
   },
   opencode: {

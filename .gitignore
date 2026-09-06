@@ -99,3 +99,6 @@ graphify-out/*
 .script/
 .PR/
 .next-analyze/*
+
+# Kiro local workspace state
+.kiro/

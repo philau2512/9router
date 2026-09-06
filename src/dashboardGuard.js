@@ -29,6 +29,7 @@ const PUBLIC_API_PATHS = [
   "/api/auth/logout",
   "/api/auth/status",
   "/api/auth/oidc",
+  "/api/auth/saml",
   "/api/version",
   "/api/settings/require-login",
   "/api/mcp/sse",
@@ -37,7 +38,15 @@ const PUBLIC_API_PATHS = [
 ];
 
 // Public top-level prefixes (LLM API endpoints with their own API key auth).
-const PUBLIC_PREFIXES = ["/v1", "/v1beta", "/api/v1", "/api/v1beta"];
+// Keep root-level rewrites here too: middleware runs before Next.js rewrites.
+const PUBLIC_PREFIXES = [
+  "/v1",
+  "/v1beta",
+  "/api/v1",
+  "/api/v1beta",
+  "/codex",
+  "/responses",
+];
 
 // Always require JWT token regardless of requireLogin setting.
 const ALWAYS_PROTECTED = [
@@ -85,6 +94,10 @@ const LOCAL_ONLY_PATHS = [
   "/api/tunnel/disable",
   "/api/oauth/cursor/auto-import",
   "/api/oauth/kiro/auto-import",
+  "/api/auth/reset-password",
+  "/api/headroom/start",
+  "/api/headroom/stop",
+  "/api/headroom/proxy",
 ];
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
@@ -139,7 +152,11 @@ function isPublicLlmApi(pathname) {
 function extractApiKey(request) {
   const authHeader = request.headers.get("Authorization");
   if (authHeader?.startsWith("Bearer ")) return authHeader.slice(7);
-  return request.headers.get("x-api-key");
+  const apiKey = request.headers.get("x-api-key");
+  if (apiKey) return apiKey;
+  const googleApiKey = request.headers.get("x-goog-api-key");
+  if (googleApiKey) return googleApiKey;
+  return request.nextUrl.searchParams?.get("key") || null;
 }
 
 async function hasValidApiKey(request) {

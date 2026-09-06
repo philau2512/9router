@@ -18,6 +18,7 @@ export default defineConfig({
       "**/node_modules/**",
       "**/dist/**",
       "**/.git/**",
+      "**/tests/unit/custom-server-h2c.test.cjs",
       "**/tests/unit/db-benchmark.test.js",
       "**/tests/unit/embeddings.cloud.test.js",
       "**/*.real.test.js",

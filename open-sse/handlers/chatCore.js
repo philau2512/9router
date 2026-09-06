@@ -369,6 +369,7 @@ export async function handleChatCore({
 
   let translatedBody;
   let toolNameMap;
+  let customToolNames;
   if (passthrough) {
     log?.debug?.(
       "PASSTHROUGH",
@@ -418,7 +419,9 @@ export async function handleChatCore({
       );
     }
     toolNameMap = translatedBody._toolNameMap;
+    customToolNames = translatedBody._customToolNames;
     delete translatedBody._toolNameMap;
+    delete translatedBody._customToolNames;
     translatedBody.model = stripThinkingSuffix(upstreamModel);
   }
 
@@ -665,6 +668,8 @@ export async function handleChatCore({
       body: translatedBody,
       stream,
       credentials,
+      providerSessionId: sessionSeed,
+      clientTool,
       signal: streamController.signal,
       log,
       proxyOptions,
@@ -981,6 +986,8 @@ export async function handleChatCore({
             body: continuationBody,
             stream,
             credentials,
+            providerSessionId: sessionSeed,
+            clientTool,
             signal: streamController.signal,
             log,
             proxyOptions,
@@ -1010,6 +1017,7 @@ export async function handleChatCore({
     userAgent,
     reqLogger,
     toolNameMap,
+    customToolNames,
     streamController,
     onStreamComplete,
     credentials,

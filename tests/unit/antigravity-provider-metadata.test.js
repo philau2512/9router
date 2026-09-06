@@ -61,7 +61,7 @@ describe("Antigravity provider metadata", () => {
 
     expect(antigravityEntries).toHaveLength(1);
     expect(activeRegistry.transport.format).toBe("antigravity");
-    expect(activeRegistry.serviceKinds).toEqual(["llm", "image"]);
+    expect(activeRegistry.serviceKinds).toEqual(["llm", "image", "webSearch"]);
     expect(imageModel).toMatchObject({
       kind: "image",
       type: "image",

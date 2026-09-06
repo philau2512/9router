@@ -61,6 +61,7 @@ describe("Gemini Cloud Code endpoint isolation", () => {
     );
     // Chat starts with daily to avoid prod 429, then falls back to prod.
     expect(antigravity.transport.baseUrls).toEqual([
+      "https://daily-cloudcode-pa.sandbox.googleapis.com",
       "https://daily-cloudcode-pa.googleapis.com",
       "https://cloudcode-pa.googleapis.com",
     ]);
