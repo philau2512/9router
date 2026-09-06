@@ -31,17 +31,15 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import {
   QODER_CHAT_URL_ENCODED,
-  QODER_CHAT_BASE_ALT,
-  QODER_CHAT_SIG_PATH,
-  QODER_MODEL_MAP,
 } from "../shared/qoder/constants.js";
-import { getQoderModelConfig, resolveQoderModels, isQoderPat, resolveQoderCredentials } from "../services/qoderModels.js";
+import { getQoderModelConfig, resolveQoderModels, resolveQoderCredentials } from "../services/qoderModels.js";
 import { OPENAI_BLOCK, CLAUDE_BLOCK } from "../translator/schema/blocks.js";
 import { encodeDataUri } from "../translator/concerns/image.js";
 
 /**
  * Hoist role:"system" messages out of the messages array (Qoder rejects
- * system in messages) and flatten any multipart content arrays.
+ * system in messages) and flatten multipart content arrays — EXCEPT image
+ * blocks, which are preserved (see normalizeContent).
  */
 function normalizeMessages(messages) {
   if (!Array.isArray(messages) || messages.length === 0) {
@@ -63,10 +61,26 @@ function normalizeMessages(messages) {
   return { messages: out, systemText: systemParts.join("\n\n") };
 }
 
+/**
+ * Normalize one message's content for Qoder.
+ *
+ * Text-only content is flattened to a plain string (Qoder's historical
+ * shape). When images are present the content stays an array and image
+ * blocks are kept as OpenAI-style `image_url` parts — verified against the
+ * upstream: it accepts both http(s) URLs and inline base64 data: URIs
+ * directly, no pre-upload to the /image/upload OSS flow required (that is
+ * a qodercli client-side choice, not a protocol requirement). The legacy
+ * top-level `image_urls` / `chat_context.imageUrls` slots stay null —
+ * qodercli leaves them null too.
+ *
+ * Claude-style `{type:"image", source:{...}}` blocks are converted to
+ * `image_url` so claude-format clients also round-trip.
+ */
 function normalizeContent(content) {
   if (typeof content === "string") return content;
   if (content == null) return "";
   if (!Array.isArray(content)) return String(content);
+
   const blocks = [];
   const textParts = [];
   let hasImage = false;
@@ -76,6 +90,7 @@ function normalizeContent(content) {
       blocks.push({ type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: item.image_url.url } });
       hasImage = true;
     } else if (item.type === CLAUDE_BLOCK.IMAGE && item.source) {
+      // Claude base64/url image → OpenAI image_url equivalent.
       const src = item.source;
       const url = src.type === "base64" && src.data
         ? encodeDataUri(src.media_type || "image/png", src.data)
@@ -90,6 +105,7 @@ function normalizeContent(content) {
     }
   }
   if (!hasImage) return textParts.join("\n");
+  // Prepend any text collected before the first image block.
   if (textParts.length) blocks.unshift({ type: OPENAI_BLOCK.TEXT, text: textParts.join("\n") });
   return blocks;
 }
@@ -144,6 +160,10 @@ function stableChatRecordId(model, messages, tools, maxTokens) {
       h.update(m.role);
     }
     if (typeof m.content === "string" && m.content) {
+      h.update("\0"); h.update(m.content);
+    } else if (Array.isArray(m.content)) {
+      // Include image refs so the same prompt with a different image gets
+      // a distinct chat_record_id.
       h.update("\0");
       try { h.update(JSON.stringify(m.content)); } catch {}
     }
@@ -491,90 +511,8 @@ async function wrapQoderSSEAsync(response, model) {
 }
 
 // ── PAT (Personal Access Token) → job-token exchange ───────────────────────
-// PATs (pt-...) cannot sign COSY requests directly. Exchange them for a
-// short-lived job token (jt-...) via /api/v1/jobToken/exchange (plain JSON,
-// not COSY-signed), then resolve the userId from userinfo. Mirrors the
-// official qodercli flow. Cached per-PAT until near-expiry.
-const PAT_PREFIX = "pt-";
-const PAT_REFRESH_BUFFER_MS = 5 * 60 * 1000;
-const patJobCache = new Map();
-
-export function isQoderPat(token) {
-  return typeof token === "string" && token.startsWith(PAT_PREFIX);
-}
-
-async function exchangeJobToken(pat, proxyOptions = null, signal = null) {
-  const res = await proxyAwareFetch(
-    QODER_JOB_TOKEN_EXCHANGE_URL,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "User-Agent": "qodercli/1.0.0",
-        "Cosy-Version": QODER_IDE_VERSION,
-        "Cosy-ClientType": QODER_CLIENT_TYPE,
-      },
-      body: JSON.stringify({ personal_token: pat }),
-      signal,
-    },
-    proxyOptions,
-  );
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`qoder PAT exchange failed: ${res.status} ${text.slice(0, 200)}`);
-  }
-  const data = await res.json();
-  if (!data.token) throw new Error("qoder PAT exchange returned no job token");
-
-  let expiresAt = Date.now() + 24 * 60 * 60 * 1000;
-  if (data.expires_at) {
-    const parsed = Date.parse(data.expires_at);
-    if (!Number.isNaN(parsed)) expiresAt = parsed;
-  } else if (typeof data.expires_in === "number" && data.expires_in > 0) {
-    expiresAt = Date.now() + data.expires_in;
-  }
-  return { jobToken: data.token, jobRefreshToken: data.refresh_token || "", expiresAt };
-}
-
-async function fetchUserIdForJobToken(jobToken, proxyOptions = null, signal = null) {
-  try {
-    const res = await proxyAwareFetch(
-      QODER_USERINFO_URL,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${jobToken}`,
-          Accept: "application/json",
-          "User-Agent": "qodercli/1.0.0",
-        },
-        signal,
-      },
-      proxyOptions,
-    );
-    if (!res.ok) return "";
-    const info = await res.json().catch(() => ({}));
-    return info.id || info.userId || info.user_id || "";
-  } catch {
-    return "";
-  }
-}
-
-/**
- * Exchange a PAT for a job token + userId, caching until near-expiry so repeat
- * chat requests don't re-exchange. Returns { accessToken, userId }.
- */
-async function resolvePatCredential(pat, proxyOptions = null, signal = null) {
-  const cached = patJobCache.get(pat);
-  if (cached && cached.expiresAt - Date.now() > PAT_REFRESH_BUFFER_MS) {
-    return cached;
-  }
-  const { jobToken, expiresAt } = await exchangeJobToken(pat, proxyOptions, signal);
-  const userId = await fetchUserIdForJobToken(jobToken, proxyOptions, signal);
-  const entry = { accessToken: jobToken, userId, expiresAt };
-  patJobCache.set(pat, entry);
-  return entry;
-}
+// PAT resolution is centralized in services/qoderModels.js so catalog fetches
+// and chat execution share one cache and credential transformation.
 
 export class QoderExecutor extends BaseExecutor {
   constructor() {
@@ -600,32 +538,23 @@ export class QoderExecutor extends BaseExecutor {
   }) {
     const url = this.buildUrl();
 
-    // PAT (pt-...) → exchange for short-lived job token + resolve userId so
-    // downstream COSY signing + catalog fetch work. Device tokens (dt-...) and
-    // job tokens (jt-...) skip this and are used directly.
-    const rawToken = credentials?.apiKey || credentials?.accessToken;
-    if (isQoderPat(rawToken)) {
-      try {
-        const resolved = await resolvePatCredential(rawToken, proxyOptions, signal);
-        credentials = {
-          ...credentials,
-          accessToken: resolved.accessToken,
-          apiKey: undefined,
-          providerSpecificData: {
-            authMethod: "pat",
-            ...(credentials?.providerSpecificData || {}),
-            userId: resolved.userId || credentials?.providerSpecificData?.userId || "",
-            machineId: credentials?.providerSpecificData?.machineId || "",
-          },
-        };
-      } catch (err) {
-        log?.error?.("QODER", `PAT exchange failed: ${err.message}`);
-        const fakeResp = new Response(
-          JSON.stringify({ error: { message: `qoder PAT exchange failed: ${err.message}` } }),
-          { status: 401, headers: { "Content-Type": "application/json" } },
-        );
-        return { response: fakeResp, url, headers: {}, transformedBody: body };
-      }
+    // PAT (pt-...) credentials are resolved centrally so Qoder model catalog
+    // loading and chat execution share the same job-token cache.
+    try {
+      credentials = await resolveQoderCredentials(
+        credentials,
+        proxyOptions,
+        signal,
+      );
+    } catch (err) {
+      log?.error?.("QODER", `PAT exchange failed: ${err.message}`);
+      const fakeResp = new Response(
+        JSON.stringify({
+          error: { message: `qoder PAT exchange failed: ${err.message}` },
+        }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      );
+      return { response: fakeResp, url, headers: {}, transformedBody: body };
     }
 
     const psd = credentials?.providerSpecificData || {};
@@ -767,6 +696,6 @@ export const __test__ = {
   wrapQoderSSE,
   buildQoderRequestBody,
   isBillingBlock,
-  isQoderPat,
-  resolvePatCredential,
+  isQoderPat: (token) => typeof token === "string" && token.startsWith("pt-"),
+  resolveQoderCredentials,
 };

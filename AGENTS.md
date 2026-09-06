@@ -137,3 +137,118 @@ key):
 RUN_REAL=1 REAL_BASE_URL=http://localhost:20127/v1 REAL_API_KEY=sk-... \
   npx vitest run --config tests/vitest.config.js tests/translator/real/kiro-thinking-stream.live.test.js
 ```
+
+## Fork structure and upstream merge map
+
+This fork deliberately decomposes several upstream monolithic dashboard and
+service areas. When bringing in upstream work, port a behavior through the
+existing local boundaries instead of replacing a page, hook, or card wholesale.
+Read the affected local contract and its tests before resolving a conflict.
+
+### Provider dashboard: split detail-page composition
+
+The provider detail view is intentionally split across:
+
+- `src/app/(dashboard)/dashboard/providers/[id]/page.js` — route-level state and
+  orchestration.
+- `src/app/(dashboard)/dashboard/providers/[id]/hooks/` — connection mutations,
+  filters, strategy persistence, and provider-specific actions.
+- `src/app/(dashboard)/dashboard/providers/[id]/components/ProviderConnectionsCard.js`
+  — composition boundary.
+- `components/ProviderConnectionsToolbar.js`, `ProviderConnectionsSummary.js`,
+  and `ProviderConnectionsList.js` — isolated UI sections.
+
+Keep the enabled-account count passed as `enabledConnectionsCount`; it is the
+round-robin count shown by the toolbar. Do not replace these files with an
+upstream monolithic provider page or the older shared
+`dashboard/providers/components/ConnectionsCard.js` implementation. Port only
+the required behavior into the split hook/component that owns it.
+
+### Usage dashboard: local quota component stack
+
+Quota UI is split under
+`src/app/(dashboard)/dashboard/usage/components/ProviderLimits/`:
+
+- `index.js` renders the page composition only.
+- `hooks/local/use-provider-limits.js` owns fetch, refresh, filters, pagination,
+  and mutations.
+- `components/local/provider-connection-card.js` renders a connection.
+- `QuotaTable.js` and `utils.js` render quota states and preserve `unknown` /
+  `format` metadata.
+
+Do not import an upstream dashboard usage page as a replacement. Merge quota
+fields end-to-end: usage service -> limits hook -> connection card ->
+`QuotaTable`. In particular, retain Grok free-tier neutral bars and
+`payAsYouGo` described above.
+
+### SQLite database and backup boundaries
+
+The fork's SQLite implementation is layered as follows:
+
+- `src/lib/localDb.js` and other legacy `src/lib/*Db.js` modules are compatibility
+  shims; keep their public exports stable.
+- `src/lib/db/` owns SQLite drivers, migrations, repositories, and snapshot
+  implementation. `src/lib/db/backup.js` validates and imports/exports full
+  snapshots.
+- `src/app/api/settings/database/route.js` is the authenticated streaming
+  snapshot download/upload route.
+- `src/app/(dashboard)/dashboard/profile/hooks/useProfileSettings.js` and
+  `components/ProfileLocalBackupCard.js` own the dashboard flow.
+
+Never replace this stack with upstream JSON-only export helpers. Preserve the
+SQLite file content type, streamed response cleanup, import limits, validation,
+and the compatibility shims together.
+
+### Provider protocol seams
+
+Keep provider-specific behavior at its existing seam:
+
+- **Grok CLI:** `open-sse/services/usage/grok-cli.js` owns its three-request
+  quota merge. Dashboard formatting belongs in the ProviderLimits stack, not in
+  the executor.
+- **Antigravity:** `open-sse/executors/antigravity.js` contains output-token and
+  signed-thought continuation safeguards; its supporting persisted signatures
+  are in `open-sse/services/thoughtSignatureStore.js`. Response translation must
+  stay aligned with `open-sse/translator/response/gemini-to-openai.js`.
+- **Kiro:** `open-sse/executors/kiro.js` owns binary EventStream decoding and
+  split thinking-tag buffering. Do not move this behavior into a generic text
+  translator.
+- **Qoder:** resolve PAT, OAuth refresh, and credential normalization only via
+  `resolveQoderCredentials()` in `open-sse/services/qoderModels.js`. Executors
+  and usage services must not recreate local PAT/job-token flows.
+- **OpenAI Responses:** keep the unique output-index allocator synchronized in
+  `open-sse/transformer/responsesTransformer.js` and
+  `open-sse/translator/response/openai-responses.js`.
+
+For translator updates, retain the pipeline `source -> openai -> target` and
+`target -> openai -> source`; prefer an already-registered direct route for
+fragile formats rather than adding logic to an unrelated executor.
+
+### Security and model API contracts
+
+- `src/shared/utils/ssrfGuard.js` owns URL validation, DNS checks, and safe
+  redirect handling. Call `fetchPublic()` for code that fetches a user-controlled
+  URL; do not use native auto-follow redirects after validating only the first
+  URL.
+- `src/sse/handlers/fetch.js` validates user-provided web-fetch targets before
+  provider dispatch. `open-sse/handlers/fetch/index.js` sends requests to trusted
+  configured provider endpoints and must keep timeout/header behavior separate
+  from target validation.
+- `src/app/api/v1/models/route.js` owns `buildModelsList()` and
+  `filterModelsForApiKey()`. Both `models/[kind]/route.js` and the catch-all
+  `models/[...model]/route.js` must apply API-key filtering before exposing a
+  list or single model. The catch-all route exists because provider-prefixed IDs
+  contain `/`; retain capability-list behavior for its single-segment kinds.
+
+### Merge procedure for fork-owned areas
+
+1. Identify the local owner from this map before accepting an upstream hunk.
+2. Compare behavior and tests, then port the smallest compatible change into
+   the local split module.
+3. Keep API response shapes, compatibility shims, and cross-layer metadata
+   intact; do not use comments or dead JSX to disable upstream code.
+4. Add or update a focused regression test for each local invariant touched.
+5. Run the invariant command in the relevant section plus `git diff --check`.
+6. Before committing, run `npm ci --dry-run --ignore-scripts` whenever
+   `package.json` changes, and run `npm run build` when App Router routes,
+   dashboard composition, or Docker runtime behavior changes.

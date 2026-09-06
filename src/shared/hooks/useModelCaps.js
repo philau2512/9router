@@ -66,6 +66,7 @@ export function useModelCaps() {
     if (cache) sync(cache);
     else loadModelCaps().then(sync);
 
+    // Custom models change at runtime — drop the shared cache and refetch
     const invalidate = () => {
       cache = null;
       loadModelCaps().then(sync);

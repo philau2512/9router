@@ -6,14 +6,15 @@
  */
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
-import { normalizeResponsesInput } from "../helpers/responsesApiHelper.js";
+import {
+  normalizeResponsesInput,
+  clampResponsesCallId,
+  coerceResponsesArguments,
+  coerceResponsesOutput,
+} from "../formats/responsesApi.js";
+import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
 
-// Responses API enforces max 64 chars on call_id (#393)
-const MAX_CALL_ID_LEN = 64;
-const clampCallId = (id) =>
-  typeof id === "string" && id.length > MAX_CALL_ID_LEN
-    ? id.substring(0, MAX_CALL_ID_LEN)
-    : id;
+const MAX_TOOL_NAME_LEN = 128;
 
 /**
  * Convert OpenAI Responses API request to OpenAI Chat Completions format
@@ -280,6 +281,23 @@ export function openaiResponsesToOpenAIRequest(
 }
 
 /**
+ * Extract plain text from a system/developer message for Responses instructions.
+ * Array content (text parts) is joined; anything else falls back to "" rather
+ * than leaking "[object Object]" upstream.
+ */
+function extractInstructionsText(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content.map((c) => {
+      if (typeof c?.text === "string") return c.text;
+      if (typeof c?.content === "string") return c.content;
+      return "";
+    }).filter(Boolean).join("\n");
+  }
+  return "";
+}
+
+/**
  * Ensure object schema always has properties field (required by Codex Responses API)
  */
 function normalizeToolParameters(params) {
@@ -325,8 +343,7 @@ export function openaiToOpenAIResponsesRequest(
     if (msg.role === "system" || msg.role === "developer") {
       // Use the first instruction-bearing message as instructions (role=system or role=developer for GPT-5/Codex)
       if (!hasSystemMessage) {
-        result.instructions =
-          typeof msg.content === "string" ? msg.content : "";
+        result.instructions = extractInstructionsText(msg.content);
         hasSystemMessage = true;
       }
       continue; // Skip instruction messages in input
@@ -403,36 +420,33 @@ export function openaiToOpenAIResponsesRequest(
     // Convert tool calls
     if (msg.role === "assistant" && msg.tool_calls) {
       for (const tc of msg.tool_calls) {
-        const thoughtSig =
+        const name =
+          typeof tc.function?.name === "string" ? tc.function.name.trim() : "";
+        if (!name) continue;
+        const thoughtSignature =
           tc.thought_signature ||
           tc.thoughtSignature ||
           tc.function?.thought_signature ||
           tc.function?.thoughtSignature;
         const item = {
-          type: "function_call",
-          call_id: clampCallId(tc.id),
-          name: tc.function?.name || "_unknown",
-          arguments: tc.function?.arguments || "{}",
+          type: RESPONSES_ITEM.FUNCTION_CALL,
+          call_id: clampResponsesCallId(tc.id),
+          name: name.slice(0, MAX_TOOL_NAME_LEN),
+          arguments: coerceResponsesArguments(tc.function?.arguments),
         };
-        if (typeof thoughtSig === "string" && thoughtSig.length > 0) {
-          item.thought_signature = thoughtSig;
+        if (typeof thoughtSignature === "string" && thoughtSignature.length > 0) {
+          item.thought_signature = thoughtSignature;
         }
         result.input.push(item);
       }
     }
 
     // Convert tool results - output must be a string for Responses API
-    if (msg.role === "tool") {
-      const output =
-        typeof msg.content === "string"
-          ? msg.content
-          : Array.isArray(msg.content)
-            ? msg.content.map((c) => c.text || JSON.stringify(c)).join("")
-            : JSON.stringify(msg.content);
+    if (msg.role === ROLE.TOOL) {
       result.input.push({
-        type: "function_call_output",
-        call_id: clampCallId(msg.tool_call_id),
-        output,
+        type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT,
+        call_id: clampResponsesCallId(msg.tool_call_id),
+        output: coerceResponsesOutput(msg.content),
       });
     }
   }
@@ -445,17 +459,22 @@ export function openaiToOpenAIResponsesRequest(
   // Convert tools format
   if (body.tools && Array.isArray(body.tools)) {
     result.tools = body.tools.map((tool) => {
-      if (tool.type === "function") {
+      if (tool.type === OPENAI_BLOCK.FUNCTION) {
+        const name =
+          typeof tool.function?.name === "string"
+            ? tool.function.name.trim()
+            : "";
+        if (!name) return null;
         return {
-          type: "function",
-          name: tool.function.name,
+          type: OPENAI_BLOCK.FUNCTION,
+          name: name.slice(0, MAX_TOOL_NAME_LEN),
           description: String(tool.function.description || ""),
           parameters: normalizeToolParameters(tool.function.parameters),
           strict: tool.function.strict,
         };
       }
       return tool;
-    });
+    }).filter(Boolean);
   }
 
   // Pass through other relevant fields

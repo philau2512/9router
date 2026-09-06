@@ -7,7 +7,7 @@ import {
   extractApiKey,
   isValidApiKey,
 } from "../services/auth.js";
-import { handleAntigravityQuotaError } from "../services/antigravityQuota.js";
+import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
@@ -24,6 +24,7 @@ import * as log from "../utils/logger.js";
 import { logContextStore } from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
+import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
 
 /**
  * Handle chat completion request
@@ -51,6 +52,9 @@ export async function handleChat(request, clientRawRequest = null) {
       };
     }
     const modelStr = body.model;
+    const { model: normalizedModel, contextMarker } =
+      stripModelContextMarker(modelStr);
+    if (contextMarker) body.model = normalizedModel;
 
     // Log request endpoint and model (classic structured log for parser)
     const requestStartTime = Date.now();
@@ -266,7 +270,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {
         const errorMsg = lastError || credentials.lastError || "Unavailable";
-        const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
+        const status = HTTP_STATUS.SERVICE_UNAVAILABLE;
         log.warn("CHAT", `[${provider}/${model}] ${errorMsg} (${credentials.retryAfterHuman})`);
         return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
       }
@@ -336,6 +340,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       },
       onRequestSuccess: async () => {
         await clearAccountError(credentials.connectionId, credentials, model);
+        // "Consecutive" strikes: a success clears the breaker for this pair.
+        clearAntigravityStrikes(credentials.connectionId, model);
       },
       timing,
       clientSignal: request?.signal,

@@ -1,5 +1,6 @@
 import { platform, arch } from "os";
 import { ANTIGRAVITY_BASE_URLS } from "../providers/antigravity-provider-metadata.js";
+import { ANTIGRAVITY_IDE_USER_AGENT } from "../providers/shared.js";
 import {
   GROK_CLI_BASE_URL,
   GROK_CLI_CLIENT_IDENTIFIER,
@@ -128,7 +129,7 @@ export const PROVIDERS = {
   antigravity: {
     baseUrls: ANTIGRAVITY_BASE_URLS,
     format: "antigravity",
-    headers: { "User-Agent": `antigravity/1.107.0 ${platform()}/${arch()}` },
+    headers: { "User-Agent": ANTIGRAVITY_IDE_USER_AGENT },
     clientId:
       "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com",
     clientSecret: "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",

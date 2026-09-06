@@ -151,11 +151,10 @@ function _refreshProjectId(provider, connectionId, accessToken) {
         });
       })
       .catch((err) => {
-        log.debug(
-          "TOKEN_REFRESH",
-          "Failed to fetch projectId after token refresh",
-          { connectionId, error: err?.message ?? err },
-        );
+        log.debug("TOKEN_REFRESH", "Failed to fetch projectId after token refresh", {
+          connectionId,
+          error: err?.message ?? err,
+        });
       });
   }
 }

@@ -103,24 +103,16 @@ export function createSSEStream(options = {}) {
     body = null,
     onStreamComplete = null,
     apiKey = null,
+    credentials = null,
+    customToolNames = null,
     streamStateTracker = null,
     targetModelAlias = null,
     // Absolute request entry time (ms). Required for correct TTFT; falls back to
     // transform-create time only when callers omit it (tests / legacy).
     requestStartTime = null,
-    // Phase 3 (option c) object hand-off: when true, transform() receives
-    // already-parsed OpenAI chunk OBJECTS (from Kiro's object-mode decode) plus a
-    // final { done: true } sentinel, instead of raw SSE bytes. It skips
-    // decode/line-split/JSON.parse and feeds each object straight into the SAME
-    // translate pipeline (translateOneEvent) the byte path uses — so every
-    // translate-branch side effect (usage injection, [DONE] handling, message_stop
-    // flush) is preserved identically. Only valid with mode=TRANSLATE.
+    // Kiro object-mode hand-off skips decode/parse but uses the same translation
+    // pipeline as bytes so usage and terminal events remain identical.
     objectInput = false,
-    // Phase 4 (Option A): the inline armStall/onUpstreamFirstByte/onClearStall
-    // hooks were never wired by any caller (always null in production) — the
-    // real stall reset lives in pipeWithDisconnect's upstreamStallTap. Dead
-    // plumbing removed. Do NOT re-add here; stall detection belongs at the
-    // upstream-byte layer, not the SSE-output transform.
   } = options;
 
   let buffer = "";
@@ -149,7 +141,9 @@ export function createSSEStream(options = {}) {
           ...initState(sourceFormat),
           provider,
           toolNameMap,
+          customToolNames: new Set(customToolNames || []),
           model,
+          sessionId: credentials?._clientSessionId || null,
           geminiSawThought: resumedAfterAntigravityThought,
         }
       : null;
@@ -861,7 +855,7 @@ export function createSSEStream(options = {}) {
 
         if (buffer.trim()) {
           const parsed = parseSSELine(buffer.trim());
-          if (parsed && !parsed.done) {
+          if (parsed) {
             // Use the normal translation path so terminal events without a
             // trailing newline update confirmed content before resume/logging.
             translateOneEvent(parsed, controller);
@@ -994,6 +988,8 @@ export function createSSETransformStreamWithLogger(
   apiKey = null,
   streamStateTracker = null,
   requestStartTime = null,
+  customToolNames = null,
+  credentials = null,
 ) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
@@ -1009,6 +1005,8 @@ export function createSSETransformStreamWithLogger(
     apiKey,
     streamStateTracker,
     requestStartTime,
+    customToolNames,
+    credentials,
   });
 }
 
@@ -1029,6 +1027,8 @@ export function createObjectTranslateStreamWithLogger(
   apiKey = null,
   streamStateTracker = null,
   requestStartTime = null,
+  customToolNames = null,
+  credentials = null,
 ) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,

@@ -267,6 +267,8 @@ export async function compressWithHeadroom(
     diagnostics = null,
   } = {},
 ) {
+  const normalizedTimeoutMs =
+    Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS;
   if (!enabled) {
     setDiagnostic(diagnostics, "disabled");
     return null;
@@ -297,7 +299,7 @@ export async function compressWithHeadroom(
         url,
         oai.messages,
         model,
-        timeoutMs,
+        normalizedTimeoutMs,
         compressUserMessages,
         diagnostics || {},
       );
@@ -324,7 +326,7 @@ export async function compressWithHeadroom(
         url,
         oai.messages,
         model,
-        timeoutMs,
+        normalizedTimeoutMs,
         compressUserMessages,
         diagnostics || {},
       );
@@ -358,7 +360,7 @@ export async function compressWithHeadroom(
         url,
         projection.messages,
         model,
-        timeoutMs,
+        normalizedTimeoutMs,
         compressUserMessages,
         diagnostics || {},
       );
@@ -386,7 +388,7 @@ export async function compressWithHeadroom(
       url,
       body[key],
       model,
-      timeoutMs,
+      normalizedTimeoutMs,
       compressUserMessages,
       diagnostics || {},
     );

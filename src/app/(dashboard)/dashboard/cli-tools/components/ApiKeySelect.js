@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { readKeyPresets, upsertKeyPreset, deleteKeyPreset, subscribeKeyPresets } from "./cliEndpointPresets";
 
 const CUSTOM_VALUE = "__custom__";
+const SAVE_VALUE = "__save_key__";
 
 export default function ApiKeySelect({
   value,
@@ -11,34 +13,82 @@ export default function ApiKeySelect({
   cloudEnabled = false,
   className = "",
 }) {
-  const isCustom = !apiKeys.some((k) => k.key === value) && value !== "";
-  const [mode, setMode] = useState(() => {
-    if (!value) return apiKeys.length > 0 ? apiKeys[0].key : CUSTOM_VALUE;
-    if (apiKeys.some((k) => k.key === value)) return value;
-    return CUSTOM_VALUE;
-  });
-  const [customInput, setCustomInput] = useState(isCustom ? value : "");
+  const [savedKeys, setSavedKeys] = useState([]);
+  const [customMode, setCustomMode] = useState(false);
+  const [customInput, setCustomInput] = useState("");
+
+  useEffect(() => {
+    const sync = () => setSavedKeys(readKeyPresets());
+    sync();
+    return subscribeKeyPresets(sync);
+  }, []);
+
+  const options = useMemo(
+    () => [
+      ...apiKeys.map((key) => ({ value: key.key, label: key.key })),
+      ...savedKeys.map((preset) => ({
+        value: `saved:${preset.name}`,
+        label: preset.key,
+        url: preset.key,
+        saved: true,
+      })),
+      { value: CUSTOM_VALUE, label: "Custom...", url: "" },
+    ],
+    [apiKeys, savedKeys],
+  );
+
+  const matched = value
+    ? options.find((option) => option.value === value || option.url === value)
+    : null;
+  const mode = matched
+    ? matched.value
+    : customMode || value
+      ? CUSTOM_VALUE
+      : (options[0]?.value ?? CUSTOM_VALUE);
+  const inputValue = customMode ? customInput : value || "";
+  const isSaved = typeof mode === "string" && mode.startsWith("saved:");
+  const isCustom = mode === CUSTOM_VALUE;
+  const canSave =
+    isCustom &&
+    (value || "").trim().length > 0 &&
+    !apiKeys.some((key) => key.key === value);
+  const noKeys = apiKeys.length === 0 && savedKeys.length === 0 && !customMode && !value;
 
   const handleSelect = (e) => {
     const next = e.target.value;
-    setMode(next);
+    if (next === SAVE_VALUE) {
+      upsertKeyPreset((value || "").trim());
+      return;
+    }
     if (next === CUSTOM_VALUE) {
+      setCustomMode(true);
       setCustomInput("");
       onChange("");
-    } else {
-      onChange(next);
+      return;
     }
+    setCustomMode(false);
+    setCustomInput("");
+    const opt = options.find((o) => o.value === next);
+    if (opt) onChange(opt.url ?? opt.value);
   };
 
   const handleCustomInput = (e) => {
     const v = e.target.value;
+    setCustomMode(true);
     setCustomInput(v);
     onChange(v);
   };
 
-  const noKeys = apiKeys.length === 0 && mode !== CUSTOM_VALUE;
+  const handleDeleteSaved = () => {
+    if (!isSaved) return;
+    deleteKeyPreset(mode.slice(6));
+    setCustomMode(false);
+    setCustomInput("");
+    const fallback = options.find((o) => o.value !== CUSTOM_VALUE && o.value !== mode);
+    onChange(fallback ? (fallback.url ?? fallback.value) : "");
+  };
 
-  if (noKeys && mode !== CUSTOM_VALUE) {
+  if (noKeys) {
     return (
       <span
         className={`min-w-0 rounded bg-surface/40 px-2 py-2 text-xs text-text-muted sm:py-1.5 ${className}`}
@@ -52,22 +102,34 @@ export default function ApiKeySelect({
 
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
-      <select
-        value={mode}
-        onChange={handleSelect}
-        className="w-full min-w-0 px-2 py-2 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5"
-      >
-        {apiKeys.map((k) => (
-          <option key={k.id} value={k.key}>
-            {k.key}
-          </option>
-        ))}
-        <option value={CUSTOM_VALUE}>Custom...</option>
-      </select>
-      {mode === CUSTOM_VALUE && (
+      <div className="flex items-center gap-2">
+        <select
+          value={mode}
+          onChange={handleSelect}
+          className="flex-1 min-w-0 px-2 py-2 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5"
+        >
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+          {canSave && <option value={SAVE_VALUE}>+ Save current as...</option>}
+        </select>
+        {isSaved && (
+          <button
+            type="button"
+            onClick={handleDeleteSaved}
+            className="p-1 text-text-muted hover:text-red-500 rounded transition-colors shrink-0"
+            title="Delete saved key"
+          >
+            <span className="material-symbols-outlined text-[14px]">delete</span>
+          </button>
+        )}
+      </div>
+      {isCustom && (
         <input
           type="text"
-          value={customInput}
+          value={inputValue}
           onChange={handleCustomInput}
           placeholder="sk-..."
           className="w-full min-w-0 px-2 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5"

@@ -342,10 +342,6 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
   };
 
   if (profileArn) payload.profileArn = profileArn;
-  // Current Kiro runtime rejects the top-level `systemPrompt` field with
-  // REQUEST_BODY_INVALID. The prompt is already prepended to the replayed
-  // conversation content, so keep it as non-serialized metadata for session
-  // replay compatibility without putting it on the provider wire payload.
   if (systemPrompt) {
     Object.defineProperty(payload, "systemPrompt", {
       value: systemPrompt,

@@ -16,14 +16,8 @@ import { handleFetchCore } from "open-sse/handlers/fetch/index.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
-import {
-  updateProviderCredentials,
-  checkAndRefreshToken,
-} from "../services/tokenRefresh.js";
-import {
-  handleComboChat,
-  getComboModelsFromData,
-} from "open-sse/services/combo.js";
+import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
+import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
 import { assertPublicUrlResolved } from "@/shared/utils/ssrfGuard.js";
 
 /**
@@ -87,7 +81,8 @@ export async function handleFetch(request) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid URL format");
   }
 
-  // SSRF guard: reject internal/private/metadata targets
+  // SSRF guard: reject internal/private/metadata targets, including
+  // hostnames that merely resolve to one (DNS lookup, not just literal checks).
   try {
     await assertPublicUrlResolved(targetUrl);
   } catch (err) {
@@ -270,11 +265,7 @@ async function handleSingleProviderFetch(
     });
 
     if (result.success) {
-      await clearAccountError(
-        credentials.connectionId,
-        credentials,
-        fetchLockKey,
-      );
+      await clearAccountError(credentials.connectionId, credentials, fetchLockKey);
       return new Response(JSON.stringify(result.data), {
         headers: {
           "Content-Type": "application/json",

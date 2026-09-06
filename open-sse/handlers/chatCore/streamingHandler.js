@@ -34,6 +34,7 @@ function buildTransformStream({
   userAgent,
   reqLogger,
   toolNameMap,
+  customToolNames = null,
   model,
   connectionId,
   body,
@@ -41,11 +42,9 @@ function buildTransformStream({
   apiKey,
   streamStateTracker,
   targetModelAlias = null,
-  // Phase 3 (option c): when true, the translate transform consumes parsed
-  // OpenAI objects (from Kiro's object-mode decode) instead of SSE bytes.
   objectInput = false,
-  // Request entry time — required so TTFT is not measured from transform create.
   requestStartTime = null,
+  credentials = null,
 }) {
   const isDroidCLI =
     userAgent?.toLowerCase().includes("droid") ||
@@ -54,6 +53,28 @@ function buildTransformStream({
     provider === "codex" &&
     targetFormat === FORMATS.OPENAI_RESPONSES &&
     !isDroidCLI;
+
+  const createTranslateStream = (providerFormat, clientFormat) => {
+    const build = objectInput
+      ? createObjectTranslateStreamWithLogger
+      : createSSETransformStreamWithLogger;
+    return build(
+      providerFormat,
+      clientFormat,
+      provider,
+      reqLogger,
+      toolNameMap,
+      model,
+      connectionId,
+      body,
+      onStreamComplete,
+      apiKey,
+      streamStateTracker,
+      requestStartTime,
+      customToolNames,
+      credentials,
+    );
+  };
 
   if (needsCodexTranslation) {
     let codexTarget;
@@ -67,45 +88,11 @@ function buildTransformStream({
     )
       codexTarget = FORMATS.ANTIGRAVITY;
     else codexTarget = FORMATS.OPENAI;
-    return createSSETransformStreamWithLogger(
-      FORMATS.OPENAI_RESPONSES,
-      codexTarget,
-      provider,
-      reqLogger,
-      toolNameMap,
-      model,
-      connectionId,
-      body,
-      onStreamComplete,
-      apiKey,
-      streamStateTracker,
-      requestStartTime,
-    );
+    return createTranslateStream(FORMATS.OPENAI_RESPONSES, codexTarget);
   }
 
-  // needsTranslation signature is (sourceFormat, targetFormat) — pass in order.
-  // Symmetric today, but keep call sites consistent to avoid latent misrouting
-  // if a format-specific branch is ever added. (Red Team S3 Finding 16)
   if (needsTranslation(sourceFormat, targetFormat)) {
-    // Phase 3 (option c): object-input translate transform when Kiro hands off
-    // parsed OpenAI objects (skips serialize->reparse); same args otherwise.
-    const build = objectInput
-      ? createObjectTranslateStreamWithLogger
-      : createSSETransformStreamWithLogger;
-    return build(
-      targetFormat,
-      sourceFormat,
-      provider,
-      reqLogger,
-      toolNameMap,
-      model,
-      connectionId,
-      body,
-      onStreamComplete,
-      apiKey,
-      streamStateTracker,
-      requestStartTime,
-    );
+    return createTranslateStream(targetFormat, sourceFormat);
   }
 
   return createPassthroughStreamWithLogger(
@@ -143,14 +130,13 @@ export async function handleStreamingResponse({
   onRequestSuccess,
   reqLogger,
   toolNameMap,
+  customToolNames = null,
   streamController,
   onStreamComplete,
   credentials,
   midStreamResumeEnabled,
   timing,
   streamDetailId,
-  // Phase 3 (option c): Kiro's object-mode decode stream when the fused path is
-  // active (streaming Kiro request needing translation). Null otherwise.
   kiroObjectStream = null,
   retryEmptyAntigravityStop = null,
 }) {

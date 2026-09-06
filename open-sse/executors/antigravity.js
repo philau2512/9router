@@ -4,13 +4,16 @@ import { PROVIDERS } from "../config/providers.js";
 import {
   OAUTH_ENDPOINTS,
   ANTIGRAVITY_HEADERS,
-  INTERNAL_REQUEST_HEADER,
   AG_DEFAULT_TOOLS,
   AG_TOOL_SUFFIX,
   ANTIGRAVITY_PROMPT_REWRITES,
 } from "../config/appConstants.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
-import { deriveSessionId } from "../utils/sessionManager.js";
+import {
+  deriveSessionId,
+  resolveSessionId,
+  toNumericSessionId,
+} from "../utils/sessionManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import {
   cleanJSONSchemaForAntigravity,
@@ -19,6 +22,7 @@ import {
 import { ANTIGRAVITY_MODEL_ALIASES } from "../providers/antigravity-provider-metadata.js";
 import { stripThinkingSuffix } from "../translator/concerns/thinkingUnified.js";
 import { DEFAULT_THINKING_AG_SIGNATURE } from "../config/defaultThinkingSignature.js";
+import { getGeminiThoughtSignatureSync } from "../services/thoughtSignatureStore.js";
 
 // Sanitize function name: Gemini requires [a-zA-Z_][a-zA-Z0-9_.:\-]{0,63}
 function sanitizeFunctionName(name) {
@@ -155,7 +159,6 @@ export class AntigravityExecutor extends BaseExecutor {
       "User-Agent":
         this.config.headers?.["User-Agent"] ||
         ANTIGRAVITY_HEADERS["User-Agent"],
-      [INTERNAL_REQUEST_HEADER.name]: INTERNAL_REQUEST_HEADER.value,
       ...(sessionId && { "X-Machine-Session-Id": sessionId }),
       Accept: stream ? "text/event-stream" : "application/json",
     };
@@ -212,6 +215,9 @@ export class AntigravityExecutor extends BaseExecutor {
       };
     }
 
+    const rawSessionId = body.request?.sessionId || resolveSessionId({ headers: credentials?.rawHeaders, body, connectionId: credentials?.email || credentials?.connectionId, scope: "antigravity" });
+    const sessionId = toNumericSessionId(rawSessionId) || rawSessionId;
+
     // ─── Standard (non-image) request ───
     // Fix contents for Claude models via Antigravity
     const keepThoughtParts = shouldPreserveThoughtParts(
@@ -231,36 +237,46 @@ export class AntigravityExecutor extends BaseExecutor {
         if (p.thoughtSignature && !p.functionCall && !p.text) return false;
         return true;
       });
-      const needsBackfill =
-        filteredParts?.some((p) => p.functionCall && !p.thoughtSignature) ?? false;
-      const hasFunctionResponse =
-        filteredParts?.some((p) => p.functionResponse?.response) ?? false;
-
-      const parts = filteredParts?.map((p) => {
-        let part = p;
-        if (part.functionCall && !part.thoughtSignature && needsBackfill) {
-          part = { ...part, thoughtSignature: DEFAULT_THINKING_AG_SIGNATURE };
+      // Gemini 3+ requires a thoughtSignature on the leading function call.
+      // Preserve fork sanitization for function results and restore cached
+      // signatures before using the safe default for clients that omit them.
+      let firstFunctionCallSeen = false;
+      const parts = filteredParts?.map((part) => {
+        let nextPart = part;
+        if (part.functionCall) {
+          const callId = part.functionCall.id;
+          const cachedSignature = callId
+            ? getGeminiThoughtSignatureSync(callId, sessionId)
+            : null;
+          const thoughtSignature =
+            part.thoughtSignature ||
+            cachedSignature ||
+            (!firstFunctionCallSeen
+              ? DEFAULT_THINKING_AG_SIGNATURE
+              : undefined);
+          firstFunctionCallSeen = true;
+          if (thoughtSignature && thoughtSignature !== part.thoughtSignature) {
+            nextPart = { ...nextPart, thoughtSignature };
+          }
         }
-        if (part.functionResponse?.response) {
-          part = {
-            ...part,
+        if (nextPart.functionResponse?.response) {
+          nextPart = {
+            ...nextPart,
             functionResponse: {
-              ...part.functionResponse,
+              ...nextPart.functionResponse,
               response: sanitizeFunctionResponseData(
-                part.functionResponse.response,
+                nextPart.functionResponse.response,
               ),
             },
           };
         }
-        return part;
+        return nextPart;
       });
 
-      if (
-        role !== c.role ||
+      const partsChanged =
         parts?.length !== c.parts?.length ||
-        needsBackfill ||
-        hasFunctionResponse
-      ) {
+        parts?.some((part, index) => part !== c.parts[index]);
+      if (role !== c.role || partsChanged) {
         return {
           ...c,
           role,
@@ -337,7 +353,7 @@ export class AntigravityExecutor extends BaseExecutor {
       ...(contents && { contents }),
       ...(tools && { tools }),
       sessionId:
-        body.request?.sessionId ||
+        sessionId ||
         deriveSessionId(credentials?.email || credentials?.connectionId),
       safetySettings: undefined,
       ...(tools?.length > 0 && {
@@ -445,6 +461,35 @@ export class AntigravityExecutor extends BaseExecutor {
     }
 
     return null;
+  }
+
+  async computeRetryDelay(response, attempt) {
+    let bodyText = "";
+    let errorJson = null;
+    try {
+      bodyText = await response.clone().text();
+      errorJson = bodyText ? JSON.parse(bodyText) : null;
+    } catch {
+      // Retry decisions remain fail-open when a response body cannot be read.
+    }
+
+    const message = this.extractErrorMessage(errorJson, bodyText);
+    if (!this.isTransientAntigravityError(response.status, message)) {
+      return false;
+    }
+
+    const retryMs =
+      this.parseRetryHeaders(response.headers) ||
+      this.parseRetryFromErrorMessage(message);
+    if (retryMs) {
+      return retryMs <= MAX_RETRY_AFTER_MS ? retryMs : false;
+    }
+
+    const cap =
+      response.status === HTTP_STATUS.RATE_LIMITED
+        ? MAX_RETRY_AFTER_MS
+        : ANTIGRAVITY_TRANSIENT_RETRY_MAX_MS;
+    return Math.min(1000 * 2 ** attempt, cap);
   }
 
   // Parse retry time from Antigravity error message body

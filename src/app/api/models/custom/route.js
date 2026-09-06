@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { CAPACITY_META } from "@/shared/constants/models";
 import { getCustomModels, addCustomModel, deleteCustomModel } from "@/models";
+import { CAPACITY_META } from "@/shared/constants/models";
 
 export const dynamic = "force-dynamic";
 
+// Whitelist capability keys to boolean values — ignore anything else
 function sanitizeCaps(caps) {
   if (!caps || typeof caps !== "object") return null;
   const clean = {};

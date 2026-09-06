@@ -1,6 +1,7 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { GEMINI_FINISH } from "../schema/finishReasons.js";
+import { storeGeminiThoughtSignature } from "../../services/thoughtSignatureStore.js";
 
 // Convert Gemini response chunk to OpenAI format
 export function geminiToOpenAIResponse(chunk, state) {
@@ -127,12 +128,20 @@ export function geminiToOpenAIResponse(chunk, state) {
   if (content?.parts) {
     for (const part of content.parts) {
       const hasThoughtSig = part.thoughtSignature || part.thought_signature;
+      if (hasThoughtSig && typeof hasThoughtSig === "string") {
+        state.pendingThoughtSignature = hasThoughtSig;
+      }
       const isThought = part.thought === true;
 
       // Handle thought signature (thinking mode)
       if (hasThoughtSig) {
         const hasTextContent = part.text !== undefined && part.text !== "";
         const hasFunctionCall = !!part.functionCall;
+
+        // Standalone signatures apply to the following function call.
+        if (!hasTextContent && !hasFunctionCall) {
+          continue;
+        }
 
         if (hasTextContent) {
           // A signature without `thought:true` belongs to a visible Gemini
@@ -144,35 +153,30 @@ export function geminiToOpenAIResponse(chunk, state) {
 
         if (hasFunctionCall) {
           const rawName = part.functionCall.name;
-          // Restore original tool name from mapping (AG cloaking)
           const fcName = state.toolNameMap?.get(rawName) || rawName;
           const fcArgs = part.functionCall.args || {};
           const toolCallIndex = state.functionIndex++;
-
+          const callId =
+            part.functionCall.id ||
+            `gemini_call_${toolCallIndex}_${String(fcName || "unknown").replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+          const thoughtSignature =
+            typeof hasThoughtSig === "string"
+              ? hasThoughtSig
+              : state.pendingThoughtSignature;
           const toolCall = {
-            id:
-              part.functionCall.id ||
-              `gemini_call_${toolCallIndex}_${String(fcName || "unknown").replace(/[^a-zA-Z0-9_-]/g, "_")}`,
+            id: callId,
             index: toolCallIndex,
             type: "function",
-            function: {
-              name: fcName,
-              arguments: JSON.stringify(fcArgs),
-            },
+            function: { name: fcName, arguments: JSON.stringify(fcArgs) },
+            ...(thoughtSignature && { thought_signature: thoughtSignature }),
           };
-          // Preserve provider thoughtSignature for tool-loop continuity across
-          // the OpenAI/Responses bridge (empty STOP without it on AG).
-          if (typeof hasThoughtSig === "string" && hasThoughtSig.length > 0) {
-            toolCall.thought_signature = hasThoughtSig;
+          if (thoughtSignature) {
+            storeGeminiThoughtSignature(callId, thoughtSignature, state.sessionId);
           }
-
-          // Track Gemini function calls separately — do NOT write to state.toolCalls,
-          // which the downstream openai-to-claude translator uses for Claude block metadata.
+          state.pendingThoughtSignature = null;
           state.geminiToolCallCount = (state.geminiToolCallCount || 0) + 1;
 
-          if (isAntigravityResponse && hasThoughtSig) {
-            // This is the protocol boundary that identifies preceding plain
-            // text as agent reasoning rather than user-visible output.
+          if (isAntigravityResponse && thoughtSignature) {
             state.geminiPendingContent = "";
           }
           if (isAntigravityResponse && state.geminiSawThought) {
@@ -198,25 +202,24 @@ export function geminiToOpenAIResponse(chunk, state) {
       // Function call
       if (part.functionCall) {
         const rawName = part.functionCall.name;
-        // Restore original tool name from mapping (AG cloaking)
         const fcName = state.toolNameMap?.get(rawName) || rawName;
         const fcArgs = part.functionCall.args || {};
         const toolCallIndex = state.functionIndex++;
-
+        const callId =
+          part.functionCall.id ||
+          `gemini_call_${toolCallIndex}_${String(fcName || "unknown").replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+        const thoughtSignature = state.pendingThoughtSignature || null;
         const toolCall = {
-          id:
-            part.functionCall.id ||
-            `gemini_call_${toolCallIndex}_${String(fcName || "unknown").replace(/[^a-zA-Z0-9_-]/g, "_")}`,
+          id: callId,
           index: toolCallIndex,
           type: "function",
-          function: {
-            name: fcName,
-            arguments: JSON.stringify(fcArgs),
-          },
+          function: { name: fcName, arguments: JSON.stringify(fcArgs) },
+          ...(thoughtSignature && { thought_signature: thoughtSignature }),
         };
-
-        // Track Gemini function calls separately — do NOT write to state.toolCalls,
-        // which the downstream openai-to-claude translator uses for Claude block metadata.
+        if (thoughtSignature) {
+          storeGeminiThoughtSignature(callId, thoughtSignature, state.sessionId);
+        }
+        state.pendingThoughtSignature = null;
         state.geminiToolCallCount = (state.geminiToolCallCount || 0) + 1;
 
         if (isAntigravityResponse && state.geminiSawThought) {

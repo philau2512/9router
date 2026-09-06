@@ -18,6 +18,8 @@ export const CLAUDE_BLOCK = {
   TOOL_RESULT: "tool_result",
   THINKING: "thinking",
   REDACTED_THINKING: "redacted_thinking",
+  SERVER_TOOL_USE: "server_tool_use",
+  WEB_SEARCH_TOOL_RESULT: "web_search_tool_result",
 };
 
 export const RESPONSES_ITEM = {

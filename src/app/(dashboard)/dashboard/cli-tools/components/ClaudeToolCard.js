@@ -103,9 +103,9 @@ export default function ClaudeToolCard({
         }
       }
     });
-
+    // Restore a saved or custom key from settings.json.
     const tokenFromFile = env.ANTHROPIC_AUTH_TOKEN;
-    if (tokenFromFile && apiKeys?.some((k) => k.key === tokenFromFile)) {
+    if (tokenFromFile) {
       setSelectedApiKey(tokenFromFile);
     }
 
