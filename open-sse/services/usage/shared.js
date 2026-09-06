@@ -3,11 +3,14 @@
  * Created for upstream a11937cdd (grok-cli usage).
  */
 
-import { PROVIDERS } from "../../providers/index.js";
+import { PROVIDERS, REGISTRY } from "../../providers/index.js";
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 
 // usage endpoints: single source from registry transport.usage
-export const U = (id) => PROVIDERS[id]?.usage || {};
+export const U = (id) =>
+  PROVIDERS[id]?.usage ||
+  REGISTRY?.find((entry) => entry.id === id)?.transport?.usage ||
+  {};
 
 /**
  * Parse reset date/time to ISO string.

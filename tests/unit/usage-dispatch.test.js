@@ -13,26 +13,10 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
 
 const load = () => import("../../open-sse/services/usage.js");
 const SUPPORTED = [
-  "github",
-  "gemini-cli",
-  "antigravity",
-  "claude",
-  "codex",
-  "kiro",
-  "qoder",
-  "qwen",
-  "iflow",
-  "ollama",
-  "glm",
-  "glm-cn",
-  "minimax",
-  "minimax-cn",
-  "vercel-ai-gateway",
-  "grok-cli",
-  "gcli",
-  "xai",
-  "kimi",
-  "deepseek",
+  "github", "gemini-cli", "antigravity", "claude", "codex", "kiro",
+  "qoder", "iflow", "ollama", "glm", "glm-cn",
+  "minimax", "minimax-cn", "vercel-ai-gateway", "grok-cli", "kimi",
+  "deepseek", "opencode-go", "zed",
 ];
 
 describe("usage dispatch", () => {
@@ -41,19 +25,13 @@ describe("usage dispatch", () => {
   it("unsupported provider → not-implemented message", async () => {
     const { getUsageForProvider } = await load();
     const res = await getUsageForProvider({ provider: "totally-unknown" });
-    expect(res).toEqual({
-      message: "Usage API not implemented for totally-unknown",
-    });
+    expect(res).toEqual({ message: "Usage API not implemented for totally-unknown" });
   });
 
   it("every supported provider routes to its handler (no fallback message)", async () => {
     const { getUsageForProvider } = await load();
     for (const provider of SUPPORTED) {
-      const res = await getUsageForProvider({
-        provider,
-        accessToken: "t",
-        apiKey: "k",
-      });
+      const res = await getUsageForProvider({ provider, accessToken: "t", apiKey: "k" });
       // Routed handler must return an object and never the unsupported fallback
       expect(res, `${provider} routed`).toBeTypeOf("object");
       expect(res?.message).not.toBe(`Usage API not implemented for ${provider}`);

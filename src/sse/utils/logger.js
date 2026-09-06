@@ -57,7 +57,7 @@ function formatData(data) {
   if (typeof data === "string") return data;
   if (typeof data === "object") {
     try {
-      const keys = Object.keys(data);
+      const keys = Object.keys(data).filter((k) => data[k] !== undefined);
       if (keys.every((k) => typeof data[k] !== "object")) {
         return keys.map((k) => `${k}=${data[k]}`).join(" | ");
       }

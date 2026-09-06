@@ -1,19 +1,28 @@
 import crypto from "crypto";
-import { BaseExecutor } from "./base.js";
+import { BaseExecutor, waitForAbortableDelay } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import {
   OAUTH_ENDPOINTS,
   ANTIGRAVITY_HEADERS,
-  INTERNAL_REQUEST_HEADER,
   AG_DEFAULT_TOOLS,
   AG_TOOL_SUFFIX,
+  ANTIGRAVITY_PROMPT_REWRITES,
 } from "../config/appConstants.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
-import { deriveSessionId } from "../utils/sessionManager.js";
+import {
+  deriveSessionId,
+  resolveSessionId,
+  toNumericSessionId,
+} from "../utils/sessionManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { cleanJSONSchemaForAntigravity } from "../translator/helpers/geminiHelper.js";
+import {
+  cleanJSONSchemaForAntigravity,
+  sanitizeFunctionResponseData,
+} from "../translator/helpers/geminiHelper.js";
 import { ANTIGRAVITY_MODEL_ALIASES } from "../providers/antigravity-provider-metadata.js";
+import { stripThinkingSuffix } from "../translator/concerns/thinkingUnified.js";
 import { DEFAULT_THINKING_AG_SIGNATURE } from "../config/defaultThinkingSignature.js";
+import { getGeminiThoughtSignatureSync } from "../services/thoughtSignatureStore.js";
 
 // Sanitize function name: Gemini requires [a-zA-Z_][a-zA-Z0-9_.:\-]{0,63}
 function sanitizeFunctionName(name) {
@@ -91,6 +100,20 @@ function isImageModel(model) {
   return IMAGE_MODEL_PATTERNS.some((p) => p.test(model));
 }
 
+/**
+ * Follow an empty Antigravity STOP with an explicit user continuation while
+ * retaining the original session ID and every prior conversation item.
+ */
+export function buildAntigravityEmptyStopContinuation(body) {
+  const continuation = structuredClone(body);
+  const request = continuation?.request;
+  if (!request || !Array.isArray(request.contents)) {
+    throw new Error("Antigravity continuation requires request.contents");
+  }
+  request.contents.push({ role: "user", parts: [{ text: "continue" }] });
+  return continuation;
+}
+
 // Parse aspect ratio / resolution from model name suffixes
 // e.g. "gemini-3.1-flash-image-16x9" -> { aspectRatio: "16:9" }
 // e.g. "gemini-3.1-flash-image-1024x768" -> { aspectRatio: "4:3" }
@@ -136,13 +159,13 @@ export class AntigravityExecutor extends BaseExecutor {
       "User-Agent":
         this.config.headers?.["User-Agent"] ||
         ANTIGRAVITY_HEADERS["User-Agent"],
-      [INTERNAL_REQUEST_HEADER.name]: INTERNAL_REQUEST_HEADER.value,
       ...(sessionId && { "X-Machine-Session-Id": sessionId }),
       Accept: stream ? "text/event-stream" : "application/json",
     };
   }
 
   transformRequest(model, body, stream, credentials) {
+    body = structuredClone(body);
     const projectId = credentials?.projectId || this.generateProjectId();
 
     // OpenAI clients may include stream_options even for non-streaming calls.
@@ -192,6 +215,9 @@ export class AntigravityExecutor extends BaseExecutor {
       };
     }
 
+    const rawSessionId = body.request?.sessionId || resolveSessionId({ headers: credentials?.rawHeaders, body, connectionId: credentials?.email || credentials?.connectionId, scope: "antigravity" });
+    const sessionId = toNumericSessionId(rawSessionId) || rawSessionId;
+
     // ─── Standard (non-image) request ───
     // Fix contents for Claude models via Antigravity
     const keepThoughtParts = shouldPreserveThoughtParts(
@@ -206,28 +232,55 @@ export class AntigravityExecutor extends BaseExecutor {
       // Default: strip thought-only parts (Claude-via-AG / non-thinking).
       // When thinking is active, keep thought text for tool continuity; still
       // drop orphan signature-only parts (no text / no functionCall).
-      const parts = c.parts?.filter((p) => {
+      const filteredParts = c.parts?.filter((p) => {
         if (p.thought && !p.functionCall && !keepThoughtParts) return false;
         if (p.thoughtSignature && !p.functionCall && !p.text) return false;
         return true;
       });
-      const needsBackfill =
-        parts?.some((p) => p.functionCall && !p.thoughtSignature) ?? false;
-      if (
-        role !== c.role ||
+      // Gemini 3+ requires a thoughtSignature on the leading function call.
+      // Preserve fork sanitization for function results and restore cached
+      // signatures before using the safe default for clients that omit them.
+      let firstFunctionCallSeen = false;
+      const parts = filteredParts?.map((part) => {
+        let nextPart = part;
+        if (part.functionCall) {
+          const callId = part.functionCall.id;
+          const cachedSignature = callId
+            ? getGeminiThoughtSignatureSync(callId, sessionId)
+            : null;
+          const thoughtSignature =
+            part.thoughtSignature ||
+            cachedSignature ||
+            (!firstFunctionCallSeen
+              ? DEFAULT_THINKING_AG_SIGNATURE
+              : undefined);
+          firstFunctionCallSeen = true;
+          if (thoughtSignature && thoughtSignature !== part.thoughtSignature) {
+            nextPart = { ...nextPart, thoughtSignature };
+          }
+        }
+        if (nextPart.functionResponse?.response) {
+          nextPart = {
+            ...nextPart,
+            functionResponse: {
+              ...nextPart.functionResponse,
+              response: sanitizeFunctionResponseData(
+                nextPart.functionResponse.response,
+              ),
+            },
+          };
+        }
+        return nextPart;
+      });
+
+      const partsChanged =
         parts?.length !== c.parts?.length ||
-        needsBackfill
-      ) {
+        parts?.some((part, index) => part !== c.parts[index]);
+      if (role !== c.role || partsChanged) {
         return {
           ...c,
           role,
-          parts: needsBackfill
-            ? parts.map((p) =>
-                p.functionCall && !p.thoughtSignature
-                  ? { ...p, thoughtSignature: DEFAULT_THINKING_AG_SIGNATURE }
-                  : p,
-              )
-            : parts,
+          parts: parts ?? c.parts,
         };
       }
       return c;
@@ -277,6 +330,15 @@ export class AntigravityExecutor extends BaseExecutor {
       ...requestWithoutTools
     } = body.request || {};
     stripBlacklisted(requestWithoutTools);
+    if (requestWithoutTools.systemInstruction?.parts) {
+      for (const part of requestWithoutTools.systemInstruction.parts) {
+        if (typeof part.text !== "string") continue;
+        for (const { from, to } of ANTIGRAVITY_PROMPT_REWRITES) {
+          part.text = part.text.replaceAll(from, to);
+        }
+      }
+    }
+
     const generationConfig = {
       ...(requestWithoutTools.generationConfig || {}),
     };
@@ -291,7 +353,7 @@ export class AntigravityExecutor extends BaseExecutor {
       ...(contents && { contents }),
       ...(tools && { tools }),
       sessionId:
-        body.request?.sessionId ||
+        sessionId ||
         deriveSessionId(credentials?.email || credentials?.connectionId),
       safetySettings: undefined,
       ...(tools?.length > 0 && {
@@ -302,7 +364,9 @@ export class AntigravityExecutor extends BaseExecutor {
     // Strip blacklisted thinking fields from top-level body (set by thinkingUnified.js at root, not body.request)
     stripBlacklisted(body);
 
-    const upstreamModel = ANTIGRAVITY_MODEL_ALIASES[model] || model;
+    const upstreamModel =
+      ANTIGRAVITY_MODEL_ALIASES[stripThinkingSuffix(model)] ||
+      stripThinkingSuffix(model);
 
     return {
       ...body,
@@ -397,6 +461,35 @@ export class AntigravityExecutor extends BaseExecutor {
     }
 
     return null;
+  }
+
+  async computeRetryDelay(response, attempt) {
+    let bodyText = "";
+    let errorJson = null;
+    try {
+      bodyText = await response.clone().text();
+      errorJson = bodyText ? JSON.parse(bodyText) : null;
+    } catch {
+      // Retry decisions remain fail-open when a response body cannot be read.
+    }
+
+    const message = this.extractErrorMessage(errorJson, bodyText);
+    if (!this.isTransientAntigravityError(response.status, message)) {
+      return false;
+    }
+
+    const retryMs =
+      this.parseRetryHeaders(response.headers) ||
+      this.parseRetryFromErrorMessage(message);
+    if (retryMs) {
+      return retryMs <= MAX_RETRY_AFTER_MS ? retryMs : false;
+    }
+
+    const cap =
+      response.status === HTTP_STATUS.RATE_LIMITED
+        ? MAX_RETRY_AFTER_MS
+        : ANTIGRAVITY_TRANSIENT_RETRY_MAX_MS;
+    return Math.min(1000 * 2 ** attempt, cap);
   }
 
   // Parse retry time from Antigravity error message body
@@ -571,7 +664,7 @@ export class AntigravityExecutor extends BaseExecutor {
               "RETRY",
               `${response.status} with Retry-After: ${Math.ceil(retryMs / 1000)}s, waiting... (${retryAfterAttemptsByUrl[urlIndex]}/${MAX_RETRY_AFTER_RETRIES})`,
             );
-            await new Promise((resolve) => setTimeout(resolve, retryMs));
+            await waitForAbortableDelay(retryMs, signal);
             urlIndex--;
             continue;
           }
@@ -602,7 +695,7 @@ export class AntigravityExecutor extends BaseExecutor {
               "RETRY",
               `${label} auto retry ${retryAttemptsByUrl[urlIndex]}/${MAX_AUTO_RETRIES} after ${backoffMs / 1000}s`,
             );
-            await new Promise((resolve) => setTimeout(resolve, backoffMs));
+            await waitForAbortableDelay(backoffMs, signal);
             urlIndex--;
             continue;
           }

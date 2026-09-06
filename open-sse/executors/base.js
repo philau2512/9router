@@ -1,3 +1,4 @@
+import { resolveOpenAICompatibleApiType } from "../services/provider.js";
 import {
   HTTP_STATUS,
   DEFAULT_RETRY_CONFIG,
@@ -7,6 +8,37 @@ import {
 import { shouldRefreshCredentials } from "../services/oauthCredentialManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { dbg } from "../utils/debugLog.js";
+
+function createAbortError(reason) {
+  if (reason?.name === "AbortError") return reason;
+  const error = new Error(reason?.message || (reason ? String(reason) : "Request aborted"));
+  error.name = "AbortError";
+  return error;
+}
+
+export function throwIfAborted(signal) {
+  if (signal?.aborted) throw createAbortError(signal.reason);
+}
+
+export function waitForAbortableDelay(delayMs, signal) {
+  throwIfAborted(signal);
+  if (!delayMs || delayMs <= 0) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(onTimeout, delayMs);
+    const onAbort = () => {
+      clearTimeout(timeout);
+      cleanup();
+      reject(createAbortError(signal?.reason));
+    };
+    const cleanup = () => signal?.removeEventListener("abort", onAbort);
+    function onTimeout() {
+      cleanup();
+      resolve();
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 /**
  * BaseExecutor - Base class for provider executors
@@ -59,9 +91,10 @@ export class BaseExecutor {
         credentials?.providerSpecificData?.baseUrl ||
         "https://api.openai.com/v1";
       const normalized = baseUrl.replace(/\/$/, "");
-      const path = this.provider.includes("responses")
-        ? "/responses"
-        : "/chat/completions";
+      const path =
+        resolveOpenAICompatibleApiType(this.provider, credentials) === "responses"
+          ? "/responses"
+          : "/chat/completions";
       return `${normalized}${path}`;
     }
     if (this.provider?.startsWith?.("anthropic-compatible-")) {
@@ -162,7 +195,7 @@ export class BaseExecutor {
         "RETRY",
         `${reason} retry ${retryAttemptsByUrl[urlIndex]}/${attempts} after ${delayMs / 1000}s`,
       );
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      await waitForAbortableDelay(delayMs, signal);
       return true;
     };
 
@@ -179,7 +212,7 @@ export class BaseExecutor {
         : this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
 
     for (let urlIndex = 0; urlIndex < fallbackCount; urlIndex++) {
-      const url = this.buildUrl(model, stream, urlIndex, credentials);
+      const url = this.buildUrl(model, stream, urlIndex, credentials, body);
       const transformedBody = this.transformRequest(
         model,
         body,

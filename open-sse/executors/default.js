@@ -6,6 +6,7 @@ import { resolveOpenAICompatibleApiType } from "../services/provider.js";
 import { OAUTH_ENDPOINTS, buildKimiHeaders } from "../config/appConstants.js";
 import { buildClineHeaders } from "../shared/clineAuth.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
 
@@ -68,9 +69,20 @@ export class DefaultExecutor extends BaseExecutor {
     super(provider, PROVIDERS[provider] || PROVIDERS.openai);
   }
 
-  transformRequest(model, body) {
+  transformRequest(model, body, stream = false) {
     const transformed = this.applyJsonSchemaFallback(body);
 
+    if (
+      stream &&
+      Array.isArray(transformed?.messages) &&
+      transformed.stream !== false &&
+      !transformed.stream_options &&
+      this.config.format !== "claude" &&
+      !this.provider?.startsWith?.("anthropic-compatible-") &&
+      !this.provider?.includes?.("responses")
+    ) {
+      transformed.stream_options = { include_usage: true };
+    }
     if (transformed && typeof transformed === "object") {
       // quirk: some openai-compatible providers reject Anthropic's client_metadata field
       if (this.config.quirks?.dropClientMetadata) {
@@ -137,9 +149,19 @@ export class DefaultExecutor extends BaseExecutor {
   }
 
   // Fallback descriptor for providers without an explicit entry in AUTH_DESCRIPTORS.
-  resolveAuthDescriptor() {
+  resolveAuthDescriptor(credentials = {}) {
     if (this.provider?.startsWith?.("anthropic-compatible-")) {
       return { apiKey: { header: "x-api-key", scheme: "raw" }, oauth: { header: "Authorization", scheme: "bearer" }, anthropicVersion: true };
+    }
+    if (this.provider === "claude") {
+      const hasApiKey = Boolean(credentials.apiKey);
+      return {
+        apiKey: { header: "x-api-key", scheme: "raw" },
+        oauth: hasApiKey
+          ? { header: "x-api-key", scheme: "raw" }
+          : { header: "Authorization", scheme: "bearer" },
+        anthropicVersion: true,
+      };
     }
     if (this.config?.format === "claude") {
       return { ...XAPIKEY, anthropicVersion: true };
@@ -150,13 +172,49 @@ export class DefaultExecutor extends BaseExecutor {
   buildHeaders(credentials, stream = true, url, model) {
     const rt = credentials?.runtimeTransport;
     const headers = { "Content-Type": "application/json", ...(rt ? rt.headers : this.config.headers) };
-    const desc = rt?.auth || AUTH_DESCRIPTORS[this.provider] || this.resolveAuthDescriptor();
+    const desc =
+      rt?.auth ||
+      (this.provider === "claude"
+        ? this.resolveAuthDescriptor(credentials)
+        : AUTH_DESCRIPTORS[this.provider] || this.resolveAuthDescriptor());
     // Hooks run BEFORE auth so dynamic overlays can't clobber the token.
     for (const hook of desc.hooks || []) HEADER_HOOKS[hook]?.(headers, credentials);
     applyAuth(headers, desc, credentials);
 
-    if (this.provider === "claude" && model) {
+    // anthropic-compatible-* nodes serving a real Claude model sit in front of
+    // Anthropic itself (a rotating multi-account proxy, a corporate gateway),
+    // so the request needs the same beta flags the `claude` provider sends:
+    // without `context-management-2025-06-27` upstream rejects the
+    // `context_management` block Claude Code puts in every request with
+    // "context_management: Extra inputs are not permitted" (HTTP 400), and the
+    // combo silently falls through to the next model. The model id gates this:
+    // a node fronting Kimi or GLM answers on its own ids and never matches, so
+    // gateways that would choke on unknown beta flags are left untouched.
+    const isClaudeModel = typeof model === "string" && /^claude-/.test(model);
+    if (model && (this.provider === "claude"
+      || (this.provider?.startsWith?.("anthropic-compatible-") && isClaudeModel))) {
       headers["Anthropic-Beta"] = selectAnthropicBeta(model);
+    }
+
+    if (this.provider === "claude") {
+      const cachedHeaders = getCachedClaudeHeaders();
+      if (cachedHeaders) {
+        const staticBeta = headers["anthropic-beta"] || headers["Anthropic-Beta"];
+        for (const key of Object.keys(cachedHeaders)) {
+          for (const existingKey of Object.keys(headers)) {
+            if (existingKey.toLowerCase() === key) delete headers[existingKey];
+          }
+        }
+        Object.assign(headers, cachedHeaders);
+        if (staticBeta || cachedHeaders["anthropic-beta"]) {
+          headers["anthropic-beta"] = [staticBeta, cachedHeaders["anthropic-beta"]]
+            .filter(Boolean)
+            .flatMap((value) => value.split(","))
+            .map((value) => value.trim())
+            .filter((value, index, values) => value && values.indexOf(value) === index)
+            .join(",");
+        }
+      }
     }
 
     // Strip first-party Claude Code identity headers for non-Anthropic anthropic-compatible upstreams

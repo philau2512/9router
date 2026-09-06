@@ -47,6 +47,16 @@ const URL_PATTERNS = {
 const MODEL_SYNONYMS = {
   antigravity: {
     "gemini-default": "gemini-3.5-flash-low",
+    "gemini-3.5-flash-high": "gemini-3-flash-agent",
+    "gemini-3.5-flash-medium": "gemini-3.5-flash-low",
+    "gemini-3.5-flash-extra-low": "gemini-3.5-flash-extra-low",
+    "gemini-3.8-flash": "gemini-3.8-flash-medium",
+    "gemini-3.8-flash-high": "gemini-3.8-flash-high",
+    "gemini-3.8-flash-medium": "gemini-3.8-flash-medium",
+    "gemini-3.8-flash-low": "gemini-3.8-flash-low",
+    "gemini-3.7-flash-high": "gemini-3.7-flash-high",
+    "gemini-3.7-flash-medium": "gemini-3.7-flash-medium",
+    "gemini-3.7-flash-low": "gemini-3.7-flash-low",
     "gemini-3.1-pro-high": "gemini-pro-agent",
     "gemini-3-pro-high": "gemini-pro-agent",
     "gemini-3-pro-low": "gemini-3.1-pro-low",
@@ -184,7 +194,17 @@ function extractModel(url, body) {
     return parsed.chat_context.modelConfig.model;
   }
   const model = urlModel || parsed.model || null;
-  if (String(model).replace(/^models\//, "") === "gemini-3.6-flash-tiered") {
+  const cleanModelName = String(model).replace(/^models\//, "");
+  if (
+    cleanModelName === "gemini-3.6-flash-tiered" ||
+    cleanModelName === "gemini-3.7-flash-tiered" ||
+    cleanModelName === "gemini-3.8-flash-tiered"
+  ) {
+    const ver = cleanModelName.includes("3.8")
+      ? "3.8"
+      : cleanModelName.includes("3.7")
+        ? "3.7"
+        : "3.6";
     const rawLevel =
       parsed.request?.generationConfig?.thinkingConfig?.thinkingLevel ||
       parsed.generationConfig?.thinkingConfig?.thinkingLevel;
@@ -193,7 +213,7 @@ function extractModel(url, body) {
     )
       ? String(rawLevel).toLowerCase()
       : "medium";
-    return `gemini-3.6-flash-${level}`;
+    return `gemini-${ver}-flash-${level}`;
   }
   return model;
 }

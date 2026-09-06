@@ -26,9 +26,8 @@ function isAnthropicCompatible(provider) {
   );
 }
 
-function getOpenAICompatibleType(provider) {
-  if (!isOpenAICompatible(provider)) return "chat";
-  return provider.includes("responses") ? "responses" : "chat";
+export function getOpenAICompatibleType(provider, credentials = null) {
+  return resolveOpenAICompatibleApiType(provider, credentials);
 }
 
 // Resolve the API type (chat vs responses) for an openai-compatible node.
@@ -148,7 +147,7 @@ export function detectFormat(body) {
 // Get provider config
 export function getProviderConfig(provider) {
   if (isOpenAICompatible(provider)) {
-    const apiType = getOpenAICompatibleType(provider);
+    const apiType = getOpenAICompatibleType(provider, null);
     return {
       ...PROVIDERS.openai,
       format: apiType === "responses" ? "openai-responses" : "openai",
@@ -184,7 +183,10 @@ export function getProviderFallbackCount(provider) {
 // Build provider URL
 export function buildProviderUrl(provider, model, stream = true, options = {}) {
   if (isOpenAICompatible(provider)) {
-    const apiType = getOpenAICompatibleType(provider);
+    const apiType = resolveOpenAICompatibleApiType(
+      provider,
+      options?.credentials,
+    );
     const baseUrl = options?.baseUrl || OPENAI_COMPATIBLE_DEFAULTS.baseUrl;
     return buildOpenAICompatibleUrl(baseUrl, apiType);
   }
@@ -373,9 +375,9 @@ export function buildProviderHeaders(
 }
 
 // Get target format for provider
-export function getTargetFormat(provider) {
+export function getTargetFormat(provider, credentials = null) {
   if (isOpenAICompatible(provider)) {
-    return getOpenAICompatibleType(provider) === "responses"
+    return resolveOpenAICompatibleApiType(provider, credentials) === "responses"
       ? "openai-responses"
       : "openai";
   }

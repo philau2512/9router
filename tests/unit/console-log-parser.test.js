@@ -3,8 +3,8 @@ import { parseLogLine, groupLogLines } from "@/app/(dashboard)/dashboard/console
 
 describe("console-log logParser", () => {
   describe("parseLogLine", () => {
-    it("parses request start with method, endpoint, combo, and msg count", () => {
-      const line = "[15:21:09] bfxnve 📥 POST /v1/chat/completions | codex-free | 28 msgs | 21 tools";
+    it("parses request start with method, endpoint, combo, msg, tools, and effort", () => {
+      const line = "[15:21:09] bfxnve 📥 POST /v1/chat/completions | codex-free | 28 msgs | 21 tools | effort=medium";
       const parsed = parseLogLine(line);
 
       expect(parsed.timestamp).toBe("15:21:09");
@@ -14,6 +14,17 @@ describe("console-log logParser", () => {
       expect(parsed.metadata.endpoint).toBe("/v1/chat/completions");
       expect(parsed.metadata.combo).toBe("codex-free");
       expect(parsed.metadata.msgs).toBe(28);
+      expect(parsed.metadata.tools).toBe(21);
+      expect(parsed.metadata.effort).toBe("medium");
+    });
+
+    it("parses compact uppercase MSG, TOOL, THINK formats", () => {
+      const line = "[21:34:38] ⚪ ▶ POST agy → antigravity/gemini-3.7-flash-medium · FMT:openai-responses→antigravity · STREAM · 0MSG · 22TOOL · THINK:high · ACC:pvpjvlgl3149899@gmail.com";
+      const parsed = parseLogLine(line);
+
+      expect(parsed.metadata.msgs).toBe(0);
+      expect(parsed.metadata.tools).toBe(22);
+      expect(parsed.metadata.effort).toBe("high");
     });
 
     it("parses model routing and does NOT match authmodel=1 as model", () => {
@@ -96,6 +107,38 @@ describe("console-log logParser", () => {
       expect(req.account).toBe("leokun-byok");
       // Must extract clean model name 'gpt-5.6-terra' instead of '5' (from authmodel=5) or long UUID
       expect(req.model).toBe("gpt-5.6-terra");
+    });
+
+    it("marks request as aborted when stream disconnects with ResponseAborted", () => {
+      const rawLines = [
+        "[15:11:21] [5h66y9] 📥 POST /v1/responses | agy | 532 msgs | 22 tools | effort=high",
+        '[15:11:21] [5h66y9] ℹ️  [CHAT] Combo "agy" with 3 models (strategy: fallback, sticky: 1)',
+        "[15:11:21] [5h66y9] ℹ️  [COMBO] Trying model 1/3: ag/gemini-3.7-flash-tiered",
+        "[15:11:21] [5h66y9] ℹ️  [ROUTING] ag/gemini-3.7-flash-tiered → antigravity/gemini-3.7-flash-tiered",
+        "[15:11:21] [5h66y9:10c2b2] ℹ️  [AUTH] Using antigravity account: pvpjvlgl3149899@gmail.com",
+        "[15:11:21] 🔵 ▶ POST agy → antigravity/gemini-3.7-flash-tiered · FMT:openai-responses→antigravity · STREAM · 0MSG · 22TOOL · THINK:high · ACC:pvpjvlgl3149899@gmail.com",
+        "[15:11:21] [5h66y9:10c2b2] [PENDING] START | provider=antigravity | model=gemini-3.7-flash-tiered",
+        "[15:11:23] [5h66y9:10c2b2] ℹ️  [COMBO] Model ag/gemini-3.7-flash-tiered succeeded",
+        "[15:11:23] 🌊 [STREAM] ANTIGRAVITY | gemini-3.7-flash-tiered | 2309ms | disconnect: ResponseAborted",
+      ];
+
+      const { groups } = groupLogLines(rawLines);
+      expect(groups).toHaveLength(1);
+
+      const req = groups[0];
+      expect(req.id).toBe("5h66y9");
+      expect(req.connId).toBe("10c2b2");
+      expect(req.combo).toBe("agy");
+      expect(req.model).toBe("antigravity/gemini-3.7-flash-tiered");
+      expect(req.account).toBe("pvpjvlgl3149899@gmail.com");
+      expect(req.duration).toBe(2309);
+      expect(req.status).toBe("aborted");
+      expect(req.isAborted).toBe(true);
+      expect(req.statusCode).toBe(499);
+      expect(req.disconnectReason).toBe("ResponseAborted");
+      expect(req.msgs).toBe(532);
+      expect(req.tools).toBe(22);
+      expect(req.effort).toBe("high");
     });
   });
 });

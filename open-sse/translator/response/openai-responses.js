@@ -4,6 +4,9 @@
  */
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
+import { buildChunk } from "../concerns/chunk.js";
+import { clampResponsesCallId } from "../formats/responsesApi.js";
+import { OPENAI_BLOCK, RESPONSES_ITEM, MODEL_FALLBACK } from "../schema/index.js";
 
 /**
  * Translate OpenAI chunk to Responses API events
@@ -12,6 +15,10 @@ import { FORMATS } from "../formats.js";
 export function openaiToOpenAIResponsesResponse(chunk, state) {
   if (!chunk) {
     return flushEvents(state);
+  }
+
+  if (chunk.usage && typeof chunk.usage === "object") {
+    state.usage = chunk.usage;
   }
 
   if (!chunk.choices?.length) return [];
@@ -93,8 +100,8 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     }
   }
 
-  // Handle tool_calls
-  if (delta.tool_calls) {
+  // Handle tool_calls (empty array is truthy; require a real call)
+  if (delta.tool_calls && delta.tool_calls.length) {
     closeMessage(state, emit, idx);
     for (const tc of delta.tool_calls) {
       emitToolCall(state, emit, tc);
@@ -302,40 +309,58 @@ function emitToolCall(state, emit, tc) {
     state.funcThoughtSigs[tcIdx] = thoughtSig;
   }
 
-  if (!state.funcCallIds[tcIdx] && newCallId) {
-    state.funcCallIds[tcIdx] = newCallId;
-    const outputIndex = getOutputIndex(state, "tool", tcIdx);
-    const item = {
-      id: `fc_${newCallId}`,
-      type: "function_call",
-      arguments: "",
-      call_id: newCallId,
-      name: state.funcNames[tcIdx] || "",
-    };
-    if (state.funcThoughtSigs?.[tcIdx]) {
-      item.thought_signature = state.funcThoughtSigs[tcIdx];
+  const emitAdded = () => {
+    if (state.funcCallIds[tcIdx] && state.funcNames[tcIdx] && !state.funcItemAdded?.[tcIdx]) {
+      state.funcItemAdded ??= {};
+      state.funcItemAdded[tcIdx] = true;
+      const callId = state.funcCallIds[tcIdx];
+      const outputIndex = getOutputIndex(state, "tool", tcIdx);
+      const isCustom = state.customToolNames?.has(state.funcNames[tcIdx]);
+      const item = isCustom
+        ? {
+            id: `fc_${callId}`,
+            type: "custom_tool_call",
+            call_id: callId,
+            name: state.funcNames[tcIdx],
+            input: "",
+          }
+        : {
+            id: `fc_${callId}`,
+            type: "function_call",
+            arguments: "",
+            call_id: callId,
+            name: state.funcNames[tcIdx],
+          };
+      if (state.funcThoughtSigs?.[tcIdx]) item.thought_signature = state.funcThoughtSigs[tcIdx];
+      emit("response.output_item.added", { type: "response.output_item.added", output_index: outputIndex, item });
     }
+  };
 
-    emit("response.output_item.added", {
-      type: "response.output_item.added",
-      output_index: outputIndex,
-      item,
-    });
-  }
+  if (!state.funcCallIds[tcIdx] && newCallId) state.funcCallIds[tcIdx] = newCallId;
+  emitAdded();
 
   if (!state.funcArgsBuf[tcIdx]) state.funcArgsBuf[tcIdx] = "";
 
   if (tc.function?.arguments) {
-    const refCallId = state.funcCallIds[tcIdx] || newCallId;
-    if (refCallId) {
-      emit("response.function_call_arguments.delta", {
-        type: "response.function_call_arguments.delta",
-        item_id: `fc_${refCallId}`,
-        output_index: getOutputIndex(state, "tool", tcIdx),
-        delta: tc.function.arguments,
-      });
+    const callId = state.funcCallIds[tcIdx];
+    const isCustom = state.customToolNames?.has(state.funcNames[tcIdx]);
+    const raw = tc.function.arguments;
+    const input = isCustom ? parseCustomToolInput(raw) : raw;
+    if (callId) {
+      emit(isCustom ? "response.custom_tool_call_input.delta" : "response.function_call_arguments.delta", isCustom
+        ? { type: "response.custom_tool_call_input.delta", item_id: `fc_${callId}`, output_index: getOutputIndex(state, "tool", tcIdx), delta: input }
+        : { type: "response.function_call_arguments.delta", item_id: `fc_${callId}`, output_index: getOutputIndex(state, "tool", tcIdx), delta: raw });
     }
-    state.funcArgsBuf[tcIdx] += tc.function.arguments;
+    state.funcArgsBuf[tcIdx] += input;
+  }
+}
+
+function parseCustomToolInput(argumentsText) {
+  try {
+    const parsed = JSON.parse(argumentsText);
+    return typeof parsed?.input === "string" ? parsed.input : "";
+  } catch {
+    return "";
   }
 }
 
@@ -345,20 +370,31 @@ function closeToolCall(state, emit, idx) {
     const args = state.funcArgsBuf[idx] || "{}";
 
     const outputIndex = getOutputIndex(state, "tool", idx);
-    emit("response.function_call_arguments.done", {
-      type: "response.function_call_arguments.done",
-      item_id: `fc_${callId}`,
-      output_index: outputIndex,
-      arguments: args,
-    });
+    const isCustom = state.customToolNames?.has(state.funcNames[idx]);
+    if (!isCustom) {
+      emit("response.function_call_arguments.done", {
+        type: "response.function_call_arguments.done",
+        item_id: `fc_${callId}`,
+        output_index: outputIndex,
+        arguments: args,
+      });
+    }
 
-    const item = {
-      id: `fc_${callId}`,
-      type: "function_call",
-      arguments: args,
-      call_id: callId,
-      name: state.funcNames[idx] || "",
-    };
+    const item = isCustom
+      ? {
+          id: `fc_${callId}`,
+          type: "custom_tool_call",
+          call_id: callId,
+          name: state.funcNames[idx] || "",
+          input: args,
+        }
+      : {
+          id: `fc_${callId}`,
+          type: "function_call",
+          arguments: args,
+          call_id: callId,
+          name: state.funcNames[idx] || "",
+        };
     if (state.funcThoughtSigs?.[idx]) {
       item.thought_signature = state.funcThoughtSigs[idx];
     }
@@ -374,19 +410,62 @@ function closeToolCall(state, emit, idx) {
   }
 }
 
+function formatResponsesUsage(usage) {
+  if (!usage || typeof usage !== "object") return null;
+
+  const promptTokens =
+    usage.prompt_tokens ?? usage.input_tokens ?? 0;
+  const completionTokens =
+    usage.completion_tokens ?? usage.output_tokens ?? 0;
+  const totalTokens =
+    usage.total_tokens ?? promptTokens + completionTokens;
+
+  const cachedTokens =
+    usage.prompt_tokens_details?.cached_tokens ??
+    usage.input_token_details?.cached_tokens ??
+    usage.cache_read_input_tokens ??
+    0;
+
+  const reasoningTokens =
+    usage.completion_tokens_details?.reasoning_tokens ??
+    usage.output_token_details?.reasoning_tokens ??
+    0;
+
+  return {
+    total_tokens: totalTokens,
+    input_tokens: promptTokens,
+    output_tokens: completionTokens,
+    input_token_details: {
+      cached_tokens: cachedTokens,
+    },
+    output_token_details: {
+      reasoning_tokens: reasoningTokens,
+    },
+  };
+}
+
 function sendCompleted(state, emit) {
   if (!state.completedSent) {
     state.completedSent = true;
+    const responseObj = {
+      id: state.responseId,
+      object: "response",
+      created_at: state.created,
+      status: "completed",
+      background: false,
+      error: null,
+    };
+
+    if (state.usage) {
+      const formattedUsage = formatResponsesUsage(state.usage);
+      if (formattedUsage) {
+        responseObj.usage = formattedUsage;
+      }
+    }
+
     emit("response.completed", {
       type: "response.completed",
-      response: {
-        id: state.responseId,
-        object: "response",
-        created_at: state.created,
-        status: "completed",
-        background: false,
-        error: null,
-      },
+      response: responseObj,
     });
   }
 }
@@ -500,9 +579,17 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     state.created = Math.floor(Date.now() / 1000);
     state.toolCallIndex = 0;
     state.currentToolCallId = null;
+    state.respToolChatIndex ??= new Map();
+    state.respToolArgsEmitted ??= new Set();
 
-    // Return initial chunk so downstream translators emit message_start immediately.
-    if (shouldEmitInitialAssistantChunk(eventType)) {
+    // Return initial chunk so downstream translators emit message_start immediately,
+    // except when the initial event itself starts a tool call: that event must
+    // continue to the handler below so its index and identity are retained.
+    const startsToolCall =
+      eventType === "response.output_item.added" &&
+      (data.item?.type === RESPONSES_ITEM.FUNCTION_CALL ||
+        data.item?.type === "custom_tool_call");
+    if (shouldEmitInitialAssistantChunk(eventType) && !startsToolCall) {
       return {
         id: state.chatId,
         object: "chat.completion.chunk",
@@ -544,79 +631,93 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     return null;
   }
 
-  // Function call started (standard function_call or custom_tool_call)
+  // Function call started (standard function_call or custom_tool_call).
+  // Assigning by upstream item id prevents interleaved parallel calls from
+  // merging their argument fragments into a single OpenAI tool call.
   if (
     eventType === "response.output_item.added" &&
-    (data.item?.type === "function_call" ||
+    (data.item?.type === RESPONSES_ITEM.FUNCTION_CALL ||
       data.item?.type === "custom_tool_call")
   ) {
     const item = data.item;
-    state.currentToolCallId = item.call_id || `call_${Date.now()}`;
+    state.currentToolCallId = item.call_id || clampResponsesCallId();
+    const key = item.id || data.item_id || state.currentToolCallId;
+    const toolCallIndex = state.respToolChatIndex.has(key)
+      ? state.respToolChatIndex.get(key)
+      : state.toolCallIndex++;
+    state.respToolChatIndex.set(key, toolCallIndex);
 
-    return {
-      id: state.chatId,
-      object: "chat.completion.chunk",
-      created: state.created,
-      model: state.model || "unknown",
-      choices: [
-        {
-          index: 0,
-          delta: {
-            tool_calls: [
-              {
-                index: state.toolCallIndex,
-                id: state.currentToolCallId,
-                type: "function",
-                function: {
-                  name: item.name || "",
-                  arguments: "",
-                },
-              },
-            ],
+    return buildChunk(
+      {
+        id: state.chatId,
+        created: state.created,
+        model: state.model || MODEL_FALLBACK,
+      },
+      {
+        tool_calls: [
+          {
+            index: toolCallIndex,
+            id: state.currentToolCallId,
+            type: OPENAI_BLOCK.FUNCTION,
+            function: { name: item.name || "", arguments: "" },
           },
-          finish_reason: null,
-        },
-      ],
-    };
+        ],
+      },
+    );
   }
 
-  // Function call arguments delta (standard or custom_tool_call variant)
   if (
     eventType === "response.function_call_arguments.delta" ||
     eventType === "response.custom_tool_call_input.delta"
   ) {
-    const argsDelta = data.delta || "";
-    if (!argsDelta) return null;
-
-    return {
-      id: state.chatId,
-      object: "chat.completion.chunk",
-      created: state.created,
-      model: state.model || "unknown",
-      choices: [
-        {
-          index: 0,
-          delta: {
-            tool_calls: [
-              {
-                index: state.toolCallIndex,
-                function: { arguments: argsDelta },
-              },
-            ],
-          },
-          finish_reason: null,
-        },
-      ],
-    };
+    const argumentsDelta = data.delta || "";
+    if (!argumentsDelta) return null;
+    const toolCallIndex =
+      state.respToolChatIndex.get(data.item_id) ??
+      Math.max(0, state.toolCallIndex - 1);
+    state.respToolArgsEmitted.add(toolCallIndex);
+    return buildChunk(
+      {
+        id: state.chatId,
+        created: state.created,
+        model: state.model || MODEL_FALLBACK,
+      },
+      {
+        tool_calls: [
+          { index: toolCallIndex, function: { arguments: argumentsDelta } },
+        ],
+      },
+    );
   }
 
-  // Function call done (standard or custom_tool_call variant)
   if (
     eventType === "response.output_item.done" &&
-    (data.item?.type === "function_call" ||
+    (data.item?.type === RESPONSES_ITEM.FUNCTION_CALL ||
       data.item?.type === "custom_tool_call")
   ) {
-    state.toolCallIndex++;
+    const key = data.item?.id || data.item_id;
+    const toolCallIndex =
+      state.respToolChatIndex.get(key) ?? Math.max(0, state.toolCallIndex - 1);
+    const argumentsValue = data.item?.arguments;
+    if (
+      typeof argumentsValue === "string" &&
+      argumentsValue &&
+      !state.respToolArgsEmitted.has(toolCallIndex)
+    ) {
+      state.respToolArgsEmitted.add(toolCallIndex);
+      return buildChunk(
+        {
+          id: state.chatId,
+          created: state.created,
+          model: state.model || MODEL_FALLBACK,
+        },
+        {
+          tool_calls: [
+            { index: toolCallIndex, function: { arguments: argumentsValue } },
+          ],
+        },
+      );
+    }
     return null;
   }
 

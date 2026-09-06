@@ -56,6 +56,8 @@ describe("request logger redaction", () => {
       },
     );
 
+    await logger.flush();
+
     const logPath = path.join(logger.sessionPath, "1_req_client.json");
     const logContent = fs.readFileSync(logPath, "utf8");
     const logged = JSON.parse(logContent);
@@ -74,5 +76,18 @@ describe("request logger redaction", () => {
     expect(logged.body.messages[0].metadata.safe).toBe("visible");
     expect(logged.endpoint).toContain("token=%5BREDACTED%5D");
     expect(logged.endpoint).toContain("safe=value");
+  });
+
+  it("writes queued chunks in order without blocking the caller", async () => {
+    const { createRequestLogger } = await loadLogger();
+    const logger = await createRequestLogger("openai", "anthropic", "test-model");
+
+    logger.appendProviderChunk("first");
+    logger.appendProviderChunk("second");
+    await logger.flush();
+
+    expect(
+      fs.readFileSync(path.join(logger.sessionPath, "5_res_provider.txt"), "utf8"),
+    ).toBe("firstsecond");
   });
 });

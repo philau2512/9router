@@ -172,7 +172,7 @@ async function passthrough(req, res, bodyBuffer, onResponse) {
   const tool = getToolForHost(req.headers.host);
   const versionOverride =
     tool === "antigravity"
-      ? applyAntigravityIdeVersionOverride(bodyBuffer, req.headers)
+      ? applyAntigravityIdeVersionOverride(bodyBuffer, req.headers, req.url)
       : { bodyBuffer, headers: req.headers };
   const bodyForForwarding = versionOverride.bodyBuffer;
   const headersForForwarding = { ...versionOverride.headers, host: targetHost };
@@ -443,7 +443,8 @@ function createConnectProxy() {
       return;
     }
 
-    const shouldIntercept = isQoderConnectTarget(hostname);
+    const shouldIntercept =
+      isQoderConnectTarget(hostname) || getToolForHost(hostname) === "qoder";
     if (!shouldIntercept) {
       const upstreamSocket = net.connect(port, hostname, () => {
         log(`[proxy] tunnel ${target}`);
@@ -461,31 +462,45 @@ function createConnectProxy() {
       return;
     }
 
-    const certHostname = QODER_CONNECT_HOST;
-    const certData = getCertForDomain(certHostname);
-    if (!certData) {
+    let qoderHostname = QODER_CONNECT_HOST;
+    const createQoderSecureContext = (hostname) => {
+      const qoderCert = getCertForDomain(hostname);
+      if (!qoderCert) return null;
+      return tls.createSecureContext({
+        key: qoderCert.key,
+        cert: `${qoderCert.cert}\n${rootCAPem}`,
+      });
+    };
+    const defaultSecureContext = createQoderSecureContext(qoderHostname);
+    if (!defaultSecureContext) {
       clientSocket.end("HTTP/1.1 502 Bad Gateway\r\n\r\n");
       return;
     }
 
-    const secureContext = tls.createSecureContext({
-      key: certData.key,
-      cert: `${certData.cert}\n${rootCAPem}`,
-    });
     const qoderServer = https.createServer(
       {
         ...sslOptions,
-        secureContext,
+        secureContext: defaultSecureContext,
         SNICallback: (servername, cb) => {
-          if (servername && !isQoderConnectTarget(servername)) {
+          if (getToolForHost(servername) !== "qoder") {
             cb(new Error(`Unexpected SNI for Qoder CONNECT: ${servername}`));
             return;
           }
+          const secureContext = createQoderSecureContext(servername);
+          if (!secureContext) {
+            cb(
+              new Error(
+                `Failed to generate Qoder certificate for ${servername}`,
+              ),
+            );
+            return;
+          }
+          qoderHostname = servername;
           cb(null, secureContext);
         },
       },
       (request, response) => {
-        request.headers.host = certHostname;
+        request.headers.host = qoderHostname;
         server.emit("request", request, response);
       },
     );
@@ -531,7 +546,12 @@ const server = https.createServer(sslOptions, async (req, res) => {
     if (!tool) return passthrough(req, res, bodyBuffer);
 
     const patterns = URL_PATTERNS[tool] || [];
-    const isChat = patterns.some((p) => req.url.includes(p));
+    const isQoderPromptEnhance =
+      tool === "qoder" &&
+      bodyBuffer.length > 0 &&
+      handlers.qoder.isNativeQoderPromptEnhanceRequest(bodyBuffer);
+    const isChat =
+      patterns.some((p) => req.url.includes(p)) || isQoderPromptEnhance;
     if (tool === "qoder") {
       log(`[qoder] ${req.method} ${req.url} chat=${isChat}`);
     }
@@ -548,7 +568,9 @@ const server = https.createServer(sslOptions, async (req, res) => {
         ? handlers.qoder.extractQoderModel(bodyBuffer)
         : extractModel(req.url, bodyBuffer);
     const resolvedModel =
-      tool === "qoder" && !model && isQoderChatRequest(req.url)
+      tool === "qoder" &&
+      !model &&
+      (isQoderChatRequest(req.url) || isQoderPromptEnhance)
         ? "qmodel_latest"
         : model;
     const noMapPatterns = MODEL_NO_MAP?.[tool] || [];

@@ -1,4 +1,4 @@
-import { BaseExecutor } from "./base.js";
+import { BaseExecutor, throwIfAborted, waitForAbortableDelay } from "./base.js";
 import { CODEX_DEFAULT_INSTRUCTIONS } from "../config/codexInstructions.js";
 import { PROVIDERS } from "../config/providers.js";
 import {
@@ -253,9 +253,9 @@ export class CodexExecutor extends BaseExecutor {
     return headers;
   }
 
-  buildUrl(model, stream, urlIndex = 0, credentials = null) {
+  buildUrl(model, stream, urlIndex = 0, credentials = null, body = null) {
     const base = super.buildUrl(model, stream, urlIndex, credentials);
-    return this._isCompact ? `${base}/compact` : base;
+    return body?._compact ? `${base}/compact` : base;
   }
 
   async refreshCredentials(credentials, log) {
@@ -272,33 +272,58 @@ export class CodexExecutor extends BaseExecutor {
    * Runs before execute() because Codex backend cannot fetch remote images.
    * Mutates body.input in place.
    */
-  async prefetchImages(body) {
+  async prefetchImages(body, signal) {
     if (!Array.isArray(body?.input)) return;
+    const imageBlocks = [];
     for (const item of body.input) {
       if (!Array.isArray(item.content)) continue;
-      const pending = item.content.map(async (c) => {
-        if (c.type !== "image_url") return c;
-        const url = typeof c.image_url === "string" ? c.image_url : c.image_url?.url;
-        const detail = c.image_url?.detail || "auto";
-        if (!url) return c;
-        if (url.startsWith("data:")) return { type: "input_image", image_url: url, detail };
-        const fetched = await fetchImageAsBase64(url, { timeoutMs: 15000 });
-        return { type: "input_image", image_url: fetched?.url || url, detail };
+      item.content.forEach((content, index) => {
+        if (content.type === "image_url") imageBlocks.push({ item, index, content });
       });
-      item.content = await Promise.all(pending);
     }
+
+    const concurrency = Math.min(3, imageBlocks.length);
+    let nextIndex = 0;
+    async function worker() {
+      while (!signal?.aborted) {
+        const workIndex = nextIndex++;
+        if (workIndex >= imageBlocks.length) return;
+        const { item, index, content } = imageBlocks[workIndex];
+        const url = typeof content.image_url === "string" ? content.image_url : content.image_url?.url;
+        const detail = content.image_url?.detail || "auto";
+        if (!url) continue;
+        if (url.startsWith("data:")) {
+          item.content[index] = { type: "input_image", image_url: url, detail };
+          continue;
+        }
+        try {
+          const fetched = await fetchImageAsBase64(url, { signal, timeoutMs: 15000 });
+          if (!signal?.aborted) {
+            item.content[index] = { type: "input_image", image_url: fetched?.url || url, detail };
+          }
+        } catch {
+          // Image prefetch is fail-open; preserve the remote URL on errors.
+          if (!signal?.aborted) {
+            item.content[index] = { type: "input_image", image_url: url, detail };
+          }
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: concurrency }, worker));
   }
 
   async execute(args) {
+    throwIfAborted(args.signal);
+    const executorStartedAt = Date.now();
     const imgCount = Array.isArray(args.body?.input) ? args.body.input.reduce((n, it) => n + (Array.isArray(it.content) ? it.content.filter(c => c.type === "image_url").length : 0), 0) : 0;
     const inputLen = Array.isArray(args.body?.input) ? args.body.input.length : 0;
     dbg("CODEX", `execute start | inputItems=${inputLen} | images=${imgCount} | sessionId=${this._currentSessionId || "pending"}`);
     if (imgCount > 0) {
       const t0 = Date.now();
-      await this.prefetchImages(args.body);
+      await this.prefetchImages(args.body, args.signal);
       dbg("CODEX", `prefetchImages done | ${Date.now() - t0}ms`);
     } else {
-      await this.prefetchImages(args.body);
+      await this.prefetchImages(args.body, args.signal);
     }
 
     // Retry loop for SSE-level overloaded errors (200 OK body contains event: error)
@@ -308,7 +333,18 @@ export class CodexExecutor extends BaseExecutor {
     let attempt = 0;
     while (true) {
       const result = await super.execute(args);
+      if (args.timing && !args.timing.upstreamHeadersAt) {
+        args.timing.upstreamHeadersAt = Date.now();
+      }
+      const peekStartedAt = Date.now();
       const peek = await this._peekSseTransientError(result.response);
+      if (args.timing && !args.timing.codexPeekDoneAt) {
+        args.timing.codexPeekDoneAt = Date.now();
+      }
+      dbg(
+        "CODEX",
+        `execute phases | prefetch=${peekStartedAt - executorStartedAt}ms | headers=${args.timing?.upstreamHeadersAt ? args.timing.upstreamHeadersAt - executorStartedAt : "?"}ms | peek=${Date.now() - peekStartedAt}ms`,
+      );
       if (!peek.matched) {
         // Replace body with re-assembled stream (prefix bytes already read + rest)
         if (peek.replacementBody) {
@@ -333,7 +369,7 @@ export class CodexExecutor extends BaseExecutor {
       attempt++;
       args.log?.debug?.("RETRY", `CODEX | SSE "${peek.matched}" retry ${attempt}/${attempts} after ${delayMs / 1000}s`);
       dbg("CODEX", `SSE overloaded "${peek.matched}" → retry ${attempt}/${attempts} in ${delayMs}ms`);
-      await new Promise(r => setTimeout(r, delayMs));
+      await waitForAbortableDelay(delayMs, args.signal);
     }
   }
 
@@ -425,7 +461,7 @@ export class CodexExecutor extends BaseExecutor {
    * Image fetching is handled separately in prefetchImages() so this stays sync.
    */
   transformRequest(model, body, stream, credentials) {
-    this._isCompact = !!body._compact;
+    body = structuredClone(body);
     delete body._compact;
     // Resolve conversation-stable session_id (priority: body → assistant-text → workspace → machine)
     this._currentSessionId = resolveCacheSessionId(body, credentials);

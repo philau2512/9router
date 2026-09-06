@@ -9,6 +9,7 @@ import {
 } from "@/shared/components";
 import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
+import { rememberEndpoint } from "./cliEndpointPresets";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
 
@@ -50,27 +51,6 @@ export default function CopilotToolCard({
     selectedModelsRef.current = selectedModels;
   }, [selectedModels]);
 
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
-    if (initialStatus) setStatus(initialStatus);
-  }, [initialStatus]);
-
-  useEffect(() => {
-    if (!isExpanded) return;
-    if (!status) void checkStatus();
-    void fetchModelAliases();
-  }, [isExpanded, status]);
-
-  useEffect(() => {
-    if (!status?.config || !Array.isArray(status.config) || selectedModels.length > 0) return;
-    const entry = status.config.find((item) => item.name === "9Router");
-    if (entry?.models?.length > 0) setSelectedModels(entry.models.map((model) => model.id));
-  }, [selectedModels.length, status]);
   const fetchModelAliases = async () => {
     try {
       const res = await fetch("/api/models/alias");
@@ -80,39 +60,6 @@ export default function CopilotToolCard({
       console.log("Error fetching model aliases:", error);
     }
   };
-
-  const saveModels = async (models) => {
-    try {
-      const keyToUse =
-        selectedApiKey && selectedApiKey.trim()
-          ? selectedApiKey
-          : !cloudEnabled
-            ? "sk_9router"
-            : selectedApiKey;
-      await fetch("/api/cli-tools/copilot-settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          baseUrl: getEffectiveBaseUrl(),
-          apiKey: keyToUse,
-          models,
-        }),
-      });
-    } catch (error) {
-      console.log("Error saving models:", error);
-    }
-  };
-
-  const getConfigStatus = () => {
-    if (!status) return null;
-    if (!status.has9Router) return "not_configured";
-    const url = status.currentUrl || "";
-    return matchKnownEndpoint(url, { tunnelPublicUrl, tailscaleUrl })
-      ? "configured"
-      : "other";
-  };
-
-  const configStatus = getConfigStatus();
 
   const getEffectiveBaseUrl = () => {
     const url = customBaseUrl || baseUrl;
@@ -150,19 +97,74 @@ export default function CopilotToolCard({
     }
   };
 
+  const saveModels = async (models) => {
+    try {
+      const keyToUse =
+        selectedApiKey && selectedApiKey.trim()
+          ? selectedApiKey
+          : !cloudEnabled
+            ? "sk_9router"
+            : selectedApiKey;
+      await fetch("/api/cli-tools/copilot-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: getEffectiveBaseUrl(),
+          apiKey: keyToUse,
+          models,
+        }),
+      });
+    } catch (error) {
+      console.log("Error saving models:", error);
+    }
+  };
+
+  const [prevInitialStatus, setPrevInitialStatus] = useState(initialStatus);
+  if (prevInitialStatus !== initialStatus) {
+    setPrevInitialStatus(initialStatus);
+    if (initialStatus) {
+      setStatus(initialStatus);
+      if (Array.isArray(initialStatus.config)) {
+        hydrateModelsFromStatus(initialStatus);
+      }
+    }
+  }
+
+  const [prevApiKeys, setPrevApiKeys] = useState(apiKeys);
+  if (prevApiKeys !== apiKeys) {
+    setPrevApiKeys(apiKeys);
+    if (apiKeys?.length > 0 && !selectedApiKey) {
+      setSelectedApiKey(apiKeys[0].key);
+    }
+  }
+
   useEffect(() => {
     if (!isExpanded) return;
-
-    const timer = setTimeout(() => {
+    let ignore = false;
+    (async () => {
       if (!status) {
-        void checkStatus();
+        await checkStatus();
       }
-      void fetchModelAliases();
-    }, 0);
-
-    return () => clearTimeout(timer);
+      await fetchModelAliases();
+    })();
+    return () => {
+      ignore = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isExpanded, status]);
+
+  const currentBaseUrl = status?.currentUrl || "";
+
+  const getConfigStatus = () => {
+    if (!status) return null;
+    if (!status.has9Router) return "not_configured";
+    const url = status.currentUrl || "";
+    return matchKnownEndpoint(url, { tunnelPublicUrl, tailscaleUrl })
+      ? "configured"
+      : "other";
+  };
+
+  const configStatus = getConfigStatus();
 
   const handleApply = async () => {
     setApplying(true);
@@ -190,6 +192,9 @@ export default function CopilotToolCard({
           type: "success",
           text: data.message || "Settings applied! Reload VS Code.",
         });
+        // Remember the endpoint so it stays selectable next time
+        rememberEndpoint(getEffectiveBaseUrl(), { tunnelPublicUrl, tailscaleUrl });
+        setMessage({ type: "success", text: data.message || "Settings applied! Reload VS Code." });
         checkStatus();
       } else {
         setMessage({
@@ -368,6 +373,7 @@ export default function CopilotToolCard({
                     tunnelPublicUrl={tunnelPublicUrl}
                     tailscaleEnabled={tailscaleEnabled}
                     tailscaleUrl={tailscaleUrl}
+                    currentUrl={currentBaseUrl}
                   />
                 </div>
 

@@ -35,9 +35,11 @@ export default function TableView({ groups, onIdClick }) {
           <thead className="sticky top-0 bg-sidebar z-10">
             <tr className="border-b border-border text-text-muted font-medium">
               <th className="py-2.5 px-3">Thời gian</th>
-              <th className="py-2.5 px-3">Request ID</th>
               <th className="py-2.5 px-3">Model / Routing</th>
               <th className="py-2.5 px-3">Tài khoản</th>
+              <th className="py-2.5 px-3">Msg</th>
+              <th className="py-2.5 px-3">Tool</th>
+              <th className="py-2.5 px-3">Effort</th>
               <th className="py-2.5 px-3">Tokens (In / Out)</th>
               <th className="py-2.5 px-3">Cache Hit</th>
               <th className="py-2.5 px-3">Thời gian / TTFT</th>
@@ -46,35 +48,26 @@ export default function TableView({ groups, onIdClick }) {
           </thead>
           <tbody className="divide-y divide-border/40 font-mono">
             {groups.map((group) => {
-              const isSuccess = group.status === "success" && !group.hasError;
+              const isSuccess =
+                group.status === "success" && !group.hasError && !group.isAborted;
               const isError = group.hasError || group.status === "error";
+              const isAborted = group.status === "aborted" || group.isAborted;
 
               return (
                 <tr
                   key={group.id}
                   onClick={() => setSelectedGroup(group)}
                   className={`hover:bg-sidebar/80 transition-colors cursor-pointer ${
-                    isError ? "bg-red-500/5 hover:bg-red-500/10" : ""
+                    isError
+                      ? "bg-red-500/5 hover:bg-red-500/10"
+                      : isAborted
+                        ? "bg-amber-500/5 hover:bg-amber-500/10"
+                        : ""
                   }`}
                 >
                   {/* Timestamp */}
                   <td className="py-2.5 px-3 text-text-muted whitespace-nowrap">
                     {group.startTime}
-                  </td>
-
-                  {/* Request ID */}
-                  <td className="py-2.5 px-3 whitespace-nowrap">
-                    <span
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onIdClick?.(group.id);
-                      }}
-                      className="font-bold text-primary bg-sidebar px-1.5 py-0.5 rounded border border-border hover:border-primary transition-colors"
-                      title="Lọc theo ID"
-                    >
-                      {group.id}
-                      {group.connId ? `:${group.connId}` : ""}
-                    </span>
                   </td>
 
                   {/* Model */}
@@ -96,6 +89,56 @@ export default function TableView({ groups, onIdClick }) {
                       <span title={group.account}>{group.account}</span>
                     ) : (
                       "—"
+                    )}
+                  </td>
+
+                  {/* Msg */}
+                  <td className="py-2.5 px-3 whitespace-nowrap text-text-muted">
+                    {group.msgs != null ? (
+                      <span className="font-semibold text-text-main">
+                        {group.msgs}
+                      </span>
+                    ) : (
+                      <span className="text-text-muted/40">—</span>
+                    )}
+                  </td>
+
+                  {/* Tool */}
+                  <td className="py-2.5 px-3 whitespace-nowrap text-text-muted">
+                    {group.tools != null ? (
+                      <span
+                        className={
+                          group.tools > 0
+                            ? "font-semibold text-blue-400"
+                            : "text-text-muted/60"
+                        }
+                      >
+                        {group.tools}
+                      </span>
+                    ) : (
+                      <span className="text-text-muted/40">—</span>
+                    )}
+                  </td>
+
+                  {/* Effort */}
+                  <td className="py-2.5 px-3 whitespace-nowrap">
+                    {group.effort ? (
+                      <span
+                        className={`font-semibold px-1.5 py-0.5 rounded border text-[11px] ${
+                          group.effort === "high" || group.effort === "max"
+                            ? "text-purple-400 bg-purple-400/10 border-purple-400/20"
+                            : group.effort === "medium"
+                              ? "text-sky-400 bg-sky-400/10 border-sky-400/20"
+                              : group.effort === "low" ||
+                                  group.effort === "minimal"
+                                ? "text-slate-300 bg-slate-500/10 border-slate-500/20"
+                                : "text-amber-400 bg-amber-400/10 border-amber-400/20"
+                        }`}
+                      >
+                        {group.effort}
+                      </span>
+                    ) : (
+                      <span className="text-text-muted/40">—</span>
                     )}
                   </td>
 
@@ -148,6 +191,19 @@ export default function TableView({ groups, onIdClick }) {
                       <Badge variant="error" size="sm" dot>
                         Error
                       </Badge>
+                    ) : isAborted ? (
+                      <Badge
+                        variant="warning"
+                        size="sm"
+                        dot
+                        title={
+                          group.disconnectReason
+                            ? `Aborted: ${group.disconnectReason}`
+                            : "Aborted"
+                        }
+                      >
+                        Aborted
+                      </Badge>
                     ) : isSuccess ? (
                       <Badge variant="success" size="sm" dot>
                         200 OK
@@ -170,7 +226,31 @@ export default function TableView({ groups, onIdClick }) {
         <Modal
           isOpen={!!selectedGroup}
           onClose={() => setSelectedGroup(null)}
-          title={`Chi tiết Request [${selectedGroup.id}]`}
+          title={
+            <div className="flex items-center gap-2">
+              <span>Chi tiết Request [{selectedGroup.id}]</span>
+              {selectedGroup.hasError || selectedGroup.status === "error" ? (
+                <Badge variant="error" size="sm" dot>
+                  Error
+                </Badge>
+              ) : selectedGroup.status === "aborted" ||
+                selectedGroup.isAborted ? (
+                <Badge variant="warning" size="sm" dot>
+                  {selectedGroup.disconnectReason
+                    ? `Aborted: ${selectedGroup.disconnectReason}`
+                    : "Aborted"}
+                </Badge>
+              ) : selectedGroup.status === "success" ? (
+                <Badge variant="success" size="sm" dot>
+                  200 OK
+                </Badge>
+              ) : (
+                <Badge variant="primary" size="sm" dot>
+                  Stream
+                </Badge>
+              )}
+            </div>
+          }
           size="4xl"
         >
           <div className="flex flex-col gap-4 font-mono text-xs">

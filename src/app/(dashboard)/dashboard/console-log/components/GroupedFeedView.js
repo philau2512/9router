@@ -72,8 +72,10 @@ export default function GroupedFeedView({ groups, onIdClick, onCopyText }) {
       <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-4 flex flex-col gap-2.5">
         {groups.map((group) => {
           const isExpanded = expandedIds.has(group.id);
-          const isSuccess = group.status === "success" && !group.hasError;
+          const isSuccess =
+            group.status === "success" && !group.hasError && !group.isAborted;
           const isError = group.hasError || group.status === "error";
+          const isAborted = group.status === "aborted" || group.isAborted;
 
           return (
             <div
@@ -81,9 +83,11 @@ export default function GroupedFeedView({ groups, onIdClick, onCopyText }) {
               className={`shrink-0 rounded-xl border transition-all duration-200 bg-surface/50 hover:bg-surface overflow-hidden ${
                 isError
                   ? "border-red-500/40 bg-red-500/5"
-                  : isExpanded
-                    ? "border-primary/40 shadow-sm"
-                    : "border-border"
+                  : isAborted
+                    ? "border-amber-500/40 bg-amber-500/5"
+                    : isExpanded
+                      ? "border-primary/40 shadow-sm"
+                      : "border-border"
               }`}
             >
               {/* Header Summary Row */}
@@ -98,9 +102,11 @@ export default function GroupedFeedView({ groups, onIdClick, onCopyText }) {
                     className={`size-2.5 rounded-full shrink-0 ${
                       isError
                         ? "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]"
-                        : isSuccess
-                          ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"
-                          : "bg-blue-500 animate-pulse"
+                        : isAborted
+                          ? "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]"
+                          : isSuccess
+                            ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"
+                            : "bg-blue-500 animate-pulse"
                     }`}
                   />
 
@@ -133,10 +139,45 @@ export default function GroupedFeedView({ groups, onIdClick, onCopyText }) {
                     </Badge>
                   )}
 
+                  {isAborted && (
+                    <Badge
+                      variant="warning"
+                      size="sm"
+                      title={
+                        group.disconnectReason
+                          ? `Aborted: ${group.disconnectReason}`
+                          : "Aborted"
+                      }
+                    >
+                      Aborted
+                    </Badge>
+                  )}
+
                   {/* Target Model Highlight */}
                   {group.model && (
                     <span className="font-mono text-xs font-bold text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded border border-orange-400/20">
                       → {group.model}
+                    </span>
+                  )}
+
+                  {/* Msg / Tool / Effort */}
+                  {(group.msgs != null || group.tools != null || group.effort) && (
+                    <span className="font-mono text-[11px] text-text-muted bg-sidebar px-2 py-0.5 rounded border border-border hidden sm:inline-flex items-center gap-1">
+                      {group.msgs != null && <span>{group.msgs} msgs</span>}
+                      {group.tools != null && (
+                        <span>
+                          {group.msgs != null && "· "}
+                          <strong className="text-blue-400 font-normal">
+                            {group.tools} tools
+                          </strong>
+                        </span>
+                      )}
+                      {group.effort && (
+                        <span className="text-purple-400">
+                          {(group.msgs != null || group.tools != null) && "· "}
+                          {group.effort}
+                        </span>
+                      )}
                     </span>
                   )}
                 </div>

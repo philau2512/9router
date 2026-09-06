@@ -16,9 +16,18 @@ export function parseLogLine(rawLine) {
     text = timeMatch[2];
   }
 
-  // 2. Extract Request ID & Connection ID: reqId:connId or [reqId:connId] or [reqId]
+  // 2. Extract Request ID & Connection ID:
+  // Can be [reqId:connId], reqId:connId, [reqId], or session color dot tag (e.g. 🔴, 🟢, 🔵, 🟣, 🟡, 🟠, ⚪, 🟤)
   let reqId = null;
   let connId = null;
+  let dotTag = null;
+
+  const dotMatch = text.match(/^([🟢🔵🟣🟡🟠🔴⚪🟤])\s*(.*)$/u);
+  if (dotMatch) {
+    dotTag = dotMatch[1];
+    text = dotMatch[2];
+  }
+
   const idMatch = text.match(/^(?:\[([a-z0-9]{6})(?::([a-z0-9]{6}))?\]|([a-z0-9]{6})(?::([a-z0-9]{6}))?)\s*(.*)$/i);
   if (idMatch) {
     reqId = idMatch[1] || idMatch[3];
@@ -36,7 +45,7 @@ export function parseLogLine(rawLine) {
     level = "stream";
   } else if (text.includes("📊") || text.includes("📈") || text.includes("[USAGE]")) {
     level = "usage";
-  } else if (text.includes("📥") || text.includes("POST ") || text.includes("GET ")) {
+  } else if (text.includes("📥") || text.includes("▶ POST") || text.includes("POST ") || text.includes("GET ")) {
     level = "request";
   } else if (text.includes("🤯") || text.includes("[TTFT]")) {
     level = "ttft";
@@ -45,13 +54,27 @@ export function parseLogLine(rawLine) {
   // 4. Extract Key Metadata
   const metadata = {};
 
-  // Endpoint & Messages: POST /v1/chat/completions | codex-free | 28 msgs
-  const epMatch = text.match(/(POST|GET)\s+(\/[^\s|]+)(?:\s+\|\s+([^\s|]+))?(?:\s+\|\s+(\d+)\s+msgs)?/i);
+  // Endpoint & Messages, Tools, Effort
+  const epMatch = text.match(/(POST|GET)\s+(\/[^\s|]+)(?:\s+\|\s+([^\s|]+))?/i);
   if (epMatch) {
     metadata.method = epMatch[1];
     metadata.endpoint = epMatch[2];
     metadata.combo = epMatch[3] || null;
-    metadata.msgs = epMatch[4] ? Number(epMatch[4]) : null;
+  }
+
+  const msgMatch = text.match(/\b(\d+)\s*(?:msgs?|MSG)\b/i);
+  if (msgMatch) {
+    metadata.msgs = Number(msgMatch[1]);
+  }
+
+  const toolMatch = text.match(/\b(\d+)\s*(?:tools?|TOOL)\b/i);
+  if (toolMatch) {
+    metadata.tools = Number(toolMatch[1]);
+  }
+
+  const effortMatch = text.match(/\b(?:effort=|THINK:|think=)([a-z0-9_:-]+)/i);
+  if (effortMatch) {
+    metadata.effort = effortMatch[1];
   }
 
   // Model Routing:
@@ -107,16 +130,35 @@ export function parseLogLine(rawLine) {
     if (usageMatch[4]) metadata.cachePct = Number(usageMatch[4]);
   }
 
-  // TTFT & Duration: total=4432 | ttft=1431 | 4429ms | complete
+  // TTFT & Duration: total=4432 | ttft=1431 | 4429ms | complete | disconnect: ResponseAborted
   const ttftMatch = text.match(/total=(\d+)\s+\|\s+ttft=(\d+)/i);
   if (ttftMatch) {
     metadata.duration = Number(ttftMatch[1]);
     metadata.ttft = Number(ttftMatch[2]);
   }
-  const streamDurMatch = text.match(/\|\s*(\d+)ms\s*\|\s*complete/i);
-  if (streamDurMatch) {
-    metadata.duration = Number(streamDurMatch[1]);
-    metadata.completed = true;
+  const streamMatch = text.match(/\|\s*(\d+)ms\s*\|\s*(.*)$/i);
+  if (streamMatch) {
+    metadata.duration = Number(streamMatch[1]);
+    const streamStatus = streamMatch[2].trim();
+    if (/complete/i.test(streamStatus)) {
+      metadata.completed = true;
+    } else if (
+      /disconnect|abort|client_closed|closed|failed|stall|error/i.test(
+        streamStatus,
+      )
+    ) {
+      metadata.disconnected = true;
+      const reasonMatch = streamStatus.match(
+        /(?:disconnect:\s*|reason:\s*)([^\s|]+)/i,
+      );
+      metadata.disconnectReason = reasonMatch ? reasonMatch[1] : streamStatus;
+    }
+  } else if (
+    /disconnect:|ResponseAborted|ClientAbort|client_closed/i.test(text)
+  ) {
+    metadata.disconnected = true;
+    const reasonMatch = text.match(/(?:disconnect:\s*)([^\s|]+)/i);
+    if (reasonMatch) metadata.disconnectReason = reasonMatch[1];
   }
 
   return {
@@ -186,6 +228,9 @@ export function groupLogLines(rawLines) {
           model: null,
           provider: null,
           account: null,
+          msgs: null,
+          tools: null,
+          effort: null,
           status: "pending",
           statusCode: 200,
           duration: null,
@@ -214,6 +259,20 @@ export function groupLogLines(rawLines) {
         if (!group.account || group.account.endsWith("...")) {
           group.account = m.combo;
         }
+      }
+
+      if (m.msgs != null) {
+        if (group.msgs == null || (group.msgs === 0 && m.msgs > 0)) {
+          group.msgs = m.msgs;
+        }
+      }
+      if (m.tools != null) {
+        if (group.tools == null || (group.tools === 0 && m.tools > 0)) {
+          group.tools = m.tools;
+        }
+      }
+      if (m.effort != null) {
+        group.effort = m.effort;
       }
 
       // Format model: targetModel takes highest precedence
@@ -251,10 +310,29 @@ export function groupLogLines(rawLines) {
         group.status = "error";
         group.statusCode = 500;
         group.errorMessage = parsed.text;
+      } else if (
+        parsed.metadata.disconnected ||
+        (parsed.level === "stream" &&
+          (/disconnect|aborted|responseaborted|clientabort|client_closed/i.test(
+            parsed.text,
+          )))
+      ) {
+        if (!group.hasError && group.status !== "error") {
+          group.status = "aborted";
+          group.statusCode = 499;
+          group.isAborted = true;
+          if (parsed.metadata.disconnectReason) {
+            group.disconnectReason = parsed.metadata.disconnectReason;
+          }
+        }
       } else if (parsed.level === "stream" && parsed.text.includes("complete")) {
-        if (!group.hasError) group.status = "success";
+        if (!group.hasError && group.status !== "error" && !group.isAborted) {
+          group.status = "success";
+        }
       } else if (parsed.level === "ttft" || parsed.level === "usage") {
-        if (!group.hasError && group.status !== "error") group.status = "success";
+        if (!group.hasError && group.status !== "error" && !group.isAborted) {
+          group.status = "success";
+        }
       }
     } else {
       systemLines.push(parsed);

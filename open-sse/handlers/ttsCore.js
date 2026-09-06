@@ -57,6 +57,7 @@ export async function handleTtsCore({
   apiKey,
   responseFormat = "mp3",
   language,
+  style,
 }) {
   if (!input?.trim()) {
     return createErrorResult(
@@ -74,7 +75,7 @@ export async function handleTtsCore({
         model,
         credentials,
         responseFormat,
-        { language },
+        { language, style },
       );
       // Adapter may return a full {success, response} (legacy) or {base64, format}
       if (result.success !== undefined) {

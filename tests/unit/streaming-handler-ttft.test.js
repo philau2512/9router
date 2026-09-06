@@ -116,6 +116,8 @@ describe("streamingHandler TTFT path", () => {
       requestParsedAt: requestStartTime + 5,
       requestReadyAt: requestStartTime + 20,
       upstreamFetchStartedAt: requestStartTime + 30,
+      upstreamHeadersAt: requestStartTime + 40,
+      codexPeekDoneAt: requestStartTime + 45,
       upstreamFirstByteAt: requestStartTime + 50,
       clientFirstChunkAt: requestStartTime + 60,
     };
@@ -155,6 +157,8 @@ describe("streamingHandler TTFT path", () => {
       parse: 5,
       authModel: 20,
       upstreamStart: 30,
+      upstreamHeaders: 40,
+      codexPeek: 5,
       upstreamFirstByte: 50,
       clientFirstChunk: 60,
     });

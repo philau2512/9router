@@ -17,7 +17,9 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
 
-  useEffect(() => {
+  const [prevNode, setPrevNode] = useState(node);
+  if (prevNode !== node) {
+    setPrevNode(node);
     if (node) {
       setFormData({
         name: node.name || "",
@@ -26,7 +28,7 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
         baseUrl: node.baseUrl || (isAnthropic ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1"),
       });
     }
-  }, [node, isAnthropic]);
+  }
 
   const apiTypeOptions = [
     { value: "chat", label: "Chat Completions" },

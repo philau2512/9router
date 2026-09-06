@@ -15,7 +15,6 @@ import {
   refreshAccessToken as _refreshAccessToken,
   refreshClaudeOAuthToken as _refreshClaudeOAuthToken,
   refreshGoogleToken as _refreshGoogleToken,
-  refreshQwenToken as _refreshQwenToken,
   refreshCodexToken as _refreshCodexToken,
   refreshIflowToken as _refreshIflowToken,
   refreshGitHubToken as _refreshGitHubToken,
@@ -28,9 +27,8 @@ import {
   getRefreshLeadMs as _getRefreshLeadMs,
   isUnrecoverableRefreshError,
 } from "open-sse/services/tokenRefresh.js";
-import {
-  CODEX_AUTO_REFRESH,
-} from "open-sse/config/appConstants.js";
+import { refreshQwenToken as _refreshQwenToken } from "open-sse/services/refresh-providers.js";
+import { CODEX_AUTO_REFRESH } from "open-sse/config/appConstants.js";
 import {
   refreshProviderCredentials as _refreshProviderCredentials,
   shouldRefreshCredentials as _shouldRefreshCredentials,
@@ -136,29 +134,29 @@ function needsProjectId(provider) {
 function _refreshProjectId(provider, connectionId, accessToken) {
   if (!needsProjectId(provider) || !connectionId || !accessToken) return;
 
-  // Evict the stale cached entry so getProjectIdForConnection does a real fetch
+  // Evict stale cached value; the next runtime request will resolve it lazily.
   invalidateProjectId(connectionId);
 
-  getProjectIdForConnection(connectionId, accessToken)
-    .then((projectId) => {
-      if (!projectId) return;
-      updateProviderCredentials(connectionId, { projectId }).catch((err) => {
-        log.debug("TOKEN_REFRESH", "Failed to persist refreshed projectId", {
+  // Lazy resolution: avoid triggering onboardUser for every account during a
+  // background token refresh. Runtime handlers resolve project IDs on demand.
+  if (process.env.EAGER_PROJECT_ID_REFRESH === "true") {
+    getProjectIdForConnection(connectionId, accessToken, provider)
+      .then((projectId) => {
+        if (!projectId) return;
+        updateProviderCredentials(connectionId, { projectId }).catch((err) => {
+          log.debug("TOKEN_REFRESH", "Failed to persist refreshed projectId", {
+            connectionId,
+            error: err?.message ?? err,
+          });
+        });
+      })
+      .catch((err) => {
+        log.debug("TOKEN_REFRESH", "Failed to fetch projectId after token refresh", {
           connectionId,
           error: err?.message ?? err,
         });
       });
-    })
-    .catch((err) => {
-      log.debug(
-        "TOKEN_REFRESH",
-        "Failed to fetch projectId after token refresh",
-        {
-          connectionId,
-          error: err?.message ?? err,
-        },
-      );
-    });
+  }
 }
 
 // ─── Local-specific: persist credentials to localDb ──────────────────────────
@@ -268,14 +266,17 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
  *
  * @param {string} provider
  * @param {object} credentials
+ * @param {{ force?: boolean }} [options] force=true skips the on-request lead check
  * @returns {Promise<object>} updated credentials object
  */
-export async function checkAndRefreshToken(provider, credentials) {
+export async function checkAndRefreshToken(provider, credentials, options = {}) {
   const connectionId = credentials?.connectionId || credentials?.id || null;
   let creds = { ...credentials, ...(connectionId ? { connectionId } : {}) };
 
+  const force = options?.force === true;
+
   // ── 1. Regular access-token expiry ────────────────────────────────────────
-  if (_shouldRefreshCredentials(provider, creds)) {
+  if (force || _shouldRefreshCredentials(provider, creds)) {
     const expiresAt = creds.expiresAt
       ? new Date(creds.expiresAt).getTime()
       : null;

@@ -11,6 +11,7 @@ import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
+import { rememberEndpoint } from "./cliEndpointPresets";
 
 export default function CodexToolCard({
   tool,
@@ -53,21 +54,6 @@ export default function CodexToolCard({
   const [showManualConfigModal, setShowManualConfigModal] = useState(false);
   const [customBaseUrl, setCustomBaseUrl] = useState("");
 
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
-    if (initialStatus) setCodexStatus(initialStatus);
-  }, [initialStatus]);
-
-  useEffect(() => {
-    if (!isExpanded) return;
-    if (!codexStatus) void checkCodexStatus();
-    void fetchModelAliases();
-  }, [codexStatus, isExpanded]);
   const fetchModelAliases = async () => {
     try {
       const res = await fetch("/api/models/alias");
@@ -77,26 +63,6 @@ export default function CodexToolCard({
       console.log("Error fetching model aliases:", error);
     }
   };
-
-  const getConfigStatus = () => {
-    if (!codexStatus?.installed) return null;
-    if (!codexStatus.config) return "not_configured";
-    const parsed = codexStatus.config.match(/base_url\s*=\s*"([^"]+)"/);
-    const currentUrl = parsed ? parsed[1] : "";
-    return matchKnownEndpoint(currentUrl, { tunnelPublicUrl, tailscaleUrl })
-      ? "configured"
-      : "other";
-  };
-
-  const configStatus = getConfigStatus();
-
-  const getEffectiveBaseUrl = () => {
-    const url = customBaseUrl || `${baseUrl}/v1`;
-    // Ensure URL ends with /v1
-    return url.endsWith("/v1") ? url : `${url}/v1`;
-  };
-
-  const getDisplayUrl = () => customBaseUrl || `${baseUrl}/v1`;
 
   const hydrateModelsFromConfig = (configText) => {
     if (!configText) return;
@@ -124,19 +90,64 @@ export default function CodexToolCard({
     }
   };
 
+  const [prevInitialStatus, setPrevInitialStatus] = useState(initialStatus);
+  if (prevInitialStatus !== initialStatus) {
+    setPrevInitialStatus(initialStatus);
+    if (initialStatus) {
+      setCodexStatus(initialStatus);
+      if (initialStatus?.config) {
+        hydrateModelsFromConfig(initialStatus.config);
+      }
+    }
+  }
+
+  const [prevApiKeys, setPrevApiKeys] = useState(apiKeys);
+  if (prevApiKeys !== apiKeys) {
+    setPrevApiKeys(apiKeys);
+    if (apiKeys?.length > 0 && !selectedApiKey) {
+      setSelectedApiKey(apiKeys[0].key);
+    }
+  }
+
   useEffect(() => {
     if (!isExpanded) return;
-
-    const timer = setTimeout(() => {
+    let ignore = false;
+    (async () => {
       if (!codexStatus) {
-        void checkCodexStatus();
+        await checkCodexStatus();
       }
-      void fetchModelAliases();
-    }, 0);
-
-    return () => clearTimeout(timer);
+      await fetchModelAliases();
+    })();
+    return () => {
+      ignore = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [codexStatus, isExpanded]);
+
+  const getCurrentBaseUrl = () => {
+    const parsed = codexStatus?.config?.match(/base_url\s*=\s*"([^"]+)"/);
+    return parsed ? parsed[1] : "";
+  };
+
+  const currentBaseUrl = getCurrentBaseUrl();
+
+  const getConfigStatus = () => {
+    if (!codexStatus?.installed) return null;
+    if (!codexStatus.config) return "not_configured";
+    return matchKnownEndpoint(currentBaseUrl, { tunnelPublicUrl, tailscaleUrl })
+      ? "configured"
+      : "other";
+  };
+
+  const configStatus = getConfigStatus();
+
+  const getEffectiveBaseUrl = () => {
+    const url = customBaseUrl || `${baseUrl}/v1`;
+    // Ensure URL ends with /v1
+    return url.endsWith("/v1") ? url : `${url}/v1`;
+  };
+
+  const getDisplayUrl = () => customBaseUrl || `${baseUrl}/v1`;
 
   const handleApplySettings = async () => {
     setApplying(true);
@@ -162,6 +173,8 @@ export default function CodexToolCard({
       });
       const data = await res.json();
       if (res.ok) {
+        // Remember the endpoint so it stays selectable next time
+        rememberEndpoint(getEffectiveBaseUrl(), { tunnelPublicUrl, tailscaleUrl });
         setMessage({ type: "success", text: "Settings applied successfully!" });
         checkCodexStatus();
       } else {
@@ -231,8 +244,8 @@ name = "9Router"
 base_url = "${getEffectiveBaseUrl()}"
 wire_api = "responses"
 
-[agents.subagent]
-model = "${effectiveSubagentModel}"
+[agents]
+default_subagent_model = "${effectiveSubagentModel}"
 `;
 
     const authContent = JSON.stringify(
@@ -248,10 +261,6 @@ model = "${effectiveSubagentModel}"
       {
         filename: "~/.codex/config.toml",
         content: configContent,
-      },
-      {
-        filename: "~/.codex/auth.json",
-        content: authContent,
       },
     ];
   };
@@ -391,6 +400,8 @@ model = "${effectiveSubagentModel}"
                           OPENAI_API_KEY
                         </code>
                         . Click &quot;Apply&quot; to auto-configure.
+                        Codex reads custom providers from <code className="px-1 bg-black/5 dark:bg-white/5 rounded">~/.codex/config.toml</code>.
+                        Click &quot;Apply&quot; to auto-configure.
                       </p>
                     </div>
                   </div>
@@ -418,6 +429,7 @@ model = "${effectiveSubagentModel}"
                     tunnelPublicUrl={tunnelPublicUrl}
                     tailscaleEnabled={tailscaleEnabled}
                     tailscaleUrl={tailscaleUrl}
+                    currentUrl={currentBaseUrl}
                   />
                 </div>
 
@@ -442,6 +454,17 @@ model = "${effectiveSubagentModel}"
                       </div>
                     ) : null;
                   })()}
+                {codexStatus?.config && (() => {
+                  return currentBaseUrl ? (
+                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
+                      <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Current</span>
+                      <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
+                      <span className="min-w-0 truncate rounded bg-surface/40 px-2 py-2 text-xs text-text-muted sm:py-1.5">
+                        {currentBaseUrl}
+                      </span>
+                    </div>
+                  ) : null;
+                })()}
 
                 {/* API Key */}
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">

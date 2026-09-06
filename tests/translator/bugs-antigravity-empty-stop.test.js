@@ -692,6 +692,8 @@ describe("fix5: requestLogger keeps maxOutputTokens readable", () => {
         },
       );
 
+      await logger.flush();
+
       const clientLog = JSON.parse(
         fs.readFileSync(path.join(logger.sessionPath, "1_req_client.json"), "utf8"),
       );

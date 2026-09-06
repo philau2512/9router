@@ -51,4 +51,21 @@ export default defineConfig([
   },
 
   ...nextVitals,
+
+  // Anonymous default exports are the standard pattern in these directories:
+  // registry configs, handler adapters, DB migrations, postcss configs.
+  {
+    files: [
+      "open-sse/providers/registry/*.js",
+      "open-sse/providers/REGISTRY_TEMPLATE.js",
+      "open-sse/handlers/ttsProviders/*.js",
+      "open-sse/handlers/embeddingProviders/*.js",
+      "src/lib/db/migrations/*.js",
+      "postcss.config.mjs",
+      "gitbook/postcss.config.mjs",
+    ],
+    rules: {
+      "import/no-anonymous-default-export": "off",
+    },
+  },
 ]);

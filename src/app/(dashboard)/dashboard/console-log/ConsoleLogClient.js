@@ -26,23 +26,23 @@ const STORAGE_KEY = "9router_console_view_mode";
 
 export default function ConsoleLogClient() {
   const [logs, setLogs] = useState([]);
-  const [viewMode, setViewMode] = useState(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (
-          saved &&
-          (saved === "feed" || saved === "table" || saved === "terminal")
-        ) {
-          return saved;
-        }
-      } catch (_) {}
-    }
-    return "feed";
-  });
+  const [viewMode, setViewMode] = useState("feed");
   const [filterText, setFilterText] = useState("");
   const [activeLevel, setActiveLevel] = useState("all");
   const [connected, setConnected] = useState(false);
+
+  useEffect(() => {
+    const restoreViewMode = setTimeout(() => {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved === "feed" || saved === "table" || saved === "terminal") {
+          setViewMode(saved);
+        }
+      } catch (_) {}
+    }, 0);
+
+    return () => clearTimeout(restoreViewMode);
+  }, []);
 
   const handleViewModeChange = (mode) => {
     setViewMode(mode);

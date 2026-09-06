@@ -75,6 +75,7 @@ export default function ProviderConnectionsCard({
   autoPingSaving,
   autoPingSelection,
   onOpenCodexBulkImport,
+  onOpenGrokBulkImport,
   onViewJson,
   autoPingConnections,
   savingAutoPingConnectionId,
@@ -205,6 +206,16 @@ export default function ProviderConnectionsCard({
                     Bulk Add
                   </Button>
                 )}
+                {providerId === "grok-cli" && (
+                  <Button
+                    size="sm"
+                    icon="playlist_add"
+                    variant="secondary"
+                    onClick={onOpenGrokBulkImport}
+                  >
+                    Bulk Add
+                  </Button>
+                )}
                 <Button size="sm" icon="add" onClick={onTriggerAddConnection}>
                   {isCompatible
                     ? "Add API Key"
@@ -322,6 +333,17 @@ export default function ProviderConnectionsCard({
                       icon="playlist_add"
                       variant="secondary"
                       onClick={onOpenCodexBulkImport}
+                      className="w-full sm:w-auto"
+                    >
+                      Bulk Add
+                    </Button>
+                  )}
+                  {providerId === "grok-cli" && (
+                    <Button
+                      size="sm"
+                      icon="playlist_add"
+                      variant="secondary"
+                      onClick={onOpenGrokBulkImport}
                       className="w-full sm:w-auto"
                     >
                       Bulk Add

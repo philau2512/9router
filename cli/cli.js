@@ -723,10 +723,17 @@ function openBrowser(url) {
 // Find standalone server (bundled in bin/app for published package)
 const standaloneDir = path.join(__dirname, "app");
 const serverPath = path.join(standaloneDir, "server.js");
+const serverWrapperPath = path.join(standaloneDir, "custom-server.js");
 
 if (!fs.existsSync(serverPath)) {
   console.error("Error: Standalone build not found.");
   console.error("Please run 'npm run build' from the cli package first.");
+  process.exit(1);
+}
+
+if (!fs.existsSync(serverWrapperPath)) {
+  console.error("Error: Request-sanitizing server wrapper not found.");
+  console.error("Please rebuild or reinstall the 9Router CLI package.");
   process.exit(1);
 }
 
@@ -814,7 +821,7 @@ async function startServer(latestVersionPromise) {
   function spawnServer() {
     serverStartTime = Date.now();
     crashLog = [];
-    const child = spawn(RUNTIME, ["--dns-result-order=ipv4first", "--max-old-space-size=6144", serverPath], {
+    const child = spawn(RUNTIME, ["--dns-result-order=ipv4first", "--max-old-space-size=6144", serverWrapperPath], {
       cwd: standaloneDir,
       stdio: showLog ? "inherit" : ["ignore", "ignore", "pipe"],
       detached: true,

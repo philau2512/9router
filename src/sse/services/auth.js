@@ -1,13 +1,21 @@
 /**
- * Auth barrel — preserves legacy imports while implementations remain split by concern.
+ * Authentication and Provider Credentials Service
+ * Re-exports credentials management and API key validation helpers.
  */
 
 export {
   getProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
+  extractApiKey,
+  isValidApiKey,
 } from "./provider-credentials.js";
 
-export * from "./api-key-validation.js";
-export * from "./api-key-access.js";
-export * from "./api-key-helpers.js";
+export {
+  enforceApiKeyPolicy,
+  getApiKeyValue,
+  logApiKeyPresence,
+  normalizeApiKeyFailureLog,
+} from "./api-key-validation.js";
+
+export { buildApiKeyUsageSummaryResponse } from "./api-key-helpers.js";

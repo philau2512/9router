@@ -17,6 +17,22 @@ import {
   getModelTargetFormat,
 } from "../config/providerModels.js";
 
+import REGISTRY from "./registry/index.js";
+
+// Merge registry transport.usage into legacy TRANSPORTS table
+for (const entry of REGISTRY) {
+  if (entry.transport?.usage) {
+    if (!TRANSPORTS[entry.id]) {
+      TRANSPORTS[entry.id] = { usage: entry.transport.usage };
+    } else {
+      TRANSPORTS[entry.id].usage = {
+        ...entry.transport.usage,
+        ...(TRANSPORTS[entry.id].usage || {}),
+      };
+    }
+  }
+}
+
 export const PROVIDERS = TRANSPORTS;
 export const PROVIDER_MODELS = CONFIG_PROVIDER_MODELS;
 
@@ -26,7 +42,6 @@ export { PROVIDER_ID_TO_ALIAS, getModelsByProviderId, getModelTargetFormat };
 // Keep legacy TTS config while exposing registry-owned media config such as
 // xAI video jobs to upstream-compatible handlers.
 import { TTS_MODELS_CONFIG } from "../config/ttsModels.js";
-import REGISTRY from "./registry/index.js";
 
 export const PROVIDER_OAUTH = Object.fromEntries(
   REGISTRY.filter((entry) => entry.oauth).map((entry) => [entry.id, entry.oauth]),

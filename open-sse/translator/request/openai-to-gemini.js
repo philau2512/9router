@@ -7,7 +7,7 @@ import {
 import { ANTIGRAVITY_DEFAULT_SYSTEM } from "../../config/appConstants.js";
 import { openaiToClaudeRequestForAntigravity } from "./openai-to-claude.js";
 import { extractThinking } from "../concerns/thinkingUnified.js";
-
+import { getGeminiThoughtSignatureSync } from "../../services/thoughtSignatureStore.js";
 function generateUUID() {
   return crypto.randomUUID();
 }
@@ -21,6 +21,7 @@ import {
   generateSessionId,
   generateProjectId,
   cleanJSONSchemaForAntigravity,
+  sanitizeFunctionResponseData,
 } from "../helpers/geminiHelper.js";
 import { deriveSessionId } from "../../utils/sessionManager.js";
 
@@ -120,6 +121,7 @@ function openaiToGeminiBase(
   body,
   stream,
   signature = DEFAULT_THINKING_AG_SIGNATURE,
+  sessionId = null,
 ) {
   const result = {
     model: model,
@@ -218,18 +220,27 @@ function openaiToGeminiBase(
 
         if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
           const toolCallIds = [];
+          let firstFunctionCallSeen = false;
           for (const tc of msg.tool_calls) {
             if (tc.type !== "function") continue;
 
             const args = tryParseJSON(tc.function?.arguments || "{}");
-            parts.push({
-              thoughtSignature: resolveThoughtSignature(tc, signature),
+            const cachedSignature = tc.id
+              ? getGeminiThoughtSignatureSync(tc.id, sessionId)
+              : null;
+            const callSignature =
+              resolveThoughtSignature(tc, cachedSignature) ||
+              (!firstFunctionCallSeen ? signature : undefined);
+            firstFunctionCallSeen = true;
+            const part = {
               functionCall: {
                 id: tc.id,
                 name: sanitizeGeminiFunctionName(tc.function.name),
-                args: args,
+                args,
               },
-            });
+            };
+            if (callSignature) part.thoughtSignature = callSignature;
+            parts.push(part);
             toolCallIds.push(tc.id);
           }
 
@@ -269,7 +280,7 @@ function openaiToGeminiBase(
                 functionResponse: {
                   id: fid,
                   name: sanitizeGeminiFunctionName(name),
-                  response: { result: parsedResp },
+                  response: { result: sanitizeFunctionResponseData(parsedResp) },
                 },
               });
             }
@@ -326,21 +337,26 @@ function openaiToGeminiBase(
 }
 
 // OpenAI -> Gemini (standard API)
-export function openaiToGeminiRequest(model, body, stream) {
-  return openaiToGeminiBase(model, body, stream);
+export function openaiToGeminiRequest(model, body, stream, credentials = null) {
+  return openaiToGeminiBase(model, body, stream, DEFAULT_THINKING_AG_SIGNATURE, credentials?._clientSessionId);
 }
 
 // OpenAI -> Gemini CLI (Cloud Code Assist)
-export function openaiToGeminiCLIRequest(model, body, stream) {
+export function openaiToGeminiCLIRequest(
+  model,
+  body,
+  stream,
+  credentials = null,
+) {
   const gemini = openaiToGeminiBase(
     model,
     body,
     stream,
     DEFAULT_THINKING_GEMINI_CLI_SIGNATURE,
+    credentials?._clientSessionId,
   );
   const isClaude = model.toLowerCase().includes("claude");
 
-  // Add thinking config for CLI
   if (body.reasoning_effort) {
     const budgetMap = { low: 1024, medium: 8192, high: 32768 };
     const budget = budgetMap[body.reasoning_effort] || 8192;
@@ -350,7 +366,6 @@ export function openaiToGeminiCLIRequest(model, body, stream) {
     };
   }
 
-  // Thinking config from Claude format
   if (body.thinking?.type === "enabled" && body.thinking.budget_tokens) {
     gemini.generationConfig.thinkingConfig = {
       thinkingBudget: body.thinking.budget_tokens,
@@ -358,7 +373,6 @@ export function openaiToGeminiCLIRequest(model, body, stream) {
     };
   }
 
-  // Raise output floor so thinking responses are not truncated (7610f28f4).
   const thinkIntent = extractThinking(gemini);
   if (thinkIntent && thinkIntent.mode !== "none") {
     if (thinkIntent.mode === "level") {
@@ -378,7 +392,6 @@ export function openaiToGeminiCLIRequest(model, body, stream) {
       );
     }
   } else if (gemini.generationConfig.thinkingConfig?.thinkingBudget) {
-    // Fallback: thinking config set but extractThinking didn't catch it
     ensureGeminiOutputFloor(
       gemini.generationConfig,
       geminiBudgetOutputFloor(
@@ -510,17 +523,30 @@ function wrapInCloudCodeEnvelopeForClaude(
       const parts = [];
 
       if (Array.isArray(msg.content)) {
+        let firstToolUseSeen = false;
         for (const block of msg.content) {
           if (block.type === "text") {
             parts.push({ text: block.text });
           } else if (block.type === "tool_use") {
-            parts.push({
+            const cachedSignature = block.id
+              ? getGeminiThoughtSignatureSync(
+                  block.id,
+                  credentials?._clientSessionId,
+                )
+              : null;
+            const thoughtSignature =
+              cachedSignature ||
+              (!firstToolUseSeen ? DEFAULT_THINKING_AG_SIGNATURE : undefined);
+            firstToolUseSeen = true;
+            const part = {
               functionCall: {
                 id: block.id,
                 name: sanitizeGeminiFunctionName(block.name),
                 args: block.input || {},
               },
-            });
+            };
+            if (thoughtSignature) part.thoughtSignature = thoughtSignature;
+            parts.push(part);
           } else if (block.type === "tool_result") {
             let content = block.content;
             if (Array.isArray(content)) {
@@ -536,7 +562,11 @@ function wrapInCloudCodeEnvelopeForClaude(
               functionResponse: {
                 id: block.tool_use_id,
                 name: resolvedName,
-                response: { result: tryParseJSON(content) || content },
+                response: {
+                  result: sanitizeFunctionResponseData(
+                    tryParseJSON(content) ?? content,
+                  ),
+                },
               },
             });
           }

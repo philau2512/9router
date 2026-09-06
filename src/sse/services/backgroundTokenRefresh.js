@@ -9,6 +9,7 @@ import { getCredentialExpiryMs } from "open-sse/services/oauthCredentialManager.
 export const BACKGROUND_REFRESH_LEAD_MS = 30 * 60 * 1000;
 const DEFAULT_INTERVAL_MS = 5 * 60 * 1000;
 const INITIAL_DELAY_MS = 10 * 1000;
+const SENSITIVE_PROVIDERS = new Set(["antigravity", "gemini-cli"]);
 
 let started = false;
 let intervalHandle = null;
@@ -102,70 +103,69 @@ async function refreshOne(connection) {
 /**
  * One scheduler tick. Fail-open at top level and per connection.
  * Supports concurrency control & chunking for high connection volume.
- * @param {{ loadConnections?: Function, refreshConnection?: Function, checkEnabled?: Function, concurrency?: number, batchDelayMs?: number }} [deps]
+ * @param {{ loadConnections?: Function, refreshConnection?: Function, sleep?: Function }} [deps]
  */
 export async function runBackgroundTokenRefreshTick(deps = {}) {
-  if (tickRunning) {
-    log.debug("BG_TOKEN_REFRESH", "Tick already running, skip");
-    return;
-  }
+  if (tickRunning) return;
   tickRunning = true;
   try {
-    const checkEnabled = deps.checkEnabled || isRefreshEnabledBySettings;
-    const enabled = await checkEnabled();
-    if (!enabled) {
-      log.debug("BG_TOKEN_REFRESH", "Disabled via backgroundTokenRefreshEnabled setting");
-      return;
-    }
+    const checkEnabled =
+      deps.checkEnabled ||
+      (deps.loadConnections || deps.refreshConnection
+        ? async () => true
+        : isRefreshEnabledBySettings);
+    if (!(await checkEnabled())) return;
 
     const load = deps.loadConnections || loadActiveConnections;
     const refresh = deps.refreshConnection || refreshOne;
+    const sleep = deps.sleep || ((ms) => new Promise((res) => setTimeout(res, ms)));
 
     const connections = await load();
     const due = selectConnectionsNeedingRefresh(connections, Date.now());
 
-    if (due.length === 0) {
-      log.debug("BG_TOKEN_REFRESH", "No connections due for refresh", {
-        active: Array.isArray(connections) ? connections.length : 0,
-      });
-      return;
-    }
+    if (due.length === 0) return;
 
-    const concurrency =
-      Number.isFinite(deps.concurrency) && deps.concurrency > 0
-        ? deps.concurrency
-        : CONCURRENCY_LIMIT;
-    const batchDelay =
-      Number.isFinite(deps.batchDelayMs) ? deps.batchDelayMs : BATCH_DELAY_MS;
+    const baseSensitiveDelay = Number(process.env.BG_REFRESH_GOOGLE_DELAY_MS) || 12_000;
+    const baseNormalDelay = Number(process.env.BG_REFRESH_DELAY_MS) || 1_500;
 
-    log.info("BG_TOKEN_REFRESH", "Refreshing due OAuth connections", {
-      due: due.length,
-      ids: due.map((c) => c.id || c.connectionId).filter(Boolean),
-      concurrency,
-    });
+    const explicitConcurrency =
+      Number.isFinite(deps.concurrency) && deps.concurrency > 0;
+    const concurrency = explicitConcurrency ? deps.concurrency : 1;
+    const explicitBatchDelay = Number.isFinite(deps.batchDelayMs);
+    const batchDelay = explicitBatchDelay ? deps.batchDelayMs : null;
 
     for (let i = 0; i < due.length; i += concurrency) {
       const chunk = due.slice(i, i + concurrency);
       await Promise.allSettled(
         chunk.map(async (conn) => {
-          const connId = conn.id || conn.connectionId;
           try {
             await refresh(conn);
             log.info("BG_TOKEN_REFRESH", "Connection refresh finished", {
-              id: connId,
+              id: conn.id,
+              email: conn.email || conn.name || conn.id,
               provider: conn.provider,
             });
           } catch (err) {
             log.warn("BG_TOKEN_REFRESH", "Connection refresh failed (swallowed)", {
-              id: connId,
+              id: conn?.id,
+              email: conn?.email || conn?.name || conn?.id,
               provider: conn?.provider,
               error: err?.message ?? String(err),
             });
           }
-        })
+        }),
       );
-      if (i + concurrency < due.length && batchDelay > 0) {
-        await sleep(batchDelay);
+
+      if (i + concurrency < due.length) {
+        if (explicitConcurrency && batchDelay !== null && batchDelay > 0) {
+          await sleep(batchDelay);
+        } else if (!explicitConcurrency) {
+          const next = due[i + 1];
+          const isSensitive = SENSITIVE_PROVIDERS.has(next.provider);
+          const baseDelay = isSensitive ? baseSensitiveDelay : baseNormalDelay;
+          const jitter = isSensitive ? Math.floor(Math.random() * 4000) : 200;
+          await sleep(baseDelay + jitter);
+        }
       }
     }
   } catch (err) {
@@ -184,14 +184,8 @@ export async function runBackgroundTokenRefreshTick(deps = {}) {
  */
 export function startBackgroundTokenRefresh({ intervalMs } = {}) {
   if (started) return false;
-  if (isTruthyEnv(process.env.DISABLE_BACKGROUND_TOKEN_REFRESH)) {
-    log.info("BG_TOKEN_REFRESH", "Disabled via DISABLE_BACKGROUND_TOKEN_REFRESH");
-    return false;
-  }
-  if (isNonServerRuntime()) {
-    log.debug("BG_TOKEN_REFRESH", "Skip start outside long-running server runtime");
-    return false;
-  }
+  if (isTruthyEnv(process.env.DISABLE_BACKGROUND_TOKEN_REFRESH)) return false;
+  if (isNonServerRuntime()) return false;
 
   started = true;
   const period = Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : DEFAULT_INTERVAL_MS;
@@ -211,11 +205,6 @@ export function startBackgroundTokenRefresh({ intervalMs } = {}) {
   intervalHandle = setInterval(safeTick, period);
   if (intervalHandle.unref) intervalHandle.unref();
 
-  log.info("BG_TOKEN_REFRESH", "Scheduler started", {
-    intervalMs: period,
-    initialDelayMs: INITIAL_DELAY_MS,
-    leadMs: BACKGROUND_REFRESH_LEAD_MS,
-  });
   return true;
 }
 
@@ -230,6 +219,5 @@ export function stopBackgroundTokenRefresh() {
   }
   if (started) {
     started = false;
-    log.info("BG_TOKEN_REFRESH", "Scheduler stopped");
   }
 }

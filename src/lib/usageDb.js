@@ -13,4 +13,5 @@ export {
   getRequestDetails,
   getRequestDetailsList,
   getRequestDetailById,
+  deleteAllRequestDetails,
 } from "@/lib/db/index.js";

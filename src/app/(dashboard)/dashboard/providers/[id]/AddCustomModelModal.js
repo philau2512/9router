@@ -1,19 +1,30 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import PropTypes from "prop-types";
-import { Button, Modal } from "@/shared/components";
+import { Button, Modal, Toggle } from "@/shared/components";
+import { CAPACITY_META } from "@/shared/constants/models";
+
+const defaultCaps = () => Object.fromEntries(Object.keys(CAPACITY_META).map((key) => [key, false]));
 
 export default function AddCustomModelModal({ isOpen, providerAlias, providerDisplayAlias, onSave, onClose }) {
   const [modelId, setModelId] = useState("");
+  const [caps, setCaps] = useState(defaultCaps);
   const [testStatus, setTestStatus] = useState(null); // null | "testing" | "ok" | "error"
   const [testError, setTestError] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Reset state when modal opens
-  useEffect(() => {
-    if (isOpen) { setModelId(""); setTestStatus(null); setTestError(""); }
-  }, [isOpen]);
+  const resetForm = () => {
+    setModelId("");
+    setCaps(defaultCaps());
+    setTestStatus(null);
+    setTestError("");
+  };
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
 
   // Strip provider's own alias prefix (e.g. "cc/model" -> "model" for cc provider)
   const stripAlias = (id) => {
@@ -46,7 +57,8 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
     if (!cleanId || saving) return;
     setSaving(true);
     try {
-      await onSave(cleanId);
+      await onSave(cleanId, caps);
+      resetForm();
     } finally {
       setSaving(false);
     }
@@ -57,7 +69,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Add Custom Model">
+    <Modal isOpen={isOpen} onClose={handleClose} title="Add Custom Model">
       <div className="flex flex-col gap-4">
         <div>
           <label className="text-sm font-medium mb-1.5 block">Model ID</label>
@@ -86,6 +98,22 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
           </p>
         </div>
 
+        <div>
+          <label className="text-sm font-medium mb-1.5 block">Capabilities</label>
+          <div className="flex flex-wrap gap-4">
+            {Object.entries(CAPACITY_META).map(([key, meta]) => (
+              <Toggle
+                key={key}
+                checked={!!caps[key]}
+                onChange={(v) => setCaps((prev) => ({ ...prev, [key]: v }))}
+                label={meta.label}
+                description={meta.desc}
+                size="sm"
+              />
+            ))}
+          </div>
+        </div>
+
         {/* Test result */}
         {testStatus === "ok" && (
           <div className="flex items-center gap-2 text-sm text-green-600">
@@ -101,7 +129,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
         )}
 
         <div className="flex gap-2 pt-1">
-          <Button onClick={onClose} variant="ghost" fullWidth size="sm">Cancel</Button>
+          <Button onClick={handleClose} variant="ghost" fullWidth size="sm">Cancel</Button>
           <Button
             onClick={handleSave}
             fullWidth

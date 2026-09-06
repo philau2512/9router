@@ -34,6 +34,7 @@ import {
   updateProviderConnection,
   updateProviderNode,
 } from "./utils/providerDetailPageApi";
+import BulkImportGrokCliModal from "./BulkImportGrokCliModal";
 
 function getHeaderIconPath(
   providerInfo,
@@ -61,6 +62,7 @@ export default function ProviderDetailPage() {
   const [showAddApiKeyModal, setShowAddApiKeyModal] = useState(false);
   const [showBulkImportCodex, setShowBulkImportCodex] = useState(false);
   const [addConnectionError, setAddConnectionError] = useState("");
+  const [showBulkImportGrokCli, setShowBulkImportGrokCli] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showEditNodeModal, setShowEditNodeModal] = useState(false);
   const [selectedConnection, setSelectedConnection] = useState(null);
@@ -71,14 +73,12 @@ export default function ProviderDetailPage() {
   const [thinkingMode, setThinkingMode] = useState("auto");
   const { copied, copy } = useCopyToClipboard();
 
-  // Resolve suffix "(level)" for a model when a thinking level is picked and the model supports it.
   const resolveThinkingSuffix = (modelId) => {
     if (!thinkingMode || thinkingMode === "auto") return null;
     const levels = getThinkingLevels(providerId, modelId);
     return levels && levels.includes(thinkingMode) ? thinkingMode : null;
   };
 
-  // Union of selectable levels across provider models (for the header dropdown).
   const providerThinkingLevels = (() => {
     const set = new Set(["auto"]);
     let any = false;
@@ -117,7 +117,6 @@ export default function ProviderDetailPage() {
   };
 
   const AG_RISK_STORAGE_KEY = "ag_risk_confirmed";
-
   const authCompatibility = {
     isOpenAICompatible: isOpenAICompatibleProvider(providerId),
     isAnthropicCompatible: isAnthropicCompatibleProvider(providerId),
@@ -164,9 +163,6 @@ export default function ProviderDetailPage() {
   const apiKeyConnectionLabel =
     providerId === "xai" ? "xAI API Key" : "API Key";
   const staticModels = getModelsByProviderId(providerId);
-  // Live catalog fetched from /api/providers/{id}/models (codex/antigravity use
-  // the Phase 1 dynamic resolvers; kiro/gemini-cli etc. via their resolvers).
-  // null = not fetched / failed → panel keeps the static catalog.
   const [liveModels, setLiveModels] = useState(null);
   const providerAlias = getProviderAlias(providerId);
   const providerStorageAlias = isCompatible ? providerId : providerAlias;
@@ -200,7 +196,6 @@ export default function ProviderDetailPage() {
 
   const {
     connections,
-    setConnections,
     loading,
     proxyPools,
     selectedConnectionIds,
@@ -308,10 +303,6 @@ export default function ProviderDetailPage() {
     }
   }, [connections, isCompatible]);
 
-  // Dynamic model fetch for the "Available Models" panel: OAuth providers with
-  // a live catalog (codex/antigravity/kiro/...) pull /api/providers/{id}/models.
-  // Merge policy: most providers union static∪live; kiro is live-only when the
-  // account catalog is non-empty (see mergeProviderModels). Fail-open → static.
   useEffect(() => {
     if (isCompatible) {
       queueMicrotask(() => setLiveModels(null));
@@ -598,6 +589,7 @@ export default function ProviderDetailPage() {
         handleWarmupSingle={handleWarmupSingle}
         clearWarmupResults={clearWarmupResults}
         onOpenCodexBulkImport={() => setShowBulkImportCodex(true)}
+        onOpenGrokBulkImport={() => setShowBulkImportGrokCli(true)}
         onViewJson={handleViewJson}
         autoPingConnections={autoPingConnections}
         savingAutoPingConnectionId={savingAutoPingConnectionId}
@@ -799,6 +791,14 @@ export default function ProviderDetailPage() {
         activeJsonConnection={activeJsonConnection}
         onCloseJsonModal={() => setActiveJsonConnection(null)}
       />
+
+      {providerId === "grok-cli" && (
+        <BulkImportGrokCliModal
+          isOpen={showBulkImportGrokCli}
+          onClose={() => setShowBulkImportGrokCli(false)}
+          onSuccess={fetchConnections}
+        />
+      )}
     </div>
   );
 }

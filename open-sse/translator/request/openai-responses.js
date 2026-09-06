@@ -6,14 +6,15 @@
  */
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
-import { normalizeResponsesInput } from "../helpers/responsesApiHelper.js";
+import {
+  normalizeResponsesInput,
+  clampResponsesCallId,
+  coerceResponsesArguments,
+  coerceResponsesOutput,
+} from "../formats/responsesApi.js";
+import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
 
-// Responses API enforces max 64 chars on call_id (#393)
-const MAX_CALL_ID_LEN = 64;
-const clampCallId = (id) =>
-  typeof id === "string" && id.length > MAX_CALL_ID_LEN
-    ? id.substring(0, MAX_CALL_ID_LEN)
-    : id;
+const MAX_TOOL_NAME_LEN = 128;
 
 /**
  * Convert OpenAI Responses API request to OpenAI Chat Completions format
@@ -28,6 +29,13 @@ export function openaiResponsesToOpenAIRequest(
 
   const result = { ...body };
   result.messages = [];
+  const customTools = [];
+
+  const promoteCustomTool = (tool) => {
+    const name = tool?.name;
+    if (!name || typeof name !== "string" || name.trim() === "") return;
+    customTools.push({ name, description: String(tool.description || "") });
+  };
 
   // Convert instructions to system message
   if (body.instructions) {
@@ -67,7 +75,11 @@ export function openaiResponsesToOpenAIRequest(
     // Fallback: if no type but has role property, treat as message
     const itemType = item.type || (item.role ? "message" : null);
 
-    if (itemType === "message") {
+    if (itemType === "additional_tools") {
+      for (const tool of item.tools || []) {
+        if (tool?.type === "custom") promoteCustomTool(tool);
+      }
+    } else if (itemType === "message") {
       // Flush any pending assistant message with tool calls
       if (currentAssistantMsg) {
         result.messages.push(currentAssistantMsg);
@@ -107,7 +119,7 @@ export function openaiResponsesToOpenAIRequest(
       pendingEncryptedContent = null;
       pendingReasoning = "";
       result.messages.push(msg);
-    } else if (itemType === "function_call") {
+    } else if (itemType === "function_call" || itemType === "custom_tool_call") {
       // Start or append to assistant message with tool_calls
       if (!currentAssistantMsg) {
         currentAssistantMsg = {
@@ -136,7 +148,12 @@ export function openaiResponsesToOpenAIRequest(
         type: "function",
         function: {
           name: item.name,
-          arguments: item.arguments,
+          arguments:
+            typeof item.arguments === "string"
+              ? item.arguments
+              : itemType === "custom_tool_call"
+                ? JSON.stringify({ input: item.input || "" })
+                : JSON.stringify(item.arguments ?? {}),
         },
         ...(typeof item.thought_signature === "string" &&
         item.thought_signature.length > 0
@@ -146,7 +163,10 @@ export function openaiResponsesToOpenAIRequest(
             ? { thought_signature: item.thoughtSignature }
             : {}),
       });
-    } else if (itemType === "function_call_output") {
+    } else if (
+      itemType === "function_call_output" ||
+      itemType === "custom_tool_call_output"
+    ) {
       // Flush assistant message first if exists
       if (currentAssistantMsg) {
         result.messages.push(currentAssistantMsg);
@@ -196,8 +216,20 @@ export function openaiResponsesToOpenAIRequest(
   // explicit `name` field and cannot be represented as Chat Completions function declarations.
   // Filter them out to avoid sending nameless functionDeclarations to downstream providers
   // such as Gemini, which strictly validates function names.
+  const promotedCustomTools = customTools.map(({ name, description }) => ({
+    type: "function",
+    function: {
+      name,
+      description,
+      parameters: {
+        type: "object",
+        required: ["input"],
+        properties: { input: { type: "string" } },
+      },
+    },
+  }));
   if (body.tools && Array.isArray(body.tools)) {
-    result.tools = body.tools
+    const standardTools = body.tools
       .map((tool) => {
         // Already in Chat Completions format: { type: "function", function: { name, ... } }
         if (tool.function) return tool;
@@ -217,9 +249,16 @@ export function openaiResponsesToOpenAIRequest(
         };
       })
       .filter(Boolean);
+    result.tools = [
+      ...standardTools,
+      ...promotedCustomTools,
+    ];
+  } else if (promotedCustomTools.length > 0) {
+    result.tools = promotedCustomTools;
   }
-
-  // Cleanup Responses API specific fields
+  if (customTools.length > 0) {
+    result._customToolNames = [...new Set(customTools.map(({ name }) => name))];
+  }
   // Map Responses-only max_output_tokens to Chat max_tokens (avoid leaking unknown field upstream)
   if (result.max_output_tokens !== undefined) {
     if (result.max_tokens === undefined)
@@ -242,6 +281,23 @@ export function openaiResponsesToOpenAIRequest(
 }
 
 /**
+ * Extract plain text from a system/developer message for Responses instructions.
+ * Array content (text parts) is joined; anything else falls back to "" rather
+ * than leaking "[object Object]" upstream.
+ */
+function extractInstructionsText(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content.map((c) => {
+      if (typeof c?.text === "string") return c.text;
+      if (typeof c?.content === "string") return c.content;
+      return "";
+    }).filter(Boolean).join("\n");
+  }
+  return "";
+}
+
+/**
  * Ensure object schema always has properties field (required by Codex Responses API)
  */
 function normalizeToolParameters(params) {
@@ -261,7 +317,16 @@ export function openaiToOpenAIResponsesRequest(
   credentials,
 ) {
   // Body already in Responses API format (e.g. Cursor CLI calling /chat/completions with input[])
-  if (body.input) return { ...body, model, stream: true };
+  if (body.input) {
+    const out = { ...body, model, stream: true };
+    if (out.max_output_tokens === undefined) {
+      if (out.max_completion_tokens !== undefined) out.max_output_tokens = out.max_completion_tokens;
+      else if (out.max_tokens !== undefined) out.max_output_tokens = out.max_tokens;
+    }
+    delete out.max_tokens;
+    delete out.max_completion_tokens;
+    return out;
+  }
 
   const result = {
     model,
@@ -278,8 +343,7 @@ export function openaiToOpenAIResponsesRequest(
     if (msg.role === "system" || msg.role === "developer") {
       // Use the first instruction-bearing message as instructions (role=system or role=developer for GPT-5/Codex)
       if (!hasSystemMessage) {
-        result.instructions =
-          typeof msg.content === "string" ? msg.content : "";
+        result.instructions = extractInstructionsText(msg.content);
         hasSystemMessage = true;
       }
       continue; // Skip instruction messages in input
@@ -356,36 +420,33 @@ export function openaiToOpenAIResponsesRequest(
     // Convert tool calls
     if (msg.role === "assistant" && msg.tool_calls) {
       for (const tc of msg.tool_calls) {
-        const thoughtSig =
+        const name =
+          typeof tc.function?.name === "string" ? tc.function.name.trim() : "";
+        if (!name) continue;
+        const thoughtSignature =
           tc.thought_signature ||
           tc.thoughtSignature ||
           tc.function?.thought_signature ||
           tc.function?.thoughtSignature;
         const item = {
-          type: "function_call",
-          call_id: clampCallId(tc.id),
-          name: tc.function?.name || "_unknown",
-          arguments: tc.function?.arguments || "{}",
+          type: RESPONSES_ITEM.FUNCTION_CALL,
+          call_id: clampResponsesCallId(tc.id),
+          name: name.slice(0, MAX_TOOL_NAME_LEN),
+          arguments: coerceResponsesArguments(tc.function?.arguments),
         };
-        if (typeof thoughtSig === "string" && thoughtSig.length > 0) {
-          item.thought_signature = thoughtSig;
+        if (typeof thoughtSignature === "string" && thoughtSignature.length > 0) {
+          item.thought_signature = thoughtSignature;
         }
         result.input.push(item);
       }
     }
 
     // Convert tool results - output must be a string for Responses API
-    if (msg.role === "tool") {
-      const output =
-        typeof msg.content === "string"
-          ? msg.content
-          : Array.isArray(msg.content)
-            ? msg.content.map((c) => c.text || JSON.stringify(c)).join("")
-            : JSON.stringify(msg.content);
+    if (msg.role === ROLE.TOOL) {
       result.input.push({
-        type: "function_call_output",
-        call_id: clampCallId(msg.tool_call_id),
-        output,
+        type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT,
+        call_id: clampResponsesCallId(msg.tool_call_id),
+        output: coerceResponsesOutput(msg.content),
       });
     }
   }
@@ -398,31 +459,42 @@ export function openaiToOpenAIResponsesRequest(
   // Convert tools format
   if (body.tools && Array.isArray(body.tools)) {
     result.tools = body.tools.map((tool) => {
-      if (tool.type === "function") {
+      if (tool.type === OPENAI_BLOCK.FUNCTION) {
+        const name =
+          typeof tool.function?.name === "string"
+            ? tool.function.name.trim()
+            : "";
+        if (!name) return null;
         return {
-          type: "function",
-          name: tool.function.name,
+          type: OPENAI_BLOCK.FUNCTION,
+          name: name.slice(0, MAX_TOOL_NAME_LEN),
           description: String(tool.function.description || ""),
           parameters: normalizeToolParameters(tool.function.parameters),
           strict: tool.function.strict,
         };
       }
       return tool;
-    });
+    }).filter(Boolean);
   }
 
   // Pass through other relevant fields
   if (body.temperature !== undefined) result.temperature = body.temperature;
-  if (body.max_tokens !== undefined) result.max_tokens = body.max_tokens;
+  if (body.max_output_tokens !== undefined) {
+    result.max_output_tokens = body.max_output_tokens;
+  } else if (body.max_completion_tokens !== undefined) {
+    result.max_output_tokens = body.max_completion_tokens;
+  } else if (body.max_tokens !== undefined) {
+    result.max_output_tokens = body.max_tokens;
+  }
   if (body.top_p !== undefined) result.top_p = body.top_p;
   if (body.reasoning !== undefined) result.reasoning = body.reasoning;
   if (body.reasoning_effort !== undefined) {
     result.reasoning = { effort: body.reasoning_effort, summary: "auto" };
   }
   if (body.service_tier !== undefined) result.service_tier = body.service_tier;
-  // if (body.prompt_cache_key !== undefined) {
-  //   result.prompt_cache_key = body.prompt_cache_key;
-  // }
+  if (body.prompt_cache_key !== undefined) {
+    result.prompt_cache_key = body.prompt_cache_key;
+  }
 
   return result;
 }

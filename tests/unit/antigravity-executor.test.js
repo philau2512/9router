@@ -119,6 +119,26 @@ describe("AntigravityExecutor", () => {
     expect(chat.request.tools[0].functionDeclarations[0].name).toBe("bad_tool_");
   });
 
+  it("does not mutate the canonical request body while transforming", () => {
+    const executor = new AntigravityExecutor();
+    const input = {
+      request: {
+        contents: [{ role: "model", parts: [{ thought: true, text: "hidden" }, { text: "visible" }] }],
+        generationConfig: { maxOutputTokens: 99999 },
+        systemInstruction: { parts: [{ text: "You are an AI assistant" }] },
+      },
+      thinking: { type: "adaptive" },
+    };
+    const snapshot = structuredClone(input);
+
+    const transformed = executor.transformRequest("gemini-3-flash", input, true, credentials);
+
+    expect(input).toEqual(snapshot);
+    expect(transformed).not.toBe(input);
+    expect(transformed.request.generationConfig.maxOutputTokens).toBe(16384);
+    expect(transformed.thinking).toBeUndefined();
+  });
+
   it("strips Claude adaptive thinking from the Google request envelope", () => {
     // Reproduced from logs/openai-responses_antigravity_claude-sonnet-4-6_20260719_004054_961.
     // The Antigravity v1internal endpoint rejects top-level `thinking` with:
@@ -230,9 +250,9 @@ describe("AntigravityExecutor", () => {
     expect(transform(1024).request.generationConfig.maxOutputTokens).toBe(16384);
   });
 
-  it("fails fast when the single daily chat endpoint is unavailable", async () => {
+  it("falls back from daily to the production chat endpoint", async () => {
     const executor = new AntigravityExecutor();
-    proxyAwareFetch.mockRejectedValueOnce(new Error("daily offline"));
+    proxyAwareFetch.mockRejectedValue(new Error("endpoint offline"));
 
     await expect(
       executor.execute({
@@ -243,10 +263,12 @@ describe("AntigravityExecutor", () => {
         log,
         proxyOptions: { proxy: "http://proxy.test" },
       }),
-    ).rejects.toThrow("daily offline");
+    ).rejects.toThrow("endpoint offline");
 
-    const chatUrl = `${ANTIGRAVITY_BASE_URLS[0]}/v1internal:streamGenerateContent?alt=sse`;
-    expect(proxyAwareFetch.mock.calls.map(([url]) => url)).toEqual([chatUrl]);
+    const chatUrls = ANTIGRAVITY_BASE_URLS.map(
+      (base) => `${base}/v1internal:streamGenerateContent?alt=sse`,
+    );
+    expect(proxyAwareFetch.mock.calls.map(([url]) => url)).toEqual(chatUrls);
   });
 
   it("throws when the daily chat endpoint fails", async () => {

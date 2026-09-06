@@ -1,5 +1,6 @@
 import { platform, arch } from "os";
 import { ANTIGRAVITY_BASE_URLS } from "../providers/antigravity-provider-metadata.js";
+import { ANTIGRAVITY_IDE_USER_AGENT } from "../providers/shared.js";
 import {
   GROK_CLI_BASE_URL,
   GROK_CLI_CLIENT_IDENTIFIER,
@@ -128,7 +129,7 @@ export const PROVIDERS = {
   antigravity: {
     baseUrls: ANTIGRAVITY_BASE_URLS,
     format: "antigravity",
-    headers: { "User-Agent": `antigravity/1.107.0 ${platform()}/${arch()}` },
+    headers: { "User-Agent": ANTIGRAVITY_IDE_USER_AGENT },
     clientId:
       "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com",
     clientSecret: "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",
@@ -183,6 +184,18 @@ export const PROVIDERS = {
   },
   "alicode-intl": {
     baseUrl: "https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions",
+    format: "openai",
+    headers: {},
+  },
+  "alims-intl": {
+    baseUrl:
+      "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
+    format: "openai",
+    headers: {},
+  },
+  "alitp-intl": {
+    baseUrl:
+      "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
     format: "openai",
     headers: {},
   },
@@ -437,6 +450,28 @@ export const PROVIDERS = {
     baseUrl: "https://opencode.ai/zen/go/v1/chat/completions",
     format: "openai",
     headers: {},
+    transports: [
+      {
+        format: "openai",
+        baseUrl: "https://opencode.ai/zen/go/v1/chat/completions",
+        auth: { combined: true, header: "Authorization", scheme: "bearer" },
+      },
+      {
+        format: "claude",
+        baseUrl: "https://opencode.ai/zen/go/v1/messages",
+        auth: {
+          combined: true,
+          header: "x-api-key",
+          scheme: "raw",
+          anthropicVersion: true,
+        },
+      },
+      {
+        format: "openai-responses",
+        baseUrl: "https://opencode.ai/zen/go/v1/responses",
+        auth: { combined: true, header: "Authorization", scheme: "bearer" },
+      },
+    ],
   },
   "grok-web": {
     baseUrl: "https://grok.com/rest/app-chat/conversations/new",

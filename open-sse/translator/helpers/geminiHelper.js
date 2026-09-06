@@ -425,3 +425,18 @@ export function cleanJSONSchemaForAntigravity(schema) {
 
   return cleaned;
 }
+
+// Recursively replace reserved "$ref" keys in function response data to avoid
+// Gemini Protobuf parser rejecting unresolved display_name references (HTTP 400).
+export function sanitizeFunctionResponseData(data) {
+  if (!data || typeof data !== "object") return data;
+  if (Array.isArray(data)) {
+    return data.map((item) => sanitizeFunctionResponseData(item));
+  }
+  const result = {};
+  for (const [key, value] of Object.entries(data)) {
+    const safeKey = key === "$ref" ? "_ref" : key;
+    result[safeKey] = sanitizeFunctionResponseData(value);
+  }
+  return result;
+}

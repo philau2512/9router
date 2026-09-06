@@ -21,20 +21,19 @@ export {
   refreshAccessToken,
   refreshClaudeOAuthToken,
   refreshGoogleToken,
-  refreshQwenToken,
   refreshCodexToken,
   refreshKiroToken,
   refreshIflowToken,
   refreshGitHubToken,
   refreshCopilotToken,
   refreshCodebuddyToken,
-} from "./refresh-providers.js";
+  refreshClineToken,
+} from "./tokenRefresh/providers.js";
 
 export {
   refreshKimiToken,
   refreshCodebuddyIntlToken,
   refreshTraeToken,
-  refreshZedToken,
   refreshWindsurfToken,
 } from "./tokenRefresh/providers.js";
 
